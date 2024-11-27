@@ -25,7 +25,6 @@ class _RunningManWidgetState extends State<RunningManWidget> {
     steps = widget.initialSteps; // Set initial value
   }
 
-  // Open input dialog to set steps
   void _showInputDialog() {
     if (!widget.isActive) return; // Ignore taps if inactive
 
@@ -80,67 +79,48 @@ class _RunningManWidgetState extends State<RunningManWidget> {
     final double fillProportion = (steps / maxSteps).clamp(0.0, 1.0);
 
     return GestureDetector(
-      onTap:
-          widget.isActive ? _showInputDialog : null, // Disable tap if inactive
+      onTap: widget.isActive ? _showInputDialog : null,
       child: Opacity(
-        opacity: widget.isActive ? 1.0 : 0.5, // Dim if inactive
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Running Man Outline
-            Container(
-              width: 50, // Icon-sized
-              height: 50,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white,
-                  width: 2, // Outer border for visibility
-                ),
-              ),
-              child: ClipOval(
-                child: Stack(
-                  alignment: Alignment.bottomCenter,
-                  children: [
-                    // Orange fill
-                    FractionallySizedBox(
-                      heightFactor: fillProportion,
-                      child: Container(
-                        color: Colors.orangeAccent,
-                      ),
-                    ),
-                    // Running man icon
-                    Center(
-                      child: Icon(
-                        Icons.directions_run,
-                        size: 30,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
+        opacity: widget.isActive ? 1.0 : 0.5,
+        child: Focus(
+          canRequestFocus: false, // Prevent focus outlines
+          child: Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white,
+                width: 2,
+                style: BorderStyle.solid,
               ),
             ),
-            // Steps Label
-            Positioned(
-              bottom: -10,
-              child: Text(
-                '$steps steps',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  shadows: [
-                    Shadow(
-                      blurRadius: 2,
-                      color: Colors.black.withOpacity(0.7),
-                      offset: Offset(0.5, 0.5),
+            child: ClipOval(
+              clipBehavior: Clip.hardEdge,
+              child: Stack(
+                alignment: Alignment.bottomCenter, // Align content to bottom
+                children: [
+                  // Orange fill
+                  FractionallySizedBox(
+                    alignment: Alignment.bottomCenter, // Align to the bottom
+                    heightFactor: fillProportion,
+                    child: Container(
+                      width: double.infinity, // Fill the width
+                      color: Colors.orangeAccent,
                     ),
-                  ],
-                ),
+                  ),
+                  // Running man icon
+                  Center(
+                    child: Icon(
+                      Icons.directions_run,
+                      size: 30,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
