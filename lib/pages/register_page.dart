@@ -5,6 +5,7 @@ import 'package:namer_app/components/my_text_field.dart';
 
 class RegisterPage extends StatefulWidget {
   final Function()? onTap;
+
   RegisterPage({super.key, required this.onTap});
 
   @override
@@ -15,50 +16,70 @@ class _RegisterPageState extends State<RegisterPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
+  bool isLoading = false;
 
   Future<void> signUserUp() async {
+    if (emailController.text.isEmpty || passwordController.text.isEmpty) {
+      await showErrorDialog("Email and Password cannot be empty");
+      return;
+    }
+
+    if (passwordController.text != confirmPasswordController.text) {
+      await showErrorDialog("Passwords don't match");
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text.trim(),
+      );
+
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+        await showErrorDialog(getErrorMessage(e.code));
+      }
+    }
+  }
+
+  Future<void> showErrorDialog(String message) async {
     await showDialog(
       context: context,
       builder: (context) {
-        return Center(child: CircularProgressIndicator());
+        return AlertDialog(
+          backgroundColor: Colors.amber[900],
+          title: Text(
+            message,
+            style: TextStyle(color: Colors.white),
+          ),
+        );
       },
     );
+  }
 
-    try {
-      if (passwordController.text == confirmPasswordController.text) {
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
-            email: emailController.text, password: passwordController.text);
-
-        if (mounted) Navigator.pop(context);
-      } else {
-        if (mounted) Navigator.pop(context);
-        await showDialog(
-          context: context,
-          builder: (context) {
-            return AlertDialog(
-              backgroundColor: Colors.amber[900],
-              title: Text(
-                "Passwords don't match",
-                style: TextStyle(color: Colors.white),
-              ),
-            );
-          },
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      if (mounted) Navigator.pop(context);
-      await showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            backgroundColor: Colors.amber[900],
-            title: Text(
-              e.code,
-              style: TextStyle(color: Colors.white),
-            ),
-          );
-        },
-      );
+  String getErrorMessage(String code) {
+    switch (code) {
+      case 'email-already-in-use':
+        return 'This email is already in use.';
+      case 'invalid-email':
+        return 'Invalid email address.';
+      case 'weak-password':
+        return 'Password is too weak.';
+      default:
+        return 'An unknown error occurred.';
     }
   }
 
@@ -80,61 +101,45 @@ class _RegisterPageState extends State<RegisterPage> {
                     Text('TheCalorieCard', style: TextStyle(fontSize: 35)),
                   ],
                 ),
-
                 SizedBox(height: 50),
-
-                //welcome back
                 Text(
                   'Let\'s create an account for you!',
                   style: TextStyle(color: Colors.white),
                 ),
-
                 SizedBox(height: 25),
-
-                //username
                 MyTextField(
                   controller: emailController,
-                  hintText: 'Username',
+                  hintText: 'Email',
                   obscureText: false,
                 ),
-
                 SizedBox(height: 10),
-
-                //password
                 MyTextField(
                   controller: passwordController,
                   hintText: 'Password',
                   obscureText: true,
                 ),
-
                 SizedBox(height: 10),
-
                 MyTextField(
                   controller: confirmPasswordController,
                   hintText: 'Confirm Password',
                   obscureText: true,
                 ),
-
                 SizedBox(height: 25),
-
-                //sign in button
-                MyButton(
-                    onTap: () async {
-                      await signUserUp();
-                    },
-                    text: 'Sign Up'),
-
+                isLoading
+                    ? CircularProgressIndicator(color: Colors.white)
+                    : MyButton(
+                        onTap: () async {
+                          await signUserUp();
+                        },
+                        text: 'Sign Up',
+                      ),
                 SizedBox(height: 50),
-
-                //register
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Text(
                       'Already have an account?',
-                      style: TextStyle(
-                        color: Colors.white,
-                      ),
+                      style: TextStyle(color: Colors.white),
                     ),
                     const SizedBox(width: 4),
                     GestureDetector(
@@ -146,9 +151,9 @@ class _RegisterPageState extends State<RegisterPage> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    )
+                    ),
                   ],
-                )
+                ),
               ],
             ),
           ),
