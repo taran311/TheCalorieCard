@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "795453323864",
+    "project_id": "auth-af04a",
+    "storage_bucket": "auth-af04a.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:795453323864:android:72df55cc590dfa76d1a82d",
+        "android_client_info": {
+          "package_name": "com.getfatorgetfit"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "795453323864-r5pbqdsd93f5undk41dqfm7vplos2ilk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.getfatorgetfit",
+            "certificate_hash": "9e9e8976560f83750afb2591b789d02433e9af0c"
+          }
+        },
+        {
+          "client_id": "795453323864-496fat0cflbnhth4ik3vf8rt90c7t1eq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCx9ahm61yv_C-GR7QjQ4lyMWUAUoTqAjc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "795453323864-496fat0cflbnhth4ik3vf8rt90c7t1eq.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "795453323864-ip4s75lv2nui8oggc194qhil30g50e48.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.myFirstFlutterProject"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

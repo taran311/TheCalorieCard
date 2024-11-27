@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1075265191486",
+    "project_id": "auth-58336",
+    "storage_bucket": "auth-58336.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1075265191486:android:16b82537814592441ddb6f",
+        "android_client_info": {
+          "package_name": "com.example.narat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1075265191486-scong3689hc750ljh1kim9k0o77flgf7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.narat",
+            "certificate_hash": "9e9e8976560f83750afb2591b789d02433e9af0c"
+          }
+        },
+        {
+          "client_id": "1075265191486-nntugv9mokmvbtf7ceipfo999mdg0omb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUPmCV3WpIuPJHN19BbmUhlj7obpkywiI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1075265191486-nntugv9mokmvbtf7ceipfo999mdg0omb.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1075265191486-v9q9j3cnven7arcm0mnm248cjthkkpsa.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.myFirstFlutterProject"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
