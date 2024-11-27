@@ -19,8 +19,9 @@ class CalorieCurrencyIcon extends StatelessWidget {
               height: 1,
             ),
           ),
+          // Adjusted 'left' value to perfectly center the line
           Positioned(
-            left: 6,
+            left: 5.25, // Fine-tuned to be between the earlier adjustments
             child: Container(
               width: 2,
               height: 18,
