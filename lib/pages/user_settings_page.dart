@@ -19,7 +19,6 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   @override
   void initState() {
     super.initState();
-
     populateData();
   }
 
@@ -209,10 +208,6 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
       calorieDeficit = (baseCalories * 0.85).round();
       calorieMaintenance = baseCalories.round();
       calorieSurplus = (baseCalories * 1.15).round();
-
-      if (calorieDeficit! < 0) calorieDeficit = 0;
-      if (calorieMaintenance! < 0) calorieMaintenance = 0;
-      if (calorieSurplus! < 0) calorieSurplus = 0;
     } catch (e) {
       calorieDeficit = 0;
       calorieMaintenance = 0;
@@ -232,265 +227,256 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(),
-      body: Center(
-        child: Card(
-          child: isLoading
-              ? Center(
-                  child: CircularProgressIndicator()) // Show loading spinner
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: <Widget>[
-                        const SizedBox(width: 8),
-                        Text('Your User Settings',
-                            style: TextStyle(
-                                fontSize: 20, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ListTile(
-                            title: const Text('Age'),
-                            subtitle: DropdownButtonHideUnderline(
-                              child: DropdownButton<int>(
-                                hint: Text(_selectedAge == null
-                                    ? 'Select Years'
-                                    : 'Age: $_selectedAge'),
-                                value: _selectedAge,
-                                items: _ageOptions.map((int age) {
-                                  return DropdownMenuItem<int>(
-                                    value: age,
-                                    child: Text('$age Yrs'),
-                                  );
-                                }).toList(),
-                                onChanged: (int? newValue) {
-                                  setState(() {
-                                    _selectedAge = newValue;
-                                    updateCalories();
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: ListTile(
-                            title: const Text('Gender'),
-                            subtitle: ToggleButtons(
-                              isSelected: genderSelections,
-                              onPressed: (int index) {
+      appBar: AppBar(
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              saveData();
+              deleteFood();
+              wait(context, () async {
+                await Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => HomePage(),
+                  ),
+                  (route) => false,
+                );
+              });
+            },
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.all(Colors.blue),
+            ),
+            child: Text(
+              "Update",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+          SizedBox(width: 10)
+        ],
+      ),
+      body: Card(
+        elevation: 0,
+        shadowColor: Colors.white,
+        child: isLoading
+            ? Center(child: CircularProgressIndicator())
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: <Widget>[
+                      const SizedBox(width: 8),
+                      Text('Your User Settings',
+                          style: TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ListTile(
+                          title: const Text('Age'),
+                          subtitle: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              hint: Text(_selectedAge == null
+                                  ? 'Select Years'
+                                  : 'Age: $_selectedAge'),
+                              value: _selectedAge,
+                              items: _ageOptions.map((int age) {
+                                return DropdownMenuItem<int>(
+                                  value: age,
+                                  child: Text('$age Yrs'),
+                                );
+                              }).toList(),
+                              onChanged: (int? newValue) {
                                 setState(() {
-                                  for (int i = 0;
-                                      i < genderSelections.length;
-                                      i++) {
-                                    genderSelections[i] = i == index;
-                                  }
+                                  _selectedAge = newValue;
                                   updateCalories();
                                 });
                               },
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16.0),
-                                  child: Icon(Icons.man),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16.0),
-                                  child: Icon(Icons.woman),
-                                ),
-                              ],
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ListTile(
-                            title: const Text('Height'),
-                            subtitle: DropdownButtonHideUnderline(
-                              child: DropdownButton<int>(
-                                hint: Text(_selectedHeight == null
-                                    ? 'Select CM'
-                                    : 'Height: $_selectedHeight'),
-                                value: _selectedHeight,
-                                items: _heightOptions.map((int height) {
-                                  return DropdownMenuItem<int>(
-                                    value: height,
-                                    child: Text('$height CM'),
-                                  );
-                                }).toList(),
-                                onChanged: (int? newValue) {
-                                  setState(() {
-                                    _selectedHeight = newValue;
-                                    updateCalories();
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: ListTile(
-                            title: const Text('Weight'),
-                            subtitle: DropdownButtonHideUnderline(
-                              child: DropdownButton<int>(
-                                hint: Text(_selectedWeight == null
-                                    ? 'Select KG'
-                                    : 'Weight: $_selectedWeight'),
-                                value: _selectedWeight,
-                                items: _weightOptions.map((int weight) {
-                                  return DropdownMenuItem<int>(
-                                    value: weight,
-                                    child: Text('$weight KG'),
-                                  );
-                                }).toList(),
-                                onChanged: (int? newValue) {
-                                  setState(() {
-                                    _selectedWeight = newValue;
-                                    updateCalories();
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    ListTile(
-                      title: const Text('Exercise Level'),
-                      subtitle: Column(
-                        children: [
-                          Slider(
-                            value: _exerciseLevel,
-                            min: 0,
-                            max: 4,
-                            divisions: 4,
-                            onChanged: (double value) {
-                              setState(
-                                () {
-                                  _exerciseLevel = value;
-
-                                  // Update the text based on slider value
-                                  if (_exerciseLevel == 0) {
-                                    _exerciseText = 'No Activity';
-                                  } else if (_exerciseLevel == 1) {
-                                    _exerciseText = 'Little Activity (1-3 hrs)';
-                                  } else if (_exerciseLevel == 2) {
-                                    _exerciseText = 'Some Activity (4-6 hrs)';
-                                  } else if (_exerciseLevel == 3) {
-                                    _exerciseText =
-                                        'A lot of activity (7-9 hrs)';
-                                  } else if (_exerciseLevel == 4) {
-                                    _exerciseText =
-                                        'A ton of activity (10+ hrs)';
-                                  }
-                                  updateCalories();
-                                },
-                              );
+                      ),
+                      Expanded(
+                        child: ListTile(
+                          title: const Text('Gender'),
+                          subtitle: ToggleButtons(
+                            isSelected: genderSelections,
+                            onPressed: (int index) {
+                              setState(() {
+                                for (int i = 0;
+                                    i < genderSelections.length;
+                                    i++) {
+                                  genderSelections[i] = i == index;
+                                }
+                                updateCalories();
+                              });
                             },
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0),
+                                child: Icon(Icons.man),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0),
+                                child: Icon(Icons.woman),
+                              ),
+                            ],
                           ),
-                          Text(_exerciseText, style: TextStyle(fontSize: 16))
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ListTile(
+                          title: const Text('Height'),
+                          subtitle: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              hint: Text(_selectedHeight == null
+                                  ? 'Select CM'
+                                  : 'Height: $_selectedHeight'),
+                              value: _selectedHeight,
+                              items: _heightOptions.map((int height) {
+                                return DropdownMenuItem<int>(
+                                  value: height,
+                                  child: Text('$height CM'),
+                                );
+                              }).toList(),
+                              onChanged: (int? newValue) {
+                                setState(() {
+                                  _selectedHeight = newValue;
+                                  updateCalories();
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: ListTile(
+                          title: const Text('Weight'),
+                          subtitle: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              hint: Text(_selectedWeight == null
+                                  ? 'Select KG'
+                                  : 'Weight: $_selectedWeight'),
+                              value: _selectedWeight,
+                              items: _weightOptions.map((int weight) {
+                                return DropdownMenuItem<int>(
+                                  value: weight,
+                                  child: Text('$weight KG'),
+                                );
+                              }).toList(),
+                              onChanged: (int? newValue) {
+                                setState(() {
+                                  _selectedWeight = newValue;
+                                  updateCalories();
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  ListTile(
+                    title: const Text('Exercise Level'),
+                    subtitle: Column(
+                      children: [
+                        Slider(
+                          value: _exerciseLevel,
+                          min: 0,
+                          max: 4,
+                          divisions: 4,
+                          onChanged: (double value) {
+                            setState(
+                              () {
+                                _exerciseLevel = value;
+
+                                // Update the text based on slider value
+                                if (_exerciseLevel == 0) {
+                                  _exerciseText = 'No Activity';
+                                } else if (_exerciseLevel == 1) {
+                                  _exerciseText = 'Little Activity (1-3 hrs)';
+                                } else if (_exerciseLevel == 2) {
+                                  _exerciseText = 'Some Activity (4-6 hrs)';
+                                } else if (_exerciseLevel == 3) {
+                                  _exerciseText = 'A lot of activity (7-9 hrs)';
+                                } else if (_exerciseLevel == 4) {
+                                  _exerciseText = 'A ton of activity (10+ hrs)';
+                                }
+                                updateCalories();
+                              },
+                            );
+                          },
+                        ),
+                        Text(_exerciseText, style: TextStyle(fontSize: 16))
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    subtitle: IntrinsicWidth(
+                      child: ToggleButtons(
+                        isSelected: calorieSelections,
+                        onPressed: (int index) {
+                          setState(() {
+                            for (int i = 0; i < calorieSelections.length; i++) {
+                              calorieSelections[i] = i == index;
+                            }
+                          });
+                          if (calorieSelections.first) {
+                            calorieMode = 'lose';
+                          } else if (calorieSelections[1]) {
+                            calorieMode = 'maintain';
+                          } else if (calorieSelections[2]) {
+                            calorieMode = 'gain';
+                          }
+                          updateCardActiveCalories();
+                        },
+                        constraints: BoxConstraints(
+                            minWidth:
+                                100), // Set a minimum width for each button
+                        children: [
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Text(
+                              'Lose \n $calorieDeficit',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Text(
+                              'Maintain \n $calorieMaintenance',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Text(
+                              'Gain \n $calorieSurplus',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    ListTile(
-                      subtitle: IntrinsicWidth(
-                        // Makes sure the children have equal width
-                        child: ToggleButtons(
-                          isSelected: calorieSelections,
-                          onPressed: (int index) {
-                            setState(() {
-                              for (int i = 0;
-                                  i < calorieSelections.length;
-                                  i++) {
-                                calorieSelections[i] = i == index;
-                              }
-                            });
-                            if (calorieSelections.first) {
-                              calorieMode = 'lose';
-                            } else if (calorieSelections[1]) {
-                              calorieMode = 'maintain';
-                            } else if (calorieSelections[2]) {
-                              calorieMode = 'gain';
-                            }
-                            updateCardActiveCalories();
-                          },
-                          constraints: BoxConstraints(
-                              minWidth:
-                                  100), // Set a minimum width for each button
-                          children: [
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16.0),
-                              child: Text(
-                                'Lose \n $calorieDeficit',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16.0),
-                              child: Text(
-                                'Maintain \n $calorieMaintenance',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16.0),
-                              child: Text(
-                                'Gain \n $calorieSurplus',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Flexible(
-                      child: CreditCard(),
-                    ),
-                    SizedBox(height: 15),
-                    Row(
-                      children: [
-                        const SizedBox(width: 150),
-                        ElevatedButton(
-                          onPressed: () {
-                            saveData();
-                            deleteFood();
-                            wait(context, () async {
-                              await Navigator.pushAndRemoveUntil(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => HomePage(),
-                                  ),
-                                  (route) => false);
-                            });
-                          },
-                          style: ButtonStyle(
-                            backgroundColor:
-                                WidgetStateProperty.all(Colors.blueAccent),
-                          ),
-                          child: Text(
-                            "Update",
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-        ),
+                  ),
+                  SizedBox(height: 15),
+                  Flexible(
+                    child: CreditCard(),
+                  ),
+                ],
+              ),
       ),
     );
   }
