@@ -32,7 +32,7 @@ class _RegisterPageState extends State<RegisterPage> {
         if (mounted) Navigator.pop(context);
       } else {
         if (mounted) Navigator.pop(context);
-        return await showDialog(
+        await showDialog(
           context: context,
           builder: (context) {
             return AlertDialog(
