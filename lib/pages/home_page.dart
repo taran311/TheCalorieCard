@@ -16,6 +16,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final date = DateTime.now().add(const Duration(days: 31));
   List<Container> listOfFood = [];
+  Key _creditCardKey =
+      UniqueKey(); // Add a unique key for the CreditCard widget.
 
   @override
   void initState() {
@@ -181,7 +183,10 @@ class _HomePageState extends State<HomePage> {
         children: [
           Center(
             child: CreditCard(
-                showWater: true, showSteps: true, showPerformanceGauge: true),
+                key: _creditCardKey,
+                showWater: true,
+                showSteps: true,
+                showPerformanceGauge: true),
           ),
           Expanded(
             child: Card(
@@ -216,6 +221,9 @@ class _HomePageState extends State<HomePage> {
                             try {
                               await deleteFood();
                               await populateFoodItems();
+                              setState(() {
+                                _creditCardKey = UniqueKey();
+                              });
                             } finally {
                               if (mounted) Navigator.pop(context);
                             }
