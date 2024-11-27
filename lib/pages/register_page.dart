@@ -16,7 +16,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
 
-  void signUserUp() async {
+  Future<void> signUserUp() async {
     showDialog(
       context: context,
       builder: (context) {
@@ -29,10 +29,10 @@ class _RegisterPageState extends State<RegisterPage> {
         await FirebaseAuth.instance.createUserWithEmailAndPassword(
             email: emailController.text, password: passwordController.text);
 
-        Navigator.pop(context);
+        if (mounted) Navigator.pop(context);
       } else {
         Navigator.pop(context);
-        return showDialog(
+        return await showDialog(
           context: context,
           builder: (context) {
             return AlertDialog(
@@ -46,8 +46,8 @@ class _RegisterPageState extends State<RegisterPage> {
         );
       }
     } on FirebaseAuthException catch (e) {
-      Navigator.pop(context);
-      showDialog(
+      if (mounted) Navigator.pop(context);
+      await showDialog(
         context: context,
         builder: (context) {
           return AlertDialog(
@@ -118,7 +118,11 @@ class _RegisterPageState extends State<RegisterPage> {
                 SizedBox(height: 25),
 
                 //sign in button
-                MyButton(onTap: signUserUp, text: 'Sign Up'),
+                MyButton(
+                    onTap: () async {
+                      await signUserUp();
+                    },
+                    text: 'Sign Up'),
 
                 SizedBox(height: 50),
 

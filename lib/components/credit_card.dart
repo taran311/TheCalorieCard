@@ -63,7 +63,11 @@ class _CreditCardWidgetState extends State<CreditCard> {
   @override
   void initState() {
     super.initState();
-    _fetchUserData();
+    if (widget.showWater || widget.showSteps || widget.showPerformanceGauge) {
+      _fetchUserData();
+    } else {
+      isLoading = false;
+    }
   }
 
   Future<void> _fetchUserData() async {

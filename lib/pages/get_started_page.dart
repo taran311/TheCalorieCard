@@ -112,7 +112,13 @@ class _GetStartedPageState extends State<GetStartedPage> {
       backgroundColor: Colors.indigo[900],
       appBar: AppBar(
         backgroundColor: Colors.indigo[800],
-        actions: [IconButton(onPressed: signOut, icon: Icon(Icons.logout))],
+        actions: [
+          IconButton(
+            onPressed: signOut,
+            icon: Icon(Icons.logout),
+            color: Colors.white,
+          )
+        ],
       ),
       body: Center(
         child: Card(
