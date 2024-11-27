@@ -17,7 +17,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final confirmPasswordController = TextEditingController();
 
   Future<void> signUserUp() async {
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) {
         return Center(child: CircularProgressIndicator());
@@ -31,7 +31,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
         if (mounted) Navigator.pop(context);
       } else {
-        Navigator.pop(context);
+        if (mounted) Navigator.pop(context);
         return await showDialog(
           context: context,
           builder: (context) {
