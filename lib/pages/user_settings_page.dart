@@ -33,7 +33,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   int? cardActiveCalories = 0;
   String? calorieMode;
 
-  final List<int> _ageOptions = List.generate(100, (index) => index + 1);
+  final List<int> _ageOptions = List.generate(100, (index) => index + 18);
   List<bool> genderSelections = [true, false];
   List<bool> calorieSelections = [true, false, false];
 
