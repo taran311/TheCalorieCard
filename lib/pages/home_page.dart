@@ -102,6 +102,52 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> deleteFood() async {
+    try {
+      QuerySnapshot userFoodSnapshot = await FirebaseFirestore.instance
+          .collection('user_food')
+          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+          .get();
+
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      num caloriesToReAdd = 0;
+
+      for (var doc in userFoodSnapshot.docs) {
+        caloriesToReAdd += doc['food_calories'];
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+
+      QuerySnapshot userDataSnapshot = await FirebaseFirestore.instance
+          .collection('user_data')
+          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+          .get();
+
+      final docRef = FirebaseFirestore.instance
+          .collection('user_data')
+          .doc(userDataSnapshot.docs.first.id);
+
+      final updatedCalories =
+          userDataSnapshot.docs.first['calories'] + caloriesToReAdd;
+
+      await docRef.update({
+        'calories': updatedCalories,
+      });
+
+      // Refresh the list of food items
+      await populateFoodItems();
+    } catch (e) {
+      print('Error deleting food items: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting food: $e')),
+        );
+      }
+    }
+  }
+
   // Trigger water animation
   void triggerWaterAnimation(double newWaterLevel) {
     setState(() {
@@ -193,6 +239,28 @@ class _HomePageState extends State<HomePage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.start,
                           children: <Widget>[
+                            FloatingActionButton(
+                              onPressed: () async {
+                                showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (BuildContext context) {
+                                    return const Center(
+                                      child: CircularProgressIndicator(),
+                                    );
+                                  },
+                                );
+
+                                try {
+                                  await deleteFood();
+                                } finally {
+                                  if (mounted) Navigator.pop(context);
+                                }
+                              },
+                              heroTag: 'delete',
+                              child: const Icon(Icons.delete_forever),
+                            ),
+                            const SizedBox(width: 10),
                             FloatingActionButton(
                               onPressed: () async {
                                 await Navigator.push(
