@@ -37,6 +37,7 @@ flutter:
   assets:
     - lib/images/google.png
     - .env
+    - lib/images/card_reader.png
 
 scripts:
   deploy: npx gh-pages -d build/web

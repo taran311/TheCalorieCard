@@ -138,7 +138,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => HomePage(),
+                      builder: (context) => HomePage(
+                        addFoodAnimation: true,
+                      ),
                     ),
                     (route) => false,
                   );

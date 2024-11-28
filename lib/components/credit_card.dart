@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:namer_app/components/calorie_currency_icon.dart';
 import 'package:namer_app/components/performance_gauge.dart';
 import 'package:namer_app/components/running_man_widget.dart';
-import 'package:namer_app/components/water_glass.dart';
+import 'package:namer_app/components/glass_of_water.dart';
 
 Future<void> _updateWater(int water) async {
   QuerySnapshot userDataSnapshot = await FirebaseFirestore.instance
