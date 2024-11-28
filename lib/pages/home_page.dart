@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/swipe_animation_widget.dart';
+import 'package:namer_app/components/water_filling_animation.dart';
 import 'package:namer_app/pages/add_food_page.dart';
 import 'package:namer_app/pages/login_or_register_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
@@ -19,6 +20,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<Container> listOfFood = [];
   bool _showAnimations = false;
+  bool _showWaterAnimation = false; // Controls water animation visibility
+  double _waterFillPercentage = 0.0; // Track water level percentage
 
   @override
   void initState() {
@@ -33,7 +36,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _startAnimations() async {
     // Ensure animations are shown for at least 3 seconds
-    await Future.delayed(Duration(seconds: 3));
+    await Future.delayed(const Duration(seconds: 3));
     setState(() {
       _showAnimations = false; // Hide animations after they complete
     });
@@ -99,6 +102,21 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // Trigger water animation
+  void triggerWaterAnimation(double newWaterLevel) {
+    setState(() {
+      _waterFillPercentage =
+          (newWaterLevel / 5.0).clamp(0.0, 1.0); // Proportion
+      _showWaterAnimation = true;
+    });
+
+    Future.delayed(const Duration(seconds: 3), () {
+      setState(() {
+        _showWaterAnimation = false;
+      });
+    });
+  }
+
   Future<void> signOut(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -106,7 +124,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => LoginOrRegisterPage()),
+          MaterialPageRoute(builder: (context) => const LoginOrRegisterPage()),
         );
       }
     } catch (e) {
@@ -136,13 +154,13 @@ class _HomePageState extends State<HomePage> {
             onPressed: () async {
               await navigateToProfilePage();
             },
-            icon: Icon(Icons.person),
+            icon: const Icon(Icons.person),
           ),
           IconButton(
             onPressed: () async {
               await signOut(context);
             },
-            icon: Icon(Icons.logout),
+            icon: const Icon(Icons.logout),
           ),
         ],
       ),
@@ -156,12 +174,13 @@ class _HomePageState extends State<HomePage> {
                   showWater: true,
                   showSteps: true,
                   showPerformanceGauge: true,
+                  onWaterUpdated: triggerWaterAnimation, // Trigger animation
                 ),
               ),
               Expanded(
                 child: Card(
                   color: Colors.blue[900],
-                  margin: EdgeInsets.all(16),
+                  margin: const EdgeInsets.all(16),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -183,7 +202,7 @@ class _HomePageState extends State<HomePage> {
                                 );
                               },
                               heroTag: 'add',
-                              child: Icon(Icons.add),
+                              child: const Icon(Icons.add),
                             ),
                           ],
                         ),
@@ -208,6 +227,11 @@ class _HomePageState extends State<HomePage> {
                   },
                 ),
               ],
+            ),
+          if (_showWaterAnimation)
+            Center(
+              child:
+                  WaterFillingAnimation(fillPercentage: _waterFillPercentage),
             ),
         ],
       ),

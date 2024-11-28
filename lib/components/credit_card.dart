@@ -42,12 +42,14 @@ class CreditCard extends StatefulWidget {
   final bool showWater;
   final bool showSteps;
   final bool showPerformanceGauge;
+  final void Function(double)? onWaterUpdated; // Updated to accept a double
 
   const CreditCard({
     Key? key,
     this.showWater = false,
     this.showSteps = false,
     this.showPerformanceGauge = false,
+    this.onWaterUpdated,
   }) : super(key: key);
 
   @override
@@ -130,6 +132,11 @@ class _CreditCardWidgetState extends State<CreditCard> {
     });
 
     await _updateWater(value.toInt());
+
+    // Notify the HomePage to trigger the water animation
+    if (widget.onWaterUpdated != null) {
+      widget.onWaterUpdated!(waterIntake);
+    }
   }
 
   Future<void> _updateStepsInput(int value) async {
@@ -146,7 +153,7 @@ class _CreditCardWidgetState extends State<CreditCard> {
         "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}";
 
     if (isLoading) {
-      return Center(
+      return const Center(
         child: CircularProgressIndicator(),
       );
     }
