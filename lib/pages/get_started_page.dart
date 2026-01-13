@@ -318,7 +318,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
               ),
             ),
             Flexible(
-              child: CreditCard(),
+              child: CreditCard(initialCalories: cardActiveCalories ?? 0),
             ),
             SizedBox(height: 15),
             Row(

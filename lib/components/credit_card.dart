@@ -43,6 +43,7 @@ class CreditCard extends StatefulWidget {
   final bool showSteps;
   final bool showPerformanceGauge;
   final void Function(double)? onWaterUpdated; // Updated to accept a double
+  final int? initialCalories; // Add initial calories parameter
 
   const CreditCard({
     Key? key,
@@ -50,6 +51,7 @@ class CreditCard extends StatefulWidget {
     this.showSteps = false,
     this.showPerformanceGauge = false,
     this.onWaterUpdated,
+    this.initialCalories,
   }) : super(key: key);
 
   @override
@@ -65,10 +67,26 @@ class _CreditCardWidgetState extends State<CreditCard> {
   @override
   void initState() {
     super.initState();
+    // Set initial calories if provided
+    if (widget.initialCalories != null) {
+      calories = widget.initialCalories!;
+    }
     if (widget.showWater || widget.showSteps || widget.showPerformanceGauge) {
       _fetchUserData();
     } else {
       isLoading = false;
+    }
+  }
+
+  @override
+  void didUpdateWidget(CreditCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Update calories if the initialCalories parameter changes
+    if (widget.initialCalories != oldWidget.initialCalories &&
+        widget.initialCalories != null) {
+      setState(() {
+        calories = widget.initialCalories!;
+      });
     }
   }
 
