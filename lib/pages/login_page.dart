@@ -85,135 +85,152 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF6366F1),
+              Color(0xFF4F46E5),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: ScrollConfiguration(
+              behavior:
+                  ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.credit_card, size: 70),
-                    SizedBox(width: 10),
-                    Text('TheCalorieCard', style: TextStyle(fontSize: 35)),
-                  ],
-                ),
-
-                SizedBox(height: 25),
-
-                //welcome back
-                Text(
-                  'Spend your Calories wisely!',
-                  style: TextStyle(color: Colors.white),
-                ),
-
-                SizedBox(height: 25),
-
-                //username
-                MyTextField(
-                  controller: emailController,
-                  hintText: 'Username',
-                  obscureText: false,
-                ),
-
-                SizedBox(height: 10),
-
-                //password
-                MyTextField(
-                  controller: passwordController,
-                  hintText: 'Password',
-                  obscureText: true,
-                ),
-
-                SizedBox(height: 10),
-
-                //forgot password
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 25.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text('Forgot Password?',
-                          style: TextStyle(color: Colors.white)),
-                    ],
-                  ),
-                ),
-
-                SizedBox(height: 25),
-
-                //sign in button
-                MyButton(
-                    onTap: () async {
-                      await signUserIn(context);
-                    },
-                    text: 'Sign In'),
-
-                const SizedBox(height: 35),
-
-                // Padding(
-                //   padding: const EdgeInsets.symmetric(horizontal: 25.0),
-                //   child: Row(
-                //     children: [
-                //       Expanded(
-                //         child: Divider(thickness: 0.5, color: Colors.black),
-                //       ),
-                //       Padding(
-                //           padding: EdgeInsets.symmetric(horizontal: 10.0),
-                //           child: Text('or continue with')),
-                //       Expanded(
-                //         child: Divider(thickness: 0.5, color: Colors.black),
-                //       )
-                //     ],
-                //   ),
-                // ),
-
-                // const SizedBox(height: 35),
-
-                // Row(
-                //   mainAxisAlignment: MainAxisAlignment.center,
-                //   children: [
-                //     GestureDetector(
-                //       onTap: () => {AuthService().signInWithGoogle()},
-                //       child: Container(
-                //           padding: EdgeInsets.all(20),
-                //           decoration: BoxDecoration(
-                //               border: Border.all(color: Colors.white),
-                //               borderRadius: BorderRadius.circular(16),
-                //               color: Colors.grey[200]),
-                //           child:
-                //               Image.asset('lib/images/google.png', height: 52)),
-                //     ),
-                //   ],
-                // ),
-
-                // SizedBox(height: 42),
-
-                //register
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Not a member?',
-                      style: TextStyle(
-                        color: Colors.white,
+                    // Logo Section
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.credit_card,
+                            size: 60,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'TheCalorieCard',
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    GestureDetector(
-                      onTap: widget.onTap,
-                      child: Text(
-                        'Register now',
-                        style: TextStyle(
-                          color: Colors.blue[900],
-                          fontWeight: FontWeight.bold,
-                        ),
+
+                    const SizedBox(height: 40),
+
+                    // Welcome text
+                    const Text(
+                      'Spend your Calories wisely!',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.5,
                       ),
-                    )
+                    ),
+
+                    const SizedBox(height: 40),
+
+                    // Email TextField
+                    MyTextField(
+                      controller: emailController,
+                      hintText: 'Email',
+                      obscureText: false,
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Password TextField
+                    MyTextField(
+                      controller: passwordController,
+                      hintText: 'Password',
+                      obscureText: true,
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Forgot password
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 25.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          GestureDetector(
+                            onTap: () {},
+                            child: Text(
+                              'Forgot Password?',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.8),
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // Sign in button
+                    MyButton(
+                      onTap: () async {
+                        await signUserIn(context);
+                      },
+                      text: 'Sign In',
+                    ),
+
+                    const SizedBox(height: 40),
+
+                    // Register link
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Not a member?',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: widget.onTap,
+                          child: const Text(
+                            'Register now',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        )
+                      ],
+                    ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

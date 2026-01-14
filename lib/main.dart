@@ -18,6 +18,19 @@ class MyApp extends StatelessWidget {
     dotenv.load();
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6366F1),
+          brightness: Brightness.light,
+        ),
+        appBarTheme: AppBarTheme(
+          backgroundColor: const Color(0xFF6366F1),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+        ),
+      ),
       builder: (context, child) {
         return ViewportWrapper(
           child: child ?? const SizedBox.shrink(),

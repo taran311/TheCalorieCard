@@ -97,25 +97,68 @@ class _AddFoodPageState extends State<AddFoodPage> {
         for (var food in results!.food) {
           listOfItems.add(
             Container(
+              margin: const EdgeInsets.symmetric(vertical: 6),
               decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(
-                      width: 1.0, color: Colors.grey.withOpacity(0.5)),
-                  bottom: BorderSide(
-                      width: 1.0, color: Colors.grey.withOpacity(0.5)),
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.indigo.shade600,
+                    Colors.blue.shade700,
+                  ],
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: ListTile(
-                title: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                        '${_formatFoodString(food.foodName)} \n (per ${_formatAmount(food.foodDescription)})'),
+                      _formatFoodString(food.foodName),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     Text(
-                      _formatCalories(food.foodDescription),
-                      textAlign: TextAlign.right,
-                    )
+                      '(per ${_formatAmount(food.foodDescription)})',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
+                ),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade400,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${_formatCalories(food.foodDescription)} kcal',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
                 onTap: () async {
                   if (!mounted) return;
@@ -125,7 +168,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   showDialog(
                     context: context,
                     builder: (context) {
-                      return Center(child: CircularProgressIndicator());
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
                     },
                   );
 
@@ -133,7 +178,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   await updateCalories(newCaloriesToUpdate);
 
                   if (!mounted) return;
-                  Navigator.pop(context); // Close the dialog
+                  Navigator.pop(context);
 
                   Navigator.pushAndRemoveUntil(
                     context,
@@ -145,8 +190,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     (route) => false,
                   );
                 },
-                tileColor: Colors.blue,
-                textColor: Colors.white,
               ),
             ),
           );
@@ -187,71 +230,98 @@ class _AddFoodPageState extends State<AddFoodPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Food Search'),
+        title: const Text('Search Food'),
+        elevation: 2,
       ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: _isTextFieldTapped
-                  ? MainAxisAlignment.start
-                  : MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                    height: _isTextFieldTapped
-                        ? 0
-                        : 350), // Adjust space when tapped
-                Card(
-                  margin: EdgeInsets.all(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: foodController,
-                            decoration: InputDecoration(
-                              hintText: 'Search for food...',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(15.0),
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              await _onButtonPress();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              foregroundColor: Colors.white,
-                            ),
-                            child: Icon(Icons.search),
-                          ),
-                        ),
-                      ],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.indigo.shade50,
+              Colors.blue.shade50,
+            ],
+          ),
+        ),
+        child: Stack(
+          children: [
+            ScrollConfiguration(
+              behavior:
+                  ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: _isTextFieldTapped
+                      ? MainAxisAlignment.start
+                      : MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: _isTextFieldTapped ? 0 : 200,
                     ),
-                  ),
-                ),
-                isEmpty
-                    ? Container()
-                    : Card(
-                        color: Colors.blue,
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                         child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            children: listOfItems,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: foodController,
+                                  decoration: InputDecoration(
+                                    hintText: 'Search for food...',
+                                    border: InputBorder.none,
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () async {
+                                  await _onButtonPress();
+                                },
+                                icon: const Icon(Icons.search),
+                                color: const Color(0xFF6366F1),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-              ],
+                    ),
+                    if (!isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Card(
+                          elevation: 4,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              children: listOfItems,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          if (_isLoading)
-            Center(
-              child: CircularProgressIndicator(),
-            ),
-        ],
+            if (_isLoading)
+              const Center(
+                child: CircularProgressIndicator(),
+              ),
+          ],
+        ),
       ),
     );
   }

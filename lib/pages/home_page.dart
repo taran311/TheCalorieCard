@@ -2,8 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/components/credit_card.dart';
-import 'package:namer_app/components/swipe_animation_widget.dart';
-import 'package:namer_app/components/water_filling_animation.dart';
 import 'package:namer_app/pages/add_food_page.dart';
 import 'package:namer_app/pages/login_or_register_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
@@ -19,27 +17,11 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   List<Container> listOfFood = [];
-  bool _showAnimations = false;
-  bool _showWaterAnimation = false; // Controls water animation visibility
-  double _waterFillPercentage = 0.0; // Track water level percentage
 
   @override
   void initState() {
     super.initState();
-    _showAnimations =
-        widget.addFoodAnimation; // Enable animations based on the parameter
-    if (_showAnimations) {
-      _startAnimations();
-    }
     populateFoodItems();
-  }
-
-  Future<void> _startAnimations() async {
-    // Ensure animations are shown for at least 3 seconds
-    await Future.delayed(const Duration(seconds: 3));
-    setState(() {
-      _showAnimations = false; // Hide animations after they complete
-    });
   }
 
   Future<void> populateFoodItems() async {
@@ -54,26 +36,69 @@ class _HomePageState extends State<HomePage> {
         for (var doc in querySnapshot.docs) {
           tempList.add(
             Container(
+              margin: const EdgeInsets.symmetric(vertical: 6),
               decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(
-                      width: 1.0, color: Colors.grey.withOpacity(0.5)),
-                  bottom: BorderSide(
-                      width: 1.0, color: Colors.grey.withOpacity(0.5)),
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withOpacity(0.95),
+                    Colors.blue.shade50.withOpacity(0.9),
+                  ],
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: GestureDetector(
                 onLongPress: () {},
                 child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   title: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(doc["food_description"]),
-                      Text('${doc["food_calories"]}'),
+                      Expanded(
+                        child: Text(
+                          doc["food_description"],
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.orange.shade400,
+                              Colors.orange.shade600,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${doc["food_calories"]} kcal',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                  tileColor: Colors.blue[900],
-                  textColor: Colors.white,
                 ),
               ),
             ),
@@ -148,21 +173,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Trigger water animation
-  void triggerWaterAnimation(double newWaterLevel) {
-    setState(() {
-      _waterFillPercentage =
-          (newWaterLevel / 5.0).clamp(0.0, 1.0); // Proportion
-      _showWaterAnimation = true;
-    });
-
-    Future.delayed(const Duration(seconds: 3), () {
-      setState(() {
-        _showWaterAnimation = false;
-      });
-    });
-  }
-
   Future<void> signOut(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -195,6 +205,14 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        title: const Text(
+          'TheCalorieCard',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        elevation: 2,
         actions: [
           IconButton(
             onPressed: () async {
@@ -212,95 +230,107 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Stack(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Center(
-                child: CreditCard(
-                  showWater: true,
-                  showSteps: true,
-                  showPerformanceGauge: true,
-                  onWaterUpdated: triggerWaterAnimation, // Trigger animation
-                ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.indigo.shade50,
+                  Colors.blue.shade50,
+                ],
               ),
-              Expanded(
-                child: Card(
-                  color: Colors.blue[900],
-                  margin: const EdgeInsets.all(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 16),
+                Center(
+                  child: CreditCard(),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: ListView(
-                            children: listOfFood,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.indigo.shade600,
+                              Colors.blue.shade700,
+                            ],
                           ),
                         ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: <Widget>[
-                            FloatingActionButton(
-                              onPressed: () async {
-                                showDialog(
-                                  context: context,
-                                  barrierDismissible: false,
-                                  builder: (BuildContext context) {
-                                    return const Center(
-                                      child: CircularProgressIndicator(),
-                                    );
-                                  },
-                                );
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: ListView(
+                                  children: listOfFood,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: <Widget>[
+                                  FloatingActionButton(
+                                    onPressed: () async {
+                                      showDialog(
+                                        context: context,
+                                        barrierDismissible: false,
+                                        builder: (BuildContext context) {
+                                          return const Center(
+                                            child: CircularProgressIndicator(),
+                                          );
+                                        },
+                                      );
 
-                                try {
-                                  await deleteFood();
-                                } finally {
-                                  if (mounted) Navigator.pop(context);
-                                }
-                              },
-                              heroTag: 'delete',
-                              child: const Icon(Icons.delete_forever),
-                            ),
-                            const SizedBox(width: 10),
-                            FloatingActionButton(
-                              onPressed: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (context) => AddFoodPage()),
-                                );
-                              },
-                              heroTag: 'add',
-                              child: const Icon(Icons.add),
-                            ),
-                          ],
+                                      try {
+                                        await deleteFood();
+                                      } finally {
+                                        if (mounted) Navigator.pop(context);
+                                      }
+                                    },
+                                    heroTag: 'delete',
+                                    backgroundColor: Colors.red.shade400,
+                                    child: const Icon(Icons.delete_forever),
+                                  ),
+                                  FloatingActionButton(
+                                    onPressed: () async {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) =>
+                                                AddFoodPage()),
+                                      );
+                                    },
+                                    heroTag: 'add',
+                                    backgroundColor: Colors.green.shade400,
+                                    child: const Icon(Icons.add),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (_showAnimations)
-            Stack(
-              children: [
-                SwipeAnimationWidget(
-                  onAnimationComplete: () {
-                    print("Card animation complete.");
-                  },
-                ),
-                CardReaderAnimationWidget(
-                  onAnimationComplete: () {
-                    print("Card reader animation complete.");
-                  },
-                ),
+                const SizedBox(height: 16),
               ],
             ),
-          if (_showWaterAnimation)
-            Center(
-              child:
-                  WaterFillingAnimation(fillPercentage: _waterFillPercentage),
-            ),
+          ),
         ],
       ),
     );

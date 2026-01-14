@@ -473,7 +473,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                   ),
                   SizedBox(height: 15),
                   Flexible(
-                    child: CreditCard(),
+                    child: CreditCard(initialCalories: cardActiveCalories ?? 0),
                   ),
                 ],
               ),

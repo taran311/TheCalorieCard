@@ -4,53 +4,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:namer_app/components/calorie_currency_icon.dart';
-import 'package:namer_app/components/performance_gauge.dart';
-import 'package:namer_app/components/running_man_widget.dart';
-import 'package:namer_app/components/glass_of_water.dart';
-
-Future<void> _updateWater(int water) async {
-  QuerySnapshot userDataSnapshot = await FirebaseFirestore.instance
-      .collection('user_data')
-      .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-      .get();
-
-  final docRef = FirebaseFirestore.instance
-      .collection('user_data')
-      .doc(userDataSnapshot.docs.first.id);
-
-  await docRef.update({
-    'water': water,
-  });
-}
-
-Future<void> _updateSteps(int steps) async {
-  QuerySnapshot userDataSnapshot = await FirebaseFirestore.instance
-      .collection('user_data')
-      .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-      .get();
-
-  final docRef = FirebaseFirestore.instance
-      .collection('user_data')
-      .doc(userDataSnapshot.docs.first.id);
-
-  await docRef.update({
-    'steps': steps,
-  });
-}
 
 class CreditCard extends StatefulWidget {
-  final bool showWater;
-  final bool showSteps;
-  final bool showPerformanceGauge;
-  final void Function(double)? onWaterUpdated; // Updated to accept a double
   final int? initialCalories; // Add initial calories parameter
 
   const CreditCard({
     Key? key,
-    this.showWater = false,
-    this.showSteps = false,
-    this.showPerformanceGauge = false,
-    this.onWaterUpdated,
     this.initialCalories,
   }) : super(key: key);
 
@@ -70,11 +29,10 @@ class _CreditCardWidgetState extends State<CreditCard> {
     // Set initial calories if provided
     if (widget.initialCalories != null) {
       calories = widget.initialCalories!;
-    }
-    if (widget.showWater || widget.showSteps || widget.showPerformanceGauge) {
-      _fetchUserData();
-    } else {
       isLoading = false;
+    } else {
+      // Fetch calories from Firebase if not provided
+      _fetchUserData();
     }
   }
 
@@ -101,16 +59,14 @@ class _CreditCardWidgetState extends State<CreditCard> {
         final userData =
             userDataSnapshot.docs.first.data() as Map<String, dynamic>;
         setState(() {
-          waterIntake = (userData['water'] ?? 0).toDouble();
-          steps = userData['steps'] ?? 0;
           calories = userData['calories'] ?? 0;
-          isLoading = false; // Stop loading
+          isLoading = false;
         });
       }
     } catch (e) {
       print('Error fetching user data: $e');
       setState(() {
-        isLoading = false; // Stop loading even on error
+        isLoading = false;
       });
     }
   }
@@ -144,27 +100,6 @@ class _CreditCardWidgetState extends State<CreditCard> {
     return overallScore.clamp(0, 100);
   }
 
-  Future<void> _updateWaterIntake(double value) async {
-    setState(() {
-      waterIntake = value;
-    });
-
-    await _updateWater(value.toInt());
-
-    // Notify the HomePage to trigger the water animation
-    if (widget.onWaterUpdated != null) {
-      widget.onWaterUpdated!(waterIntake);
-    }
-  }
-
-  Future<void> _updateStepsInput(int value) async {
-    setState(() {
-      steps = value;
-    });
-
-    await _updateSteps(value);
-  }
-
   @override
   Widget build(BuildContext context) {
     final String today =
@@ -181,13 +116,25 @@ class _CreditCardWidgetState extends State<CreditCard> {
         height: 200,
         width: 350,
         decoration: BoxDecoration(
-          color: Colors.blue,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: const [
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFF6366F1),
+              const Color(0xFF4F46E5),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
             BoxShadow(
-              color: Colors.black26,
-              blurRadius: 4,
+              color: const Color(0xFF6366F1).withOpacity(0.4),
+              blurRadius: 12,
               spreadRadius: 2,
+            ),
+            const BoxShadow(
+              color: Colors.black12,
+              blurRadius: 8,
+              spreadRadius: 1,
             ),
           ],
         ),
@@ -202,9 +149,10 @@ class _CreditCardWidgetState extends State<CreditCard> {
                 child: Text(
                   'TheCalorieCard',
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
+                    letterSpacing: 1.2,
                   ),
                 ),
               ),
@@ -220,8 +168,8 @@ class _CreditCardWidgetState extends State<CreditCard> {
                     Text(
                       calories.toString(),
                       style: GoogleFonts.robotoMono(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
@@ -234,52 +182,23 @@ class _CreditCardWidgetState extends State<CreditCard> {
                 top: 48,
                 left: 16,
                 child: Container(
-                  width: 40,
-                  height: 30,
+                  width: 45,
+                  height: 35,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-
-              // Glass of Water and Running Man Widgets
-              Positioned(
-                top: 56,
-                right: 16,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Row(
-                      children: [
-                        // Glass of Water Widget
-                        if (widget.showWater)
-                          SizedBox(
-                            height: 50,
-                            child: GlassOfWaterWidget(
-                              onWaterLevelChanged: _updateWaterIntake,
-                              initialValue: waterIntake,
-                            ),
-                          ),
-                        if (widget.showWater && widget.showSteps)
-                          const SizedBox(width: 10),
-                        // Running Man Widget
-                        if (widget.showSteps)
-                          SizedBox(
-                            height: 50,
-                            child: RunningManWidget(
-                              onStepsChanged: _updateStepsInput,
-                              initialSteps: steps,
-                            ),
-                          ),
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.amber.shade300,
+                        Colors.amber.shade600,
                       ],
                     ),
-                    const SizedBox(height: 20), // Space before the gauge
-                    if (widget.showPerformanceGauge)
-                      PerformanceGauge(
-                        value: calculatePerformanceGaugeValue(),
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
                       ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
 
@@ -298,38 +217,41 @@ class _CreditCardWidgetState extends State<CreditCard> {
                             Text(
                               'VALID',
                               style: TextStyle(
-                                fontSize: 8,
+                                fontSize: 9,
                                 color: Colors.white.withOpacity(0.8),
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                             Text(
                               'THRU',
                               style: TextStyle(
-                                fontSize: 8,
+                                fontSize: 9,
                                 color: Colors.white.withOpacity(0.8),
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 8),
                         Text(
                           today,
                           style: GoogleFonts.robotoMono(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                             color: Colors.white,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 8),
                     Text(
                       _getTruncatedName(
                           FirebaseAuth.instance.currentUser!.email!),
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                         color: Colors.white,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   ],
