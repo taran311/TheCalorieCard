@@ -113,7 +113,7 @@ class _CreditCardWidgetState extends State<CreditCard> {
 
     return GestureDetector(
       child: Container(
-        height: 200,
+        height: 155,
         width: 350,
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -179,11 +179,11 @@ class _CreditCardWidgetState extends State<CreditCard> {
 
               // Credit Card Chip
               Positioned(
-                top: 48,
+                top: 40,
                 left: 16,
                 child: Container(
-                  width: 45,
-                  height: 35,
+                  width: 34,
+                  height: 26,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
@@ -202,59 +202,51 @@ class _CreditCardWidgetState extends State<CreditCard> {
                 ),
               ),
 
-              // Valid Thru and Username Section
+              // Valid Thru (bottom left)
               Positioned(
                 bottom: 16,
                 left: 16,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'VALID',
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: Colors.white.withOpacity(0.8),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'THRU',
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: Colors.white.withOpacity(0.8),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          today,
-                          style: GoogleFonts.robotoMono(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
                     Text(
-                      _getTruncatedName(
-                          FirebaseAuth.instance.currentUser!.email!),
-                      style: GoogleFonts.poppins(
-                        fontSize: 15,
+                      'VALID THRU',
+                      style: TextStyle(
+                        fontSize: 8,
+                        color: Colors.white.withOpacity(0.8),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      today,
+                      style: GoogleFonts.robotoMono(
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
-                        letterSpacing: 0.5,
                       ),
                     ),
                   ],
+                ),
+              ),
+
+              // Username (bottom right)
+              Positioned(
+                bottom: 16,
+                right: 16,
+                child: Align(
+                  alignment: Alignment.bottomRight,
+                  child: Text(
+                    _getTruncatedName(
+                        FirebaseAuth.instance.currentUser!.email!),
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
                 ),
               ),
             ],

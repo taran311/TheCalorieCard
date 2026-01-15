@@ -17,6 +17,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   List<Container> listOfFood = [];
+  String _selectedTab = 'Lunch';
+  final List<String> _tabs = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
 
   @override
   void initState() {
@@ -34,6 +36,12 @@ class _HomePageState extends State<HomePage> {
       if (querySnapshot.docs.isNotEmpty) {
         List<Container> tempList = [];
         for (var doc in querySnapshot.docs) {
+          // Filter by selected tab
+          String foodCategory = doc['foodCategory'] ?? 'Lunch';
+          if (foodCategory != _selectedTab) {
+            continue;
+          }
+
           tempList.add(
             Container(
               margin: const EdgeInsets.symmetric(vertical: 6),
@@ -66,12 +74,24 @@ class _HomePageState extends State<HomePage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
-                        child: Text(
-                          doc["food_description"],
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.w500,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              doc["food_description"],
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              doc['foodCategory'] ?? 'Uncategorized',
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       Container(
@@ -249,6 +269,56 @@ class _HomePageState extends State<HomePage> {
                   child: CreditCard(),
                 ),
                 const SizedBox(height: 16),
+                // Tabs
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _tabs.map((tab) {
+                        bool isSelected = _selectedTab == tab;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _selectedTab = tab;
+                                populateFoodItems();
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(0xFF6366F1)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: const Color(0xFF6366F1),
+                                  width: isSelected ? 0 : 2,
+                                ),
+                              ),
+                              child: Text(
+                                tab,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : const Color(0xFF6366F1),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),

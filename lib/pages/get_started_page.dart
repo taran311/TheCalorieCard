@@ -19,6 +19,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
   double _exerciseLevel = 0;
   String _exerciseText = 'No Activity';
   int? _selectedAge;
+  final TextEditingController _ageController = TextEditingController();
 
   int? calorieDeficit = 0;
   int? calorieMaintenance = 0;
@@ -26,15 +27,46 @@ class _GetStartedPageState extends State<GetStartedPage> {
   int? cardActiveCalories = 0;
   String? calorieMode;
 
-  final List<int> _ageOptions = List.generate(100, (index) => index + 18);
   List<bool> genderSelections = [true, false];
   List<bool> calorieSelections = [true, false, false];
 
   int? _selectedHeight;
-  final List<int> _heightOptions = List.generate(151, (index) => index + 100);
+  final TextEditingController _heightController = TextEditingController();
+  late FocusNode _heightFocusNode;
 
   int? _selectedWeight;
-  final List<int> _weightOptions = List.generate(171, (index) => index + 30);
+  final TextEditingController _weightController = TextEditingController();
+  late FocusNode _weightFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _heightFocusNode = FocusNode();
+    _weightFocusNode = FocusNode();
+
+    _heightFocusNode.addListener(() {
+      if (!_heightFocusNode.hasFocus &&
+          _heightController.text.isNotEmpty &&
+          !_heightController.text.endsWith('cm')) {
+        _heightController.text = '${_heightController.text}cm';
+      }
+    });
+
+    _weightFocusNode.addListener(() {
+      if (!_weightFocusNode.hasFocus &&
+          _weightController.text.isNotEmpty &&
+          !_weightController.text.endsWith('kg')) {
+        _weightController.text = '${_weightController.text}kg';
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _heightFocusNode.dispose();
+    _weightFocusNode.dispose();
+    super.dispose();
+  }
 
   final date = DateTime.now().add(const Duration(days: 31));
 
@@ -160,25 +192,27 @@ class _GetStartedPageState extends State<GetStartedPage> {
                               'Age',
                               style: TextStyle(fontWeight: FontWeight.w600),
                             ),
-                            subtitle: DropdownButtonHideUnderline(
-                              child: DropdownButton<int>(
-                                hint: Text(_selectedAge == null
-                                    ? 'Select Years'
-                                    : 'Age: $_selectedAge'),
-                                value: _selectedAge,
-                                items: _ageOptions.map((int age) {
-                                  return DropdownMenuItem<int>(
-                                    value: age,
-                                    child: Text('$age Yrs'),
-                                  );
-                                }).toList(),
-                                onChanged: (int? newValue) {
-                                  setState(() {
-                                    _selectedAge = newValue;
-                                    updateCalories();
-                                  });
-                                },
+                            subtitle: TextField(
+                              controller: _ageController,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                hintText: 'E.g. 30 Years',
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
                               ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedAge = int.tryParse(value);
+                                  if (_selectedAge != null &&
+                                      _selectedAge! >= 18 &&
+                                      _selectedAge! <= 117) {
+                                    updateCalories();
+                                  }
+                                });
+                              },
                             ),
                           ),
                         ),
@@ -242,25 +276,29 @@ class _GetStartedPageState extends State<GetStartedPage> {
                               'Height',
                               style: TextStyle(fontWeight: FontWeight.w600),
                             ),
-                            subtitle: DropdownButtonHideUnderline(
-                              child: DropdownButton<int>(
-                                hint: Text(_selectedHeight == null
-                                    ? 'Select CM'
-                                    : 'Height: $_selectedHeight'),
-                                value: _selectedHeight,
-                                items: _heightOptions.map((int height) {
-                                  return DropdownMenuItem<int>(
-                                    value: height,
-                                    child: Text('$height CM'),
-                                  );
-                                }).toList(),
-                                onChanged: (int? newValue) {
-                                  setState(() {
-                                    _selectedHeight = newValue;
-                                    updateCalories();
-                                  });
-                                },
+                            subtitle: TextField(
+                              controller: _heightController,
+                              focusNode: _heightFocusNode,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                hintText: 'E.g. 180cm',
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
                               ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedHeight = int.tryParse(
+                                      value?.replaceAll('cm', '') ?? '');
+                                  if (_selectedHeight != null &&
+                                      _selectedHeight! >= 100 &&
+                                      _selectedHeight! <= 250) {
+                                    updateCalories();
+                                  }
+                                });
+                              },
                             ),
                           ),
                         ),
@@ -274,25 +312,29 @@ class _GetStartedPageState extends State<GetStartedPage> {
                               'Weight',
                               style: TextStyle(fontWeight: FontWeight.w600),
                             ),
-                            subtitle: DropdownButtonHideUnderline(
-                              child: DropdownButton<int>(
-                                hint: Text(_selectedWeight == null
-                                    ? 'Select KG'
-                                    : 'Weight: $_selectedWeight'),
-                                value: _selectedWeight,
-                                items: _weightOptions.map((int weight) {
-                                  return DropdownMenuItem<int>(
-                                    value: weight,
-                                    child: Text('$weight KG'),
-                                  );
-                                }).toList(),
-                                onChanged: (int? newValue) {
-                                  setState(() {
-                                    _selectedWeight = newValue;
-                                    updateCalories();
-                                  });
-                                },
+                            subtitle: TextField(
+                              controller: _weightController,
+                              focusNode: _weightFocusNode,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                hintText: 'E.g. 80kg',
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
                               ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedWeight = int.tryParse(
+                                      value?.replaceAll('kg', '') ?? '');
+                                  if (_selectedWeight != null &&
+                                      _selectedWeight! >= 30 &&
+                                      _selectedWeight! <= 200) {
+                                    updateCalories();
+                                  }
+                                });
+                              },
                             ),
                           ),
                         ),

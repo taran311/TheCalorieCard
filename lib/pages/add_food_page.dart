@@ -24,6 +24,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
   bool _isLoading = false;
   bool isEmpty = true;
 
+  String _selectedCategory = 'Lunch';
+  final List<String> _categories = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
+
   @override
   void dispose() {
     // Ensure the text controller is properly disposed of
@@ -37,6 +40,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
         'user_id': FirebaseAuth.instance.currentUser!.uid,
         'food_description': foodDescription,
         'food_calories': foodCalories,
+        'foodCategory': _selectedCategory,
         'time_added': DateTime.now()
       });
     } catch (e) {
@@ -255,9 +259,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       ? MainAxisAlignment.start
                       : MainAxisAlignment.center,
                   children: [
-                    SizedBox(
-                      height: _isTextFieldTapped ? 0 : 200,
-                    ),
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: Card(
@@ -296,6 +297,69 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         ),
                       ),
                     ),
+                    // Category Selection
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Meal Category',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.indigo.shade700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: _categories.map((category) {
+                                bool isSelected = _selectedCategory == category;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedCategory = category;
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? const Color(0xFF6366F1)
+                                            : Colors.white,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: const Color(0xFF6366F1),
+                                          width: isSelected ? 0 : 2,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        category,
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? Colors.white
+                                              : const Color(0xFF6366F1),
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     if (!isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
