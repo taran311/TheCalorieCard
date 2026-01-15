@@ -13,7 +13,7 @@ git checkout $BRANCH_SOURCE
 
 # 2. Build Flutter web (disable Git Bash path conversion)
 echo "🏗️ Building Flutter web..."
-MSYS_NO_PATHCONV=1 flutter build web --release --base-href=/$REPO_NAME/
+MSYS_NO_PATHCONV=1 flutter build web --release --base-href=/
 
 # 3. Stage web build safely
 echo "📦 Staging web build..."
