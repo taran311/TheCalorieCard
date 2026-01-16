@@ -35,19 +35,76 @@ class _AddFoodPageState extends State<AddFoodPage> {
     super.dispose();
   }
 
-  Future<void> saveData(String foodDescription, int foodCalories) async {
+  Future<void> saveData(
+    String foodDescription,
+    int foodCalories,
+    double foodProtein,
+    double foodCarbs,
+    double foodFat,
+  ) async {
     try {
       final categoryService =
           Provider.of<CategoryService>(context, listen: false);
+      final category = categoryService.selectedCategory;
+
       await FirebaseFirestore.instance.collection('user_food').add({
         'user_id': FirebaseAuth.instance.currentUser!.uid,
         'food_description': foodDescription,
         'food_calories': foodCalories,
-        'foodCategory': categoryService.selectedCategory,
+        'food_protein': foodProtein,
+        'food_carbs': foodCarbs,
+        'food_fat': foodFat,
+        'foodCategory': category,
         'time_added': DateTime.now()
       });
+
+      // Update category totals
+      await _updateCategoryTotals(category);
     } catch (e) {
       print('Error adding user food: $e');
+    }
+  }
+
+  Future<void> _updateCategoryTotals(String category) async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser!.uid;
+
+      // Fetch all foods in this category
+      QuerySnapshot foodSnapshot = await FirebaseFirestore.instance
+          .collection('user_food')
+          .where('user_id', isEqualTo: userId)
+          .where('foodCategory', isEqualTo: category)
+          .get();
+
+      // Calculate totals
+      int totalCalories = 0;
+      double totalProtein = 0;
+      double totalCarbs = 0;
+      double totalFat = 0;
+
+      for (var doc in foodSnapshot.docs) {
+        totalCalories += (doc['food_calories'] as num?)?.toInt() ?? 0;
+        totalProtein += (doc['food_protein'] as num?)?.toDouble() ?? 0;
+        totalCarbs += (doc['food_carbs'] as num?)?.toDouble() ?? 0;
+        totalFat += (doc['food_fat'] as num?)?.toDouble() ?? 0;
+      }
+
+      // Store totals in a category_totals collection
+      final totalsRef = FirebaseFirestore.instance
+          .collection('category_totals')
+          .doc('${userId}_$category');
+
+      await totalsRef.set({
+        'user_id': userId,
+        'category': category,
+        'total_calories': totalCalories,
+        'total_protein': totalProtein,
+        'total_carbs': totalCarbs,
+        'total_fat': totalFat,
+        'last_updated': DateTime.now()
+      });
+    } catch (e) {
+      print('Error updating category totals: $e');
     }
   }
 
@@ -171,6 +228,11 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   if (!mounted) return;
                   final newCaloriesToUpdate =
                       int.parse(_formatCalories(food.foodDescription));
+                  final protein =
+                      double.parse(_formatProtein(food.foodDescription));
+                  final carbs =
+                      double.parse(_formatCarbs(food.foodDescription));
+                  final fat = double.parse(_formatFat(food.foodDescription));
 
                   showDialog(
                     context: context,
@@ -181,7 +243,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     },
                   );
 
-                  await saveData(food.foodName, newCaloriesToUpdate);
+                  await saveData(
+                      food.foodName, newCaloriesToUpdate, protein, carbs, fat);
                   await updateCalories(newCaloriesToUpdate);
 
                   if (!mounted) return;
@@ -220,6 +283,30 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
   String _formatCalories(String stringToFormat) {
     return stringToFormat.split('Calories: ')[1].split('kcal')[0];
+  }
+
+  String _extractMacro(String source, List<String> labels) {
+    for (final label in labels) {
+      final regex = RegExp('$label\\s*:?\\s*([0-9]+(?:\\.[0-9]+)?)',
+          caseSensitive: false);
+      final match = regex.firstMatch(source);
+      if (match != null) {
+        return match.group(1) ?? '0';
+      }
+    }
+    return '0';
+  }
+
+  String _formatProtein(String stringToFormat) {
+    return _extractMacro(stringToFormat, ['Protein']);
+  }
+
+  String _formatCarbs(String stringToFormat) {
+    return _extractMacro(stringToFormat, ['Carbs', 'Carbohydrate']);
+  }
+
+  String _formatFat(String stringToFormat) {
+    return _extractMacro(stringToFormat, ['Fat']);
   }
 
   String _formatAmount(String stringToFormat) {

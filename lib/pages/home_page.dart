@@ -18,8 +18,24 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<Container> listOfFood = [];
+  List<QueryDocumentSnapshot> _foodDocs = [];
   final List<String> _tabs = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
+  int _creditCardRefreshKey = 0;
+
+  // Category totals tracking
+  bool _showMacrosTotal = false;
+  int _totalCalories = 0;
+  double _totalProtein = 0.0;
+  double _totalCarbs = 0.0;
+  double _totalFat = 0.0;
+
+  String _roundMacro(dynamic value) {
+    final numVal =
+        (value is num) ? value.toDouble() : double.tryParse('$value') ?? 0.0;
+    return numVal.toStringAsFixed(1).endsWith('.5')
+        ? numVal.ceil().toString()
+        : numVal.round().toString();
+  }
 
   @override
   void initState() {
@@ -37,94 +53,21 @@ class _HomePageState extends State<HomePage> {
           .get();
 
       if (querySnapshot.docs.isNotEmpty) {
-        List<Container> tempList = [];
-        for (var doc in querySnapshot.docs) {
-          // Filter by selected tab
-          String foodCategory = doc['foodCategory'] ?? 'Brekkie';
-          if (foodCategory != categoryService.selectedCategory) {
-            continue;
-          }
-
-          tempList.add(
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withOpacity(0.95),
-                    Colors.blue.shade50.withOpacity(0.9),
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: GestureDetector(
-                onLongPress: () {},
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  title: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          doc["food_description"],
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.orange.shade400,
-                              Colors.orange.shade600,
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${doc["food_calories"]} kcal',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
+        final filteredDocs = querySnapshot.docs
+            .where((doc) =>
+                (doc['foodCategory'] ?? 'Brekkie') ==
+                categoryService.selectedCategory)
+            .toList();
 
         if (mounted) {
           setState(() {
-            listOfFood = tempList;
+            _foodDocs = filteredDocs;
           });
         }
       } else {
         if (mounted) {
           setState(() {
-            listOfFood = [];
+            _foodDocs = [];
           });
         }
       }
@@ -132,7 +75,7 @@ class _HomePageState extends State<HomePage> {
       print('Error populating food items: $e');
       if (mounted) {
         setState(() {
-          listOfFood = [];
+          _foodDocs = [];
         });
       }
     }
@@ -172,8 +115,18 @@ class _HomePageState extends State<HomePage> {
         'calories': updatedCalories,
       });
 
+      // Reset category totals
+      final categoryService =
+          Provider.of<CategoryService>(context, listen: false);
+      await _resetCategoryTotals(categoryService.selectedCategory);
+
       // Refresh the list of food items
       await populateFoodItems();
+
+      // Trigger CreditCard refresh
+      setState(() {
+        _creditCardRefreshKey++;
+      });
     } catch (e) {
       print('Error deleting food items: $e');
       if (mounted) {
@@ -209,6 +162,65 @@ class _HomePageState extends State<HomePage> {
         context,
         MaterialPageRoute(builder: (context) => UserSettingsPage()),
       );
+    }
+  }
+
+  Future<void> _fetchCategoryTotals(String category) async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser!.uid;
+      final docRef = FirebaseFirestore.instance
+          .collection('category_totals')
+          .doc('${userId}_$category');
+
+      final docSnapshot = await docRef.get();
+
+      if (docSnapshot.exists && mounted) {
+        setState(() {
+          _totalCalories =
+              (docSnapshot['total_calories'] as num?)?.toInt() ?? 0;
+          _totalProtein =
+              (docSnapshot['total_protein'] as num?)?.toDouble() ?? 0.0;
+          _totalCarbs = (docSnapshot['total_carbs'] as num?)?.toDouble() ?? 0.0;
+          _totalFat = (docSnapshot['total_fat'] as num?)?.toDouble() ?? 0.0;
+        });
+      } else if (mounted) {
+        setState(() {
+          _totalCalories = 0;
+          _totalProtein = 0.0;
+          _totalCarbs = 0.0;
+          _totalFat = 0.0;
+        });
+      }
+    } catch (e) {
+      print('Error fetching category totals: $e');
+    }
+  }
+
+  Future<void> _resetCategoryTotals(String category) async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser!.uid;
+      final docRef = FirebaseFirestore.instance
+          .collection('category_totals')
+          .doc('${userId}_$category');
+
+      await docRef.set({
+        'total_calories': 0,
+        'total_protein': 0.0,
+        'total_carbs': 0.0,
+        'total_fat': 0.0,
+      });
+
+      if (mounted) {
+        setState(() {
+          _totalCalories = 0;
+          _totalProtein = 0.0;
+          _totalCarbs = 0.0;
+          _totalFat = 0.0;
+          _showMacrosTotal = false;
+        });
+      }
+    } catch (e) {
+      print('Error resetting category totals: $e');
     }
   }
 
@@ -257,7 +269,9 @@ class _HomePageState extends State<HomePage> {
               children: [
                 const SizedBox(height: 16),
                 Center(
-                  child: CreditCard(),
+                  child: CreditCard(
+                    key: ValueKey(_creditCardRefreshKey),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 // Tabs
@@ -337,9 +351,204 @@ class _HomePageState extends State<HomePage> {
                           padding: const EdgeInsets.all(16),
                           child: Column(
                             children: [
+                              // Category Totals Header
+                              Consumer<CategoryService>(
+                                builder: (context, categoryService, _) {
+                                  // Fetch totals when category changes
+                                  WidgetsBinding.instance
+                                      .addPostFrameCallback((_) {
+                                    _fetchCategoryTotals(
+                                        categoryService.selectedCategory);
+                                  });
+
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _showMacrosTotal = !_showMacrosTotal;
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: Colors.white.withOpacity(0.3),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            const Text(
+                                              'Total',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                            Row(
+                                              children: [
+                                                if (!_showMacrosTotal)
+                                                  Text(
+                                                    '$_totalCalories kcal',
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      fontSize: 14,
+                                                    ),
+                                                  )
+                                                else
+                                                  Text(
+                                                    'Protein: ${_roundMacro(_totalProtein)}g | Carbs: ${_roundMacro(_totalCarbs)}g | Fat: ${_roundMacro(_totalFat)}g',
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      fontSize: 11,
+                                                    ),
+                                                  ),
+                                                const SizedBox(width: 8),
+                                                Icon(
+                                                  _showMacrosTotal
+                                                      ? Icons.fastfood
+                                                      : Icons.show_chart,
+                                                  color: Colors.white,
+                                                  size: 20,
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
                               Expanded(
-                                child: ListView(
-                                  children: listOfFood,
+                                child: ListView.builder(
+                                  itemCount: _foodDocs.length,
+                                  itemBuilder: (context, index) {
+                                    final doc = _foodDocs[index];
+                                    return Container(
+                                      margin: const EdgeInsets.symmetric(
+                                          vertical: 6),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            Colors.white.withOpacity(0.95),
+                                            Colors.blue.shade50
+                                                .withOpacity(0.9),
+                                          ],
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.1),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ListTile(
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 8,
+                                        ),
+                                        title: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                doc["food_description"],
+                                                style: const TextStyle(
+                                                  color: Colors.black87,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  colors: [
+                                                    Colors.orange.shade400,
+                                                    Colors.orange.shade600,
+                                                  ],
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
+                                              child: _showMacrosTotal
+                                                  ? Column(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .center,
+                                                      children: [
+                                                        Text(
+                                                          '${_roundMacro(doc["food_protein"])}g Protein',
+                                                          style:
+                                                              const TextStyle(
+                                                            color: Colors.white,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize: 10,
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          '${_roundMacro(doc["food_carbs"])}g Carbs',
+                                                          style:
+                                                              const TextStyle(
+                                                            color: Colors.white,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize: 10,
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          '${_roundMacro(doc["food_fat"])}g Fat',
+                                                          style:
+                                                              const TextStyle(
+                                                            color: Colors.white,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize: 10,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    )
+                                                  : Text(
+                                                      '${doc["food_calories"]} kcal',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
                               const SizedBox(height: 16),

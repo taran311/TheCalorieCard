@@ -161,16 +161,30 @@ class _CreditCardWidgetState extends State<CreditCard> {
               Positioned(
                 top: 8,
                 right: 16,
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    CalorieCurrencyIcon(),
-                    const SizedBox(width: 6),
+                    Row(
+                      children: [
+                        CalorieCurrencyIcon(),
+                        const SizedBox(width: 6),
+                        Text(
+                          calories.toString(),
+                          style: GoogleFonts.robotoMono(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
                     Text(
-                      calories.toString(),
-                      style: GoogleFonts.robotoMono(
-                        fontSize: 18,
+                      'Balance',
+                      style: TextStyle(
+                        fontSize: 8,
+                        color: Colors.white.withOpacity(0.8),
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
                       ),
                     ),
                   ],
