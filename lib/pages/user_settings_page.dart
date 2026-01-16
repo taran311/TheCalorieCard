@@ -267,17 +267,6 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
     updateCardActiveCalories();
   }
 
-  @override
-  void dispose() {
-    _ageFocusNode.dispose();
-    _heightFocusNode.dispose();
-    _weightFocusNode.dispose();
-    _ageController.dispose();
-    _heightController.dispose();
-    _weightController.dispose();
-    super.dispose();
-  }
-
   bool isLoading = false;
 
   Future<void> wait(BuildContext context, VoidCallback onSuccess) async {
