@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/components/credit_card.dart';
+import 'package:namer_app/components/measurement_input_field.dart';
 import 'package:namer_app/pages/home_page.dart';
 
 class GetStartedPage extends StatefulWidget {
@@ -20,6 +21,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
   String _exerciseText = 'No Activity';
   int? _selectedAge;
   final TextEditingController _ageController = TextEditingController();
+  late FocusNode _ageFocusNode;
 
   int? calorieDeficit = 0;
   int? calorieMaintenance = 0;
@@ -41,30 +43,19 @@ class _GetStartedPageState extends State<GetStartedPage> {
   @override
   void initState() {
     super.initState();
+    _ageFocusNode = FocusNode();
     _heightFocusNode = FocusNode();
     _weightFocusNode = FocusNode();
-
-    _heightFocusNode.addListener(() {
-      if (!_heightFocusNode.hasFocus &&
-          _heightController.text.isNotEmpty &&
-          !_heightController.text.endsWith('cm')) {
-        _heightController.text = '${_heightController.text}cm';
-      }
-    });
-
-    _weightFocusNode.addListener(() {
-      if (!_weightFocusNode.hasFocus &&
-          _weightController.text.isNotEmpty &&
-          !_weightController.text.endsWith('kg')) {
-        _weightController.text = '${_weightController.text}kg';
-      }
-    });
   }
 
   @override
   void dispose() {
+    _ageFocusNode.dispose();
     _heightFocusNode.dispose();
     _weightFocusNode.dispose();
+    _ageController.dispose();
+    _heightController.dispose();
+    _weightController.dispose();
     super.dispose();
   }
 
@@ -182,39 +173,22 @@ class _GetStartedPageState extends State<GetStartedPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       children: [
-                        Expanded(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            title: const Text(
-                              'Age',
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            subtitle: TextField(
-                              controller: _ageController,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                hintText: 'E.g. 30 Years',
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 8,
-                                ),
-                              ),
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedAge = int.tryParse(value);
-                                  if (_selectedAge != null &&
-                                      _selectedAge! >= 18 &&
-                                      _selectedAge! <= 117) {
-                                    updateCalories();
-                                  }
-                                });
-                              },
-                            ),
-                          ),
+                        MeasurementInputField(
+                          label: 'Age',
+                          controller: _ageController,
+                          focusNode: _ageFocusNode,
+                          hintText: 'E.g. 30',
+                          suffix: ' Years Old',
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedAge = value;
+                              if (_selectedAge != null &&
+                                  _selectedAge! >= 18 &&
+                                  _selectedAge! <= 117) {
+                                updateCalories();
+                              }
+                            });
+                          },
                         ),
                         Expanded(
                           child: ListTile(
@@ -266,77 +240,39 @@ class _GetStartedPageState extends State<GetStartedPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       children: [
-                        Expanded(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            title: const Text(
-                              'Height',
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            subtitle: TextField(
-                              controller: _heightController,
-                              focusNode: _heightFocusNode,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                hintText: 'E.g. 180cm',
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 8,
-                                ),
-                              ),
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedHeight = int.tryParse(
-                                      value?.replaceAll('cm', '') ?? '');
-                                  if (_selectedHeight != null &&
-                                      _selectedHeight! >= 100 &&
-                                      _selectedHeight! <= 250) {
-                                    updateCalories();
-                                  }
-                                });
-                              },
-                            ),
-                          ),
+                        MeasurementInputField(
+                          label: 'Height',
+                          controller: _heightController,
+                          focusNode: _heightFocusNode,
+                          hintText: 'E.g. 180cm',
+                          suffix: 'cm',
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedHeight = value;
+                              if (_selectedHeight != null &&
+                                  _selectedHeight! >= 100 &&
+                                  _selectedHeight! <= 250) {
+                                updateCalories();
+                              }
+                            });
+                          },
                         ),
-                        Expanded(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            title: const Text(
-                              'Weight',
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            subtitle: TextField(
-                              controller: _weightController,
-                              focusNode: _weightFocusNode,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                hintText: 'E.g. 80kg',
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 8,
-                                ),
-                              ),
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedWeight =
-                                      int.tryParse(value.replaceAll('kg', ''));
-                                  if (_selectedWeight != null &&
-                                      _selectedWeight! >= 30 &&
-                                      _selectedWeight! <= 200) {
-                                    updateCalories();
-                                  }
-                                });
-                              },
-                            ),
-                          ),
+                        MeasurementInputField(
+                          label: 'Weight',
+                          controller: _weightController,
+                          focusNode: _weightFocusNode,
+                          hintText: 'E.g. 80kg',
+                          suffix: 'kg',
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedWeight = value;
+                              if (_selectedWeight != null &&
+                                  _selectedWeight! >= 30 &&
+                                  _selectedWeight! <= 200) {
+                                updateCalories();
+                              }
+                            });
+                          },
                         ),
                       ],
                     ),
