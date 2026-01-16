@@ -1,77 +1,68 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 BRANCH_SOURCE="master"
 BRANCH_PAGES="gh-pages"
 CUSTOM_DOMAIN="thecaloriecard.com"
-TMP_DIR="/tmp/gh-pages-build"
+STASH_NAME="deploy-gh-pages-stash"
+TMP_DIR="$(mktemp -d)"
 
-echo "🚀 Deploying Flutter web to GitHub Pages (custom domain: $CUSTOM_DOMAIN)"
+echo "🚀 Deploying Flutter web → gh-pages"
 
-# ------------------------------------------------------------------
-# 1. Ensure source branch
-# ------------------------------------------------------------------
-git checkout $BRANCH_SOURCE
+# Must be on master
+if [ "$(git branch --show-current)" != "$BRANCH_SOURCE" ]; then
+  echo "❌ ABORT: Must run from '$BRANCH_SOURCE'"
+  exit 1
+fi
 
-# ------------------------------------------------------------------
-# 2. Build Flutter web FOR ROOT DOMAIN
-# ------------------------------------------------------------------
+# Build
 echo "🏗️ Building Flutter web (base-href=/)"
 MSYS_NO_PATHCONV=1 flutter build web --release --base-href=/
 
-# ------------------------------------------------------------------
-# 3. Stage build OUTSIDE repo (cannot be deleted by git)
-# ------------------------------------------------------------------
-echo "📦 Staging web build..."
-rm -rf "$TMP_DIR"
-mkdir -p "$TMP_DIR"
-cp -r build/web/* "$TMP_DIR/"
+# Stage ONLY build/web contents
+echo "📦 Staging clean web output"
+rm -rf "$TMP_DIR"/*
+cp -R build/web/* "$TMP_DIR/"
 
-# ------------------------------------------------------------------
-# 4. Stash ALL local changes (Flutter always mutates files)
-# ------------------------------------------------------------------
-echo "📦 Stashing local changes..."
-git stash push -u -m "auto-stash-for-gh-pages"
+# Stash noise
+git stash push -u -m "$STASH_NAME" >/dev/null || true
 
-# ------------------------------------------------------------------
-# 5. Switch to gh-pages
-# ------------------------------------------------------------------
-if git show-ref --quiet refs/heads/$BRANCH_PAGES; then
-  git checkout $BRANCH_PAGES
-else
-  git checkout --orphan $BRANCH_PAGES
+# Switch to gh-pages
+git checkout "$BRANCH_PAGES"
+
+# Safety check
+if [ "$(git branch --show-current)" != "$BRANCH_PAGES" ]; then
+  echo "❌ ABORT: Not on gh-pages"
+  exit 1
 fi
 
-# ------------------------------------------------------------------
-# 6. FORCE WIPE gh-pages (ROOT ONLY)
-# ------------------------------------------------------------------
-echo "🧹 Wiping gh-pages root..."
-git rm -rf . > /dev/null 2>&1 || true
+# Preserve CNAME
+if [ -f CNAME ]; then
+  CNAME_VALUE="$(cat CNAME)"
+else
+  CNAME_VALUE="$CUSTOM_DOMAIN"
+fi
 
-# ------------------------------------------------------------------
-# 7. Copy build to ROOT
-# ------------------------------------------------------------------
-cp -r "$TMP_DIR"/* .
+# HARD clean gh-pages (static only)
+echo "🧹 Cleaning gh-pages"
+git rm -rf . >/dev/null 2>&1 || true
+rm -rf .dart_tool build android ios linux macos windows || true
 
-# ------------------------------------------------------------------
-# 8. FORCE CUSTOM DOMAIN (THIS IS THE KEY)
-# ------------------------------------------------------------------
-echo "$CUSTOM_DOMAIN" > CNAME
+# Deploy to ROOT
+echo "📂 Deploying site to root"
+cp -R "$TMP_DIR"/* .
+echo "$CNAME_VALUE" > CNAME
 touch .nojekyll
 
-# ------------------------------------------------------------------
-# 9. Commit & push
-# ------------------------------------------------------------------
+# Commit & push
 git add .
-git commit -m "Deploy Flutter web to custom domain ($CUSTOM_DOMAIN)"
-git push origin $BRANCH_PAGES --force
+git commit -m "Deploy Flutter web (clean root)"
+git push origin "$BRANCH_PAGES"
 
-# ------------------------------------------------------------------
-# 10. Restore source branch + stash
-# ------------------------------------------------------------------
-git checkout $BRANCH_SOURCE
-git stash pop || true
+# Restore master
+git checkout "$BRANCH_SOURCE"
+git stash pop >/dev/null || true
 rm -rf "$TMP_DIR"
 
-echo "✅ Deployment complete!"
-echo "🌍 LIVE AT: https://$CUSTOM_DOMAIN/"
+echo "✅ Deployment complete"
+echo "🌍 https://$CUSTOM_DOMAIN/"
