@@ -1,0 +1,1 @@
+{"inputs":["C:\\TheCalorieCard\\web\\*\\index.html","C:\\TheCalorieCard\\web\\flutter_bootstrap.js","C:\\flutter\\bin\\cache\\engine.stamp"],"outputs":["C:\\TheCalorieCard\\build\\web\\*\\index.html","C:\\TheCalorieCard\\build\\web\\flutter_bootstrap.js"],"buildKey":"[{\"compileTarget\":\"dart2js\",\"renderer\":\"canvaskit\",\"mainJsPath\":\"main.dart.js\"},{}]"}
