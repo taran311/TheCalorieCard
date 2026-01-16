@@ -82,9 +82,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
           'exercise_level': _exerciseLevel,
           'gender': genderSelections.first ? 'male' : 'female',
           'calorie_mode': calorieMode,
-          'calories': cardActiveCalories,
-          'water': 0,
-          'steps': 0
+          'calories': cardActiveCalories
         });
 
         print('User data updated successfully!');

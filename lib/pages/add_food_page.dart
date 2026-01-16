@@ -60,6 +60,10 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
       // Update category totals
       await _updateCategoryTotals(category);
+
+      // Deduct from user balances
+      await updateCalories(foodCalories);
+      await updateMacros(foodProtein, foodCarbs, foodFat);
     } catch (e) {
       print('Error adding user food: $e');
     }
@@ -138,6 +142,47 @@ class _AddFoodPageState extends State<AddFoodPage> {
       }
     } catch (e) {
       print('Error updating user data: $e');
+    }
+  }
+
+  Future<void> updateMacros(
+      double foodProtein, double foodCarbs, double foodFat) async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser!.uid;
+
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('user_data')
+          .where('user_id', isEqualTo: userId)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final docId = querySnapshot.docs.first.id;
+        final docRef =
+            FirebaseFirestore.instance.collection('user_data').doc(docId);
+        final data = querySnapshot.docs.first.data() as Map<String, dynamic>;
+
+        double proteinBal = (data['protein_balance'] as num?)?.toDouble() ??
+            (data['protein_goal'] as num?)?.toDouble() ??
+            0.0;
+        double carbsBal = (data['carbs_balance'] as num?)?.toDouble() ??
+            (data['carbs_goal'] as num?)?.toDouble() ??
+            0.0;
+        double fatsBal = (data['fats_balance'] as num?)?.toDouble() ??
+            (data['fats_goal'] as num?)?.toDouble() ??
+            0.0;
+
+        proteinBal -= foodProtein;
+        carbsBal -= foodCarbs;
+        fatsBal -= foodFat;
+
+        await docRef.update({
+          'protein_balance': proteinBal,
+          'carbs_balance': carbsBal,
+          'fats_balance': fatsBal,
+        });
+      }
+    } catch (e) {
+      print('Error updating macros: $e');
     }
   }
 

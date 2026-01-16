@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/pages/add_food_page.dart';
 import 'package:namer_app/pages/login_or_register_page.dart';
+import 'package:namer_app/pages/menu_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/services/category_service.dart';
 
@@ -28,6 +29,7 @@ class _HomePageState extends State<HomePage> {
   double _totalProtein = 0.0;
   double _totalCarbs = 0.0;
   double _totalFat = 0.0;
+  String? _lastFetchedCategory;
 
   String _roundMacro(dynamic value) {
     final numVal =
@@ -91,9 +93,15 @@ class _HomePageState extends State<HomePage> {
       WriteBatch batch = FirebaseFirestore.instance.batch();
 
       num caloriesToReAdd = 0;
+      double proteinToReAdd = 0;
+      double carbsToReAdd = 0;
+      double fatsToReAdd = 0;
 
       for (var doc in userFoodSnapshot.docs) {
         caloriesToReAdd += doc['food_calories'];
+        proteinToReAdd += (doc['food_protein'] as num?)?.toDouble() ?? 0.0;
+        carbsToReAdd += (doc['food_carbs'] as num?)?.toDouble() ?? 0.0;
+        fatsToReAdd += (doc['food_fat'] as num?)?.toDouble() ?? 0.0;
         batch.delete(doc.reference);
       }
 
@@ -113,6 +121,23 @@ class _HomePageState extends State<HomePage> {
 
       await docRef.update({
         'calories': updatedCalories,
+        'protein_balance': ((userDataSnapshot.docs.first['protein_balance']
+              as num?)
+            ?.toDouble() ??
+          (userDataSnapshot.docs.first['protein_goal'] as num?)?.toDouble() ??
+          0.0) +
+          proteinToReAdd,
+        'carbs_balance': ((userDataSnapshot.docs.first['carbs_balance']
+              as num?)
+            ?.toDouble() ??
+          (userDataSnapshot.docs.first['carbs_goal'] as num?)?.toDouble() ??
+          0.0) +
+          carbsToReAdd,
+        'fats_balance': ((userDataSnapshot.docs.first['fats_balance'] as num?)
+            ?.toDouble() ??
+          (userDataSnapshot.docs.first['fats_goal'] as num?)?.toDouble() ??
+          0.0) +
+          fatsToReAdd,
       });
 
       // Reset category totals
@@ -182,6 +207,7 @@ class _HomePageState extends State<HomePage> {
               (docSnapshot['total_protein'] as num?)?.toDouble() ?? 0.0;
           _totalCarbs = (docSnapshot['total_carbs'] as num?)?.toDouble() ?? 0.0;
           _totalFat = (docSnapshot['total_fat'] as num?)?.toDouble() ?? 0.0;
+          _lastFetchedCategory = category;
         });
       } else if (mounted) {
         setState(() {
@@ -189,6 +215,7 @@ class _HomePageState extends State<HomePage> {
           _totalProtein = 0.0;
           _totalCarbs = 0.0;
           _totalFat = 0.0;
+          _lastFetchedCategory = category;
         });
       }
     } catch (e) {
@@ -227,30 +254,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'TheCalorieCard',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
-        elevation: 2,
-        actions: [
-          IconButton(
-            onPressed: () async {
-              await navigateToProfilePage();
-            },
-            icon: const Icon(Icons.person),
-          ),
-          IconButton(
-            onPressed: () async {
-              await signOut(context);
-            },
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
       body: Stack(
         children: [
           Container(
@@ -355,11 +358,13 @@ class _HomePageState extends State<HomePage> {
                               Consumer<CategoryService>(
                                 builder: (context, categoryService, _) {
                                   // Fetch totals when category changes
-                                  WidgetsBinding.instance
-                                      .addPostFrameCallback((_) {
-                                    _fetchCategoryTotals(
-                                        categoryService.selectedCategory);
-                                  });
+                                  if (_lastFetchedCategory != categoryService.selectedCategory) {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      _fetchCategoryTotals(
+                                          categoryService.selectedCategory);
+                                    });
+                                  }
 
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
@@ -376,9 +381,11 @@ class _HomePageState extends State<HomePage> {
                                         ),
                                         decoration: BoxDecoration(
                                           color: Colors.white.withOpacity(0.15),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
                                           border: Border.all(
-                                            color: Colors.white.withOpacity(0.3),
+                                            color:
+                                                Colors.white.withOpacity(0.3),
                                             width: 1,
                                           ),
                                         ),
@@ -586,6 +593,10 @@ class _HomePageState extends State<HomePage> {
                                             builder: (context) =>
                                                 AddFoodPage()),
                                       );
+                                      await populateFoodItems();
+                                      setState(() {
+                                        _creditCardRefreshKey++;
+                                      });
                                     },
                                     heroTag: 'add',
                                     backgroundColor: Colors.green.shade400,
@@ -605,6 +616,45 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ],
+      ),
+      bottomNavigationBar: Container(
+        color: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            GestureDetector(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MenuPage(),
+                  ),
+                );
+              },
+              child: const Padding(
+                padding: EdgeInsets.all(12.0),
+                child: Icon(Icons.person, size: 24),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(12.0),
+              child:
+                  Icon(Icons.credit_card, size: 24, color: Color(0xFF6366F1)),
+            ),
+            GestureDetector(
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Recipes coming soon!')),
+                );
+              },
+              child: const Padding(
+                padding: EdgeInsets.all(12.0),
+                child: Icon(Icons.restaurant, size: 24),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

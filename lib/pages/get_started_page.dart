@@ -40,12 +40,28 @@ class _GetStartedPageState extends State<GetStartedPage> {
   final TextEditingController _weightController = TextEditingController();
   late FocusNode _weightFocusNode;
 
+  // Macro input fields
+  int? _proteinGoal;
+  final TextEditingController _proteinController = TextEditingController();
+  late FocusNode _proteinFocusNode;
+
+  int? _carbsGoal;
+  final TextEditingController _carbsController = TextEditingController();
+  late FocusNode _carbsFocusNode;
+
+  int? _fatsGoal;
+  final TextEditingController _fatsController = TextEditingController();
+  late FocusNode _fatsFocusNode;
+
   @override
   void initState() {
     super.initState();
     _ageFocusNode = FocusNode();
     _heightFocusNode = FocusNode();
     _weightFocusNode = FocusNode();
+    _proteinFocusNode = FocusNode();
+    _carbsFocusNode = FocusNode();
+    _fatsFocusNode = FocusNode();
   }
 
   @override
@@ -53,9 +69,15 @@ class _GetStartedPageState extends State<GetStartedPage> {
     _ageFocusNode.dispose();
     _heightFocusNode.dispose();
     _weightFocusNode.dispose();
+    _proteinFocusNode.dispose();
+    _carbsFocusNode.dispose();
+    _fatsFocusNode.dispose();
     _ageController.dispose();
     _heightController.dispose();
     _weightController.dispose();
+    _proteinController.dispose();
+    _carbsController.dispose();
+    _fatsController.dispose();
     super.dispose();
   }
 
@@ -71,8 +93,12 @@ class _GetStartedPageState extends State<GetStartedPage> {
       'exercise_level': _exerciseLevel,
       'calories': cardActiveCalories,
       'calorie_mode': calorieMode,
-      'water': 0,
-      'steps': 0
+      'protein_goal': _proteinGoal ?? 0,
+      'carbs_goal': _carbsGoal ?? 0,
+      'fats_goal': _fatsGoal ?? 0,
+      'protein_balance': _proteinGoal ?? 0,
+      'carbs_balance': _carbsGoal ?? 0,
+      'fats_balance': _fatsGoal ?? 0,
     });
   }
 
@@ -83,6 +109,30 @@ class _GetStartedPageState extends State<GetStartedPage> {
         calorieSelections[1] == true ? calorieMaintenance : cardActiveCalories;
     cardActiveCalories =
         calorieSelections[2] == true ? calorieSurplus : cardActiveCalories;
+
+    _prefillMacrosFromCalories();
+  }
+
+  void _prefillMacrosFromCalories() {
+    if (cardActiveCalories == null || (cardActiveCalories ?? 0) <= 0) {
+      return;
+    }
+
+    final int calories = cardActiveCalories ?? 0;
+
+    // Simple macro split: 30% protein, 40% carbs, 30% fats
+    final int protein = (calories * 0.30 / 4).round();
+    final int carbs = (calories * 0.40 / 4).round();
+    final int fats = (calories * 0.30 / 9).round();
+
+    setState(() {
+      _proteinGoal = protein;
+      _proteinController.text = protein.toString();
+      _carbsGoal = carbs;
+      _carbsController.text = carbs.toString();
+      _fatsGoal = fats;
+      _fatsController.text = fats.toString();
+    });
   }
 
   void signOut() async {
@@ -156,18 +206,6 @@ class _GetStartedPageState extends State<GetStartedPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  const SizedBox(height: 24),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Let\'s get to know you!',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF6366F1),
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 24),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -400,11 +438,112 @@ class _GetStartedPageState extends State<GetStartedPage> {
                     ),
                   ),
                   const SizedBox(height: 20),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Macros',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _proteinController,
+                                focusNode: _proteinFocusNode,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: 'Protein (g)',
+                                  hintText: 'Protein',
+                                  floatingLabelBehavior:
+                                      FloatingLabelBehavior.always,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _proteinGoal = int.tryParse(value);
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _carbsController,
+                                focusNode: _carbsFocusNode,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: 'Carbs (g)',
+                                  hintText: 'Carbs',
+                                  floatingLabelBehavior:
+                                      FloatingLabelBehavior.always,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _carbsGoal = int.tryParse(value);
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _fatsController,
+                                focusNode: _fatsFocusNode,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: 'Fats (g)',
+                                  hintText: 'Fats',
+                                  floatingLabelBehavior:
+                                      FloatingLabelBehavior.always,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _fatsGoal = int.tryParse(value);
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   Flexible(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: CreditCard(
+                        key: ValueKey('${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_${_fatsGoal}'),
                         initialCalories: cardActiveCalories ?? 0,
+                        caloriesOverride: cardActiveCalories ?? 0,
+                        proteinOverride: (_proteinGoal ?? 0).toDouble(),
+                        carbsOverride: (_carbsGoal ?? 0).toDouble(),
+                        fatsOverride: (_fatsGoal ?? 0).toDouble(),
+                        skipFetch: true,
                       ),
                     ),
                   ),
