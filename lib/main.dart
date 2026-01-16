@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:provider/provider.dart';
 import 'package:namer_app/pages/auth_page.dart';
+import 'package:namer_app/services/category_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -16,27 +18,32 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     dotenv.load();
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6366F1),
-          brightness: Brightness.light,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => CategoryService()),
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF6366F1),
+            brightness: Brightness.light,
+          ),
+          appBarTheme: AppBarTheme(
+            backgroundColor: const Color(0xFF6366F1),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            centerTitle: true,
+          ),
         ),
-        appBarTheme: AppBarTheme(
-          backgroundColor: const Color(0xFF6366F1),
-          foregroundColor: Colors.white,
-          elevation: 0,
-          centerTitle: true,
-        ),
+        builder: (context, child) {
+          return ViewportWrapper(
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
+        home: AuthPage(),
       ),
-      builder: (context, child) {
-        return ViewportWrapper(
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
-      home: AuthPage(),
     );
   }
 }

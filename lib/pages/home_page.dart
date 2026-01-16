@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/pages/add_food_page.dart';
 import 'package:namer_app/pages/login_or_register_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
+import 'package:namer_app/services/category_service.dart';
 
 class HomePage extends StatefulWidget {
   final bool addFoodAnimation;
@@ -17,7 +19,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   List<Container> listOfFood = [];
-  String _selectedTab = 'Lunch';
   final List<String> _tabs = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
 
   @override
@@ -28,6 +29,8 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> populateFoodItems() async {
     try {
+      final categoryService =
+          Provider.of<CategoryService>(context, listen: false);
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('user_food')
           .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
@@ -37,8 +40,8 @@ class _HomePageState extends State<HomePage> {
         List<Container> tempList = [];
         for (var doc in querySnapshot.docs) {
           // Filter by selected tab
-          String foodCategory = doc['foodCategory'] ?? 'Lunch';
-          if (foodCategory != _selectedTab) {
+          String foodCategory = doc['foodCategory'] ?? 'Brekkie';
+          if (foodCategory != categoryService.selectedCategory) {
             continue;
           }
 
@@ -274,47 +277,50 @@ class _HomePageState extends State<HomePage> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: _tabs.map((tab) {
-                        bool isSelected = _selectedTab == tab;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _selectedTab = tab;
-                                populateFoodItems();
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFF6366F1)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: const Color(0xFF6366F1),
-                                  width: isSelected ? 0 : 2,
+                    child: Consumer<CategoryService>(
+                      builder: (context, categoryService, _) {
+                        return Row(
+                          children: _tabs.map((tab) {
+                            bool isSelected =
+                                categoryService.selectedCategory == tab;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: GestureDetector(
+                                onTap: () {
+                                  categoryService.setSelectedCategory(tab);
+                                  populateFoodItems();
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFF6366F1)
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: const Color(0xFF6366F1),
+                                      width: isSelected ? 0 : 2,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    tab,
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : const Color(0xFF6366F1),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ),
                               ),
-                              child: Text(
-                                tab,
-                                style: TextStyle(
-                                  color: isSelected
-                                      ? Colors.white
-                                      : const Color(0xFF6366F1),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ),
+                            );
+                          }).toList(),
                         );
-                      }).toList(),
+                      },
                     ),
                   ),
                 ),

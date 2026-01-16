@@ -326,8 +326,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
                               ),
                               onChanged: (value) {
                                 setState(() {
-                                  _selectedWeight = int.tryParse(
-                                      value?.replaceAll('kg', '') ?? '');
+                                  _selectedWeight =
+                                      int.tryParse(value.replaceAll('kg', ''));
                                   if (_selectedWeight != null &&
                                       _selectedWeight! >= 30 &&
                                       _selectedWeight! <= 200) {

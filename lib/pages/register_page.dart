@@ -1,8 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:namer_app/components/my_button.dart';
 import 'package:namer_app/components/my_text_field.dart';
 import 'package:namer_app/pages/get_started_page.dart';
+import 'package:namer_app/services/category_service.dart';
 
 class RegisterPage extends StatefulWidget {
   final Function()? onTap;
@@ -41,6 +43,9 @@ class _RegisterPageState extends State<RegisterPage> {
       );
 
       if (mounted) {
+        // Reset category to default for new user
+        Provider.of<CategoryService>(context, listen: false).resetToDefault();
+
         setState(() {
           isLoading = false;
         });
@@ -106,125 +111,114 @@ class _RegisterPageState extends State<RegisterPage> {
           child: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.center,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 420),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Logo Section
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20),
+              child: ScrollConfiguration(
+                behavior:
+                    ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.credit_card,
+                                size: 60,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 12),
+                              Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: const Text(
+                                    'TheCalorieCard',
+                                    style: TextStyle(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                        const SizedBox(height: 32),
+                        const Text(
+                          'Let\'s create an account for you!',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        MyTextField(
+                          controller: emailController,
+                          hintText: 'Email',
+                          obscureText: false,
+                        ),
+                        const SizedBox(height: 16),
+                        MyTextField(
+                          controller: passwordController,
+                          hintText: 'Password',
+                          obscureText: true,
+                        ),
+                        const SizedBox(height: 16),
+                        MyTextField(
+                          controller: confirmPasswordController,
+                          hintText: 'Confirm Password',
+                          obscureText: true,
+                        ),
+                        const SizedBox(height: 28),
+                        isLoading
+                            ? CircularProgressIndicator(color: Colors.white)
+                            : MyButton(
+                                onTap: () async {
+                                  await signUserUp();
+                                },
+                                text: 'Sign Up',
+                              ),
+                        const SizedBox(height: 32),
+                        Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(
-                              Icons.credit_card,
-                              size: 48,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 10),
                             const Text(
-                              'TheCalorieCard',
+                              'Already have an account?',
                               style: TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
                                 color: Colors.white,
-                                letterSpacing: 1.1,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: widget.onTap,
+                              child: const Text(
+                                'Login now',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  decoration: TextDecoration.underline,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Welcome text
-                      const Text(
-                        'Let\'s create an account for you!',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Email TextField
-                      MyTextField(
-                        controller: emailController,
-                        hintText: 'Email',
-                        obscureText: false,
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Password TextField
-                      MyTextField(
-                        controller: passwordController,
-                        hintText: 'Password',
-                        obscureText: true,
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Confirm Password TextField
-                      MyTextField(
-                        controller: confirmPasswordController,
-                        hintText: 'Confirm Password',
-                        obscureText: true,
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Sign up button
-                      isLoading
-                          ? CircularProgressIndicator(color: Colors.white)
-                          : MyButton(
-                              onTap: () async {
-                                await signUserUp();
-                              },
-                              text: 'Sign Up',
-                            ),
-
-                      const SizedBox(height: 20),
-
-                      // Login link
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            'Already have an account?',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: widget.onTap,
-                            child: const Text(
-                              'Login now',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

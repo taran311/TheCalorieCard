@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:namer_app/pages/fat_secret_api.dart';
 import 'package:namer_app/pages/home_page.dart';
+import 'package:namer_app/services/category_service.dart';
 
 class AddFoodPage extends StatefulWidget {
   AddFoodPage({
@@ -24,7 +26,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
   bool _isLoading = false;
   bool isEmpty = true;
 
-  String _selectedCategory = 'Lunch';
   final List<String> _categories = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
 
   @override
@@ -36,11 +37,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
   Future<void> saveData(String foodDescription, int foodCalories) async {
     try {
+      final categoryService =
+          Provider.of<CategoryService>(context, listen: false);
       await FirebaseFirestore.instance.collection('user_food').add({
         'user_id': FirebaseAuth.instance.currentUser!.uid,
         'food_description': foodDescription,
         'food_calories': foodCalories,
-        'foodCategory': _selectedCategory,
+        'foodCategory': categoryService.selectedCategory,
         'time_added': DateTime.now()
       });
     } catch (e) {
@@ -312,49 +315,55 @@ class _AddFoodPageState extends State<AddFoodPage> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: _categories.map((category) {
-                                bool isSelected = _selectedCategory == category;
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _selectedCategory = category;
-                                      });
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? const Color(0xFF6366F1)
-                                            : Colors.white,
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: const Color(0xFF6366F1),
-                                          width: isSelected ? 0 : 2,
+                          Consumer<CategoryService>(
+                            builder: (context, categoryService, _) {
+                              return SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: _categories.map((category) {
+                                    bool isSelected =
+                                        categoryService.selectedCategory ==
+                                            category;
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          categoryService
+                                              .setSelectedCategory(category);
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? const Color(0xFF6366F1)
+                                                : Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            border: Border.all(
+                                              color: const Color(0xFF6366F1),
+                                              width: isSelected ? 0 : 2,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            category,
+                                            style: TextStyle(
+                                              color: isSelected
+                                                  ? Colors.white
+                                                  : const Color(0xFF6366F1),
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 12,
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                      child: Text(
-                                        category,
-                                        style: TextStyle(
-                                          color: isSelected
-                                              ? Colors.white
-                                              : const Color(0xFF6366F1),
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
+                                    );
+                                  }).toList(),
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
