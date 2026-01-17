@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
-import 'package:namer_app/pages/home_page.dart';
+import 'package:namer_app/pages/main_shell.dart';
 
 class GetStartedPage extends StatefulWidget {
   GetStartedPage({
@@ -537,7 +537,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: CreditCard(
-                        key: ValueKey('${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_${_fatsGoal}'),
+                        key: ValueKey(
+                            '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_${_fatsGoal}'),
                         initialCalories: cardActiveCalories ?? 0,
                         caloriesOverride: cardActiveCalories ?? 0,
                         proteinOverride: (_proteinGoal ?? 0).toDouble(),
@@ -559,7 +560,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
                           await Navigator.pushAndRemoveUntil(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => HomePage(),
+                              builder: (context) =>
+                                  const MainShell(initialIndex: 1),
                             ),
                             (route) => false,
                           );

@@ -1,0 +1,633 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:namer_app/services/category_service.dart';
+import 'package:namer_app/pages/fat_secret_api.dart';
+
+class AddRecipePage extends StatefulWidget {
+  final bool addToHome;
+  final String? homeCategory;
+  final String? recipeId; // if provided, page works in edit mode
+
+  const AddRecipePage({
+    super.key,
+    this.addToHome = false,
+    this.homeCategory,
+    this.recipeId,
+  });
+
+  @override
+  State<AddRecipePage> createState() => _AddRecipePageState();
+}
+
+class _AddRecipePageState extends State<AddRecipePage> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _servingSizeController =
+      TextEditingController(text: '1');
+  final FatSecretApi _api = FatSecretApi();
+
+  final List<_IngredientEntry> _ingredients = [];
+  Foods? _results;
+  bool _searching = false;
+  bool _saving = false;
+  String _servingUnit = 'Serving';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.recipeId != null) {
+      _loadRecipeForEdit(widget.recipeId!);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.recipeId != null ? 'Edit Recipe' : 'Add Recipe'),
+      ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Recipe Name',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Enter a recipe name'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Serving Size',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: _servingSizeController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Per',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                          ),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              return 'Enter a number';
+                            }
+                            if (double.tryParse(v) == null) {
+                              return 'Enter a valid number';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 1,
+                        child: DropdownButtonFormField<String>(
+                          value: _servingUnit,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Serving',
+                              child: Text('Serving'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'g',
+                              child: Text('Grams'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              _servingUnit = value ?? 'Serving';
+                            });
+                          },
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Ingredients',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildSelectedIngredients(),
+                  const SizedBox(height: 8),
+                  _buildSearch(),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _saving
+                          ? null
+                          : (widget.recipeId != null
+                              ? _updateRecipe
+                              : _saveRecipe),
+                      icon: const Icon(Icons.check),
+                      label: Text(widget.recipeId != null
+                          ? 'Save Changes'
+                          : 'Save Recipe'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_saving)
+            Container(
+              color: Colors.black45,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectedIngredients() {
+    if (_ingredients.isEmpty) {
+      return const Text('No ingredients yet. Add from search below.');
+    }
+
+    return Column(
+      children: _ingredients.asMap().entries.map((entry) {
+        final idx = entry.key;
+        final ing = entry.value;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(ing.name),
+                if (ing.portion.isNotEmpty)
+                  Text(
+                    '(${ing.portion})',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+              ],
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${ing.calories.toStringAsFixed(0)} kcal',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6366F1),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: () {
+                    setState(() {
+                      _ingredients.removeAt(idx);
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSearch() {
+    return Column(
+      children: [
+        TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            labelText: 'Search ingredient (FatSecret)',
+            border: const OutlineInputBorder(),
+            suffixIcon: _searchController.text.isEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.search),
+                    onPressed: _searching ? null : _performSearch,
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: _searching ? null : _performSearch,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _results = null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+          ),
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _performSearch(),
+        ),
+        const SizedBox(height: 8),
+        if (_searching) const LinearProgressIndicator(minHeight: 2),
+        if (_results != null)
+          Column(
+            children: _results!.food.map((food) {
+              final calories = _formatCalories(food.foodDescription);
+              final protein = _formatProtein(food.foodDescription);
+              final carbs = _formatCarbs(food.foodDescription);
+              final fat = _formatFat(food.foodDescription);
+              final portion = _formatAmount(food.foodDescription);
+
+              return Card(
+                child: ListTile(
+                  title: Text(food.foodName),
+                  subtitle: Text(food.foodDescription,
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                  trailing: const Icon(Icons.add_circle_outline,
+                      color: Color(0xFF6366F1)),
+                  onTap: () {
+                    setState(() {
+                      _ingredients.add(_IngredientEntry(
+                        name: food.foodName,
+                        calories: calories,
+                        protein: protein,
+                        carbs: carbs,
+                        fat: fat,
+                        portion: portion,
+                      ));
+                      _searchController.clear();
+                      _results = null;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('${food.foodName} added')),
+                    );
+                  },
+                ),
+              );
+            }).toList(),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _performSearch() async {
+    final q = _searchController.text.trim();
+    if (q.isEmpty) return;
+    setState(() {
+      _searching = true;
+    });
+    try {
+      final res = await _api.foodsSearch(q);
+      if (mounted) {
+        setState(() {
+          _results = res;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Search failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _searching = false;
+        });
+      }
+    }
+  }
+
+  double _formatCalories(String stringToFormat) {
+    return double.parse(stringToFormat.split('Calories: ')[1].split('kcal')[0]);
+  }
+
+  double _extractMacro(String source, List<String> labels) {
+    for (final label in labels) {
+      final regex = RegExp('$label\\s*:?\\s*([0-9]+(?:\\.[0-9]+)?)',
+          caseSensitive: false);
+      final match = regex.firstMatch(source);
+      if (match != null) {
+        return double.parse(match.group(1) ?? '0');
+      }
+    }
+    return 0;
+  }
+
+  double _formatProtein(String stringToFormat) {
+    return _extractMacro(stringToFormat, ['Protein']);
+  }
+
+  double _formatCarbs(String stringToFormat) {
+    return _extractMacro(stringToFormat, ['Carbs', 'Carbohydrate']);
+  }
+
+  double _formatFat(String stringToFormat) {
+    return _extractMacro(stringToFormat, ['Fat']);
+  }
+
+  // Edit mode: load existing recipe and its ingredients
+  Future<void> _loadRecipeForEdit(String recipeId) async {
+    setState(() => _saving = true);
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final recipeSnap =
+          await firestore.collection('recipes').doc(recipeId).get();
+      if (!recipeSnap.exists) return;
+      final data = recipeSnap.data()!;
+
+      // Name
+      _nameController.text = (data['name'] as String?)?.trim() ?? '';
+
+      // Serving size
+      final serving = (data['serving_size'] as String?) ?? 'Per 1 Serving';
+      _applyServingSizeToFields(serving);
+
+      // Ingredients (authoritative list from user_food with foodCategory 'Recipe')
+      final ingSnap = await firestore
+          .collection('user_food')
+          .where('recipe_id', isEqualTo: recipeId)
+          .where('foodCategory', isEqualTo: 'Recipe')
+          .get();
+
+      final loaded = <_IngredientEntry>[];
+      for (final doc in ingSnap.docs) {
+        final d = doc.data();
+        loaded.add(_IngredientEntry(
+          name: (d['food_description'] as String?) ?? 'Item',
+          calories: ((d['food_calories'] as num?)?.toDouble() ?? 0),
+          protein: ((d['food_protein'] as num?)?.toDouble() ?? 0),
+          carbs: ((d['food_carbs'] as num?)?.toDouble() ?? 0),
+          fat: ((d['food_fat'] as num?)?.toDouble() ?? 0),
+          portion: (d['food_portion'] as String?) ?? '',
+        ));
+      }
+      setState(() {
+        _ingredients
+          ..clear()
+          ..addAll(loaded);
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load recipe: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _applyServingSizeToFields(String serving) {
+    // Formats we save: "Per X Serving(s)" or "X g"
+    final grams = RegExp(r'^(\d+(?:\.\d+)?)\s*g$');
+    final serv = RegExp(r'^Per\s+(\d+(?:\.\d+)?)\s+Serving');
+    final gMatch = grams.firstMatch(serving);
+    final sMatch = serv.firstMatch(serving);
+    if (gMatch != null) {
+      _servingUnit = 'g';
+      _servingSizeController.text = gMatch.group(1) ?? '1';
+    } else if (sMatch != null) {
+      _servingUnit = 'Serving';
+      _servingSizeController.text = sMatch.group(1) ?? '1';
+    } else {
+      _servingUnit = 'Serving';
+      _servingSizeController.text = '1';
+    }
+  }
+
+  Future<void> _updateRecipe() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_ingredients.isEmpty) return;
+    if (widget.recipeId == null) return;
+
+    setState(() => _saving = true);
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final firestore = FirebaseFirestore.instance;
+
+    // Recompute totals
+    num totalCalories = 0;
+    double totalProtein = 0;
+    double totalCarbs = 0;
+    double totalFat = 0;
+    for (final ing in _ingredients) {
+      totalCalories += ing.calories;
+      totalProtein += ing.protein;
+      totalCarbs += ing.carbs;
+      totalFat += ing.fat;
+    }
+
+    final servingSizeValue = double.tryParse(_servingSizeController.text) ?? 1;
+    final servingSizeDisplay = _servingUnit == 'g'
+        ? '$servingSizeValue g'
+        : 'Per $servingSizeValue ${_servingUnit}${servingSizeValue != 1 ? 's' : ''}';
+
+    final batch = firestore.batch();
+
+    // Delete old ingredient docs (authoritative list) for this recipe
+    final existing = await firestore
+        .collection('user_food')
+        .where('recipe_id', isEqualTo: widget.recipeId)
+        .where('foodCategory', isEqualTo: 'Recipe')
+        .get();
+    for (final doc in existing.docs) {
+      batch.delete(doc.reference);
+    }
+
+    // Create new ingredient docs
+    final ingredientIds = <String>[];
+    for (final ing in _ingredients) {
+      final docRef = firestore.collection('user_food').doc();
+      ingredientIds.add(docRef.id);
+      batch.set(docRef, {
+        'user_id': uid,
+        'food_description': ing.name,
+        'food_calories': ing.calories,
+        'food_protein': ing.protein,
+        'food_carbs': ing.carbs,
+        'food_fat': ing.fat,
+        'food_portion': ing.portion,
+        'foodCategory': 'Recipe',
+        'created_at': FieldValue.serverTimestamp(),
+        'recipe_id': widget.recipeId,
+      });
+    }
+
+    // Update the recipe document
+    batch.update(firestore.collection('recipes').doc(widget.recipeId), {
+      'user_id': uid,
+      'name': _nameController.text.trim(),
+      'serving_size': servingSizeDisplay,
+      'food_item_ids': ingredientIds,
+      'total_calories': totalCalories,
+      'total_protein': totalProtein,
+      'total_carbs': totalCarbs,
+      'total_fat': totalFat,
+    });
+
+    try {
+      await batch.commit();
+      if (!mounted) return;
+      Navigator.pop(context, widget.recipeId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update recipe: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  String _formatAmount(String stringToFormat) {
+    final regex = RegExp(r'Per\s+(.+?)\s*-');
+    final match = regex.firstMatch(stringToFormat);
+    if (match != null) {
+      return match.group(1)!.trim();
+    }
+    return '';
+  }
+
+  Future<void> _saveRecipe() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_ingredients.isEmpty) return;
+
+    setState(() => _saving = true);
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final firestore = FirebaseFirestore.instance;
+    final batch = firestore.batch();
+
+    final ingredientIds = <String>[];
+    num totalCalories = 0;
+    double totalProtein = 0;
+    double totalCarbs = 0;
+    double totalFat = 0;
+
+    for (final ing in _ingredients) {
+      final docRef = firestore.collection('user_food').doc();
+      final calories = ing.calories;
+      final protein = ing.protein;
+      final carbs = ing.carbs;
+      final fat = ing.fat;
+
+      totalCalories += calories;
+      totalProtein += protein;
+      totalCarbs += carbs;
+      totalFat += fat;
+
+      batch.set(docRef, {
+        'user_id': uid,
+        'food_description': ing.name,
+        'food_calories': calories,
+        'food_protein': protein,
+        'food_carbs': carbs,
+        'food_fat': fat,
+        'foodCategory': 'Recipe',
+        'created_at': FieldValue.serverTimestamp(),
+        'recipe_id': 'pending',
+      });
+
+      ingredientIds.add(docRef.id);
+    }
+
+    final recipeRef = firestore.collection('recipes').doc();
+    final servingSizeValue = double.tryParse(_servingSizeController.text) ?? 1;
+    final servingSizeDisplay = _servingUnit == 'g'
+        ? '$servingSizeValue g'
+        : 'Per $servingSizeValue ${_servingUnit}${servingSizeValue != 1 ? 's' : ''}';
+    batch.set(recipeRef, {
+      'user_id': uid,
+      'name': _nameController.text.trim(),
+      'serving_size': servingSizeDisplay,
+      'created_at': FieldValue.serverTimestamp(),
+      'food_item_ids': ingredientIds,
+      'total_calories': totalCalories,
+      'total_protein': totalProtein,
+      'total_carbs': totalCarbs,
+      'total_fat': totalFat,
+    });
+
+    // Optionally add a rolled-up recipe entry to home
+    if (widget.addToHome) {
+      final category = widget.homeCategory ??
+          Provider.of<CategoryService>(context, listen: false).selectedCategory;
+      final rolledRef = firestore.collection('user_food').doc();
+      batch.set(rolledRef, {
+        'user_id': uid,
+        'food_description': 'Recipe: ${_nameController.text.trim()}',
+        'food_calories': totalCalories,
+        'food_protein': totalProtein,
+        'food_carbs': totalCarbs,
+        'food_fat': totalFat,
+        'food_portion': servingSizeDisplay,
+        'foodCategory': category,
+        'recipe_id': recipeRef.id,
+        'created_at': FieldValue.serverTimestamp(),
+        'is_recipe': true,
+      });
+    }
+
+    // Update ingredient docs with the recipe_id now that we have it
+    for (final id in ingredientIds) {
+      batch.update(firestore.collection('user_food').doc(id), {
+        'recipe_id': recipeRef.id,
+      });
+    }
+
+    await batch.commit();
+
+    if (!mounted) return;
+    Navigator.pop(context, recipeRef.id);
+  }
+}
+
+class _IngredientEntry {
+  final String name;
+  final double calories;
+  final double protein;
+  final double carbs;
+  final double fat;
+  final String portion; // e.g., "100 g" or "1 banana"
+
+  _IngredientEntry({
+    required this.name,
+    required this.calories,
+    required this.protein,
+    required this.carbs,
+    required this.fat,
+    this.portion = '',
+  });
+}

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:namer_app/pages/fat_secret_api.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/services/category_service.dart';
+import 'package:namer_app/pages/main_shell.dart';
 
 class AddFoodPage extends StatefulWidget {
   AddFoodPage({
@@ -19,29 +20,41 @@ class _AddFoodPageState extends State<AddFoodPage> {
   final foodController = TextEditingController();
   final FatSecretApi _api = FatSecretApi();
   Foods? results;
-  List<Container> listOfItems = [];
+
+  // Store food data instead of built widgets
+  List<Map<String, dynamic>> foodListData = [];
 
   bool hideCard = true;
   bool _isTextFieldTapped = false;
   bool _isLoading = false;
   bool isEmpty = true;
 
+  // Portion editing state
+  int? _editingFoodIndex;
+  late TextEditingController _portionController;
+  Map<int, String> _originalPortions =
+      {}; // Track original portion for each food
+  Map<int, Map<String, double>> _foodMacros = {}; // Track original macros
+
   final List<String> _categories = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
 
   @override
+  void initState() {
+    super.initState();
+    _portionController = TextEditingController();
+  }
+
+  @override
   void dispose() {
-    // Ensure the text controller is properly disposed of
+    // Ensure the text controllers are properly disposed of
     foodController.dispose();
+    _portionController.dispose();
     super.dispose();
   }
 
-  Future<void> saveData(
-    String foodDescription,
-    int foodCalories,
-    double foodProtein,
-    double foodCarbs,
-    double foodFat,
-  ) async {
+  Future<void> saveData(String foodDescription, int foodCalories,
+      double foodProtein, double foodCarbs, double foodFat,
+      {String foodPortion = ''}) async {
     try {
       final categoryService =
           Provider.of<CategoryService>(context, listen: false);
@@ -50,6 +63,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       await FirebaseFirestore.instance.collection('user_food').add({
         'user_id': FirebaseAuth.instance.currentUser!.uid,
         'food_description': foodDescription,
+        'food_portion': foodPortion,
         'food_calories': foodCalories,
         'food_protein': foodProtein,
         'food_carbs': foodCarbs,
@@ -187,9 +201,12 @@ class _AddFoodPageState extends State<AddFoodPage> {
   }
 
   Future<void> _onButtonPress() async {
-    if (!mounted) return; // Ensure the widget is still in the tree
+    if (!mounted) return;
     FocusScope.of(context).unfocus();
-    listOfItems = [];
+    foodListData.clear();
+    _originalPortions.clear();
+    _foodMacros.clear();
+    _editingFoodIndex = null;
 
     setState(() {
       _isTextFieldTapped = true;
@@ -200,31 +217,114 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
     if (query.isNotEmpty) {
       results = await _api.foodsSearch(query);
-      if (!mounted) return; // Ensure the widget is still in the tree
+      if (!mounted) return;
 
       setState(() {
+        int foodIndex = 0;
         for (var food in results!.food) {
-          listOfItems.add(
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.indigo.shade600,
-                    Colors.blue.shade700,
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+          final portion = _formatAmount(food.foodDescription);
+          final calories = int.parse(_formatCalories(food.foodDescription));
+          final protein = double.parse(_formatProtein(food.foodDescription));
+          final carbs = double.parse(_formatCarbs(food.foodDescription));
+          final fat = double.parse(_formatFat(food.foodDescription));
+
+          // Store original values
+          _originalPortions[foodIndex] = portion;
+          _foodMacros[foodIndex] = {
+            'calories': calories.toDouble(),
+            'protein': protein,
+            'carbs': carbs,
+            'fat': fat,
+          };
+
+          // Store food data (not built widgets)
+          foodListData.add({
+            'foodIndex': foodIndex,
+            'foodName': food.foodName,
+            'portion': portion,
+            'calories': calories,
+            'protein': protein,
+            'carbs': carbs,
+            'fat': fat,
+          });
+
+          foodIndex++;
+        }
+      });
+
+      if (mounted) {
+        setState(() {
+          isEmpty = false;
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  /// Start editing a food item
+  void _startEditingFood(int foodIndex, String portion) {
+    setState(() {
+      _editingFoodIndex = foodIndex;
+      // Store the original portion unit for later use
+      _portionController.text =
+          _extractPortionNumber(portion).toStringAsFixed(0);
+    });
+  }
+
+  /// Cancel editing
+  void _cancelEditingFood() {
+    setState(() {
+      _editingFoodIndex = null;
+      _portionController.clear();
+    });
+  }
+
+  /// Build a food list item with optional edit mode
+  Widget _buildFoodListItem({
+    required int foodIndex,
+    required String foodName,
+    required String portion,
+    required int calories,
+    required double protein,
+    required double carbs,
+    required double fat,
+  }) {
+    final isEditing = _editingFoodIndex == foodIndex;
+    final isOtherItemEditing =
+        _editingFoodIndex != null && _editingFoodIndex != foodIndex;
+
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.indigo.shade600,
+                Colors.blue.shade700,
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
               ),
+            ],
+          ),
+          child: Opacity(
+            opacity: isOtherItemEditing ? 0.5 : 1.0,
+            child: IgnorePointer(
+              ignoring: isOtherItemEditing,
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -234,7 +334,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _formatFoodString(food.foodName),
+                      _formatFoodString(foodName),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -243,7 +345,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '(per ${_formatAmount(food.foodDescription)})',
+                      '(per $portion)',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.8),
                         fontSize: 12,
@@ -261,7 +363,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '${_formatCalories(food.foodDescription)} kcal',
+                    '$calories kcal',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -269,61 +371,143 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     ),
                   ),
                 ),
-                onTap: () async {
-                  if (!mounted) return;
-                  final newCaloriesToUpdate =
-                      int.parse(_formatCalories(food.foodDescription));
-                  final protein =
-                      double.parse(_formatProtein(food.foodDescription));
-                  final carbs =
-                      double.parse(_formatCarbs(food.foodDescription));
-                  final fat = double.parse(_formatFat(food.foodDescription));
-
-                  showDialog(
-                    context: context,
-                    builder: (context) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
-                    },
-                  );
-
-                  await saveData(
-                      food.foodName, newCaloriesToUpdate, protein, carbs, fat);
-                  await updateCalories(newCaloriesToUpdate);
-
-                  if (!mounted) return;
-                  Navigator.pop(context);
-
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => HomePage(
-                        addFoodAnimation: true,
-                      ),
-                    ),
-                    (route) => false,
-                  );
+                onTap: () {
+                  if (!isOtherItemEditing) {
+                    _startEditingFood(foodIndex, portion);
+                  }
                 },
               ),
             ),
-          );
-        }
-      });
+          ),
+        ),
+        // Edit mode row
+        if (isEditing)
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.indigo.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.indigo.shade300, width: 1.5),
+            ),
+            child: Row(
+              children: [
+                const Text(
+                  'per ',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                SizedBox(
+                  width: 55,
+                  child: TextField(
+                    controller: _portionController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      hintText: 'Amount',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    _extractPortionUnit(portion),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Checkmark button
+                GestureDetector(
+                  onTap: () async {
+                    final newPortion =
+                        double.tryParse(_portionController.text) ?? 1.0;
+                    final adjustedMacros =
+                        _calculateAdjustedMacros(foodIndex, newPortion);
+                    final portionUnit = _extractPortionUnit(portion);
+                    // Format as "100 g" not "per 100 g"
+                    final newPortionDisplay = portionUnit.isNotEmpty
+                        ? '$newPortion $portionUnit'
+                        : '$newPortion';
 
-      if (mounted) {
-        setState(() {
-          isEmpty = false;
-          _isLoading = false;
-        });
-      }
-    } else {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+                    if (!mounted) return;
+
+                    showDialog(
+                      context: context,
+                      builder: (context) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      },
+                    );
+
+                    await saveData(
+                      foodName,
+                      adjustedMacros['calories']!.toInt(),
+                      adjustedMacros['protein']!,
+                      adjustedMacros['carbs']!,
+                      adjustedMacros['fat']!,
+                      foodPortion: newPortionDisplay,
+                    );
+
+                    if (!mounted) return;
+                    Navigator.pop(context);
+
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MainShell(initialIndex: 1),
+                      ),
+                      (route) => false,
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade500,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // X button
+                GestureDetector(
+                  onTap: _cancelEditingFood,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade500,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   String _formatCalories(String stringToFormat) {
@@ -356,6 +540,43 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
   String _formatAmount(String stringToFormat) {
     return stringToFormat.split('Per ')[1].split(' -')[0];
+  }
+
+  /// Extract the numeric portion from description like "100 g" or "1 banana"
+  /// Returns just the number as a string
+  double _extractPortionNumber(String portion) {
+    final regex = RegExp(r'(\d+(?:\.\d+)?)');
+    final match = regex.firstMatch(portion);
+    return match != null ? double.parse(match.group(1)!) : 1.0;
+  }
+
+  /// Extract the unit from a portion string like "100 g" -> "g" or "1 banana" -> "banana"
+  /// Handles both "100 g" and "100g" formats
+  String _extractPortionUnit(String portion) {
+    // Remove the leading number (including decimals) and any whitespace after it
+    return portion
+        .trim()
+        .replaceFirst(RegExp(r'^\d+(?:\.\d+)?[\s]*'), '')
+        .trim();
+  }
+
+  /// Calculate adjusted macros based on portion ratio
+  /// If original portion was 100g and user changes to 90g, multiply all values by 0.9
+  Map<String, double> _calculateAdjustedMacros(
+    int foodIndex,
+    double newPortion,
+  ) {
+    final originalPortion =
+        _extractPortionNumber(_originalPortions[foodIndex] ?? '1');
+    final ratio = newPortion / originalPortion;
+
+    final original = _foodMacros[foodIndex]!;
+    return {
+      'calories': original['calories']! * ratio,
+      'protein': original['protein']! * ratio,
+      'carbs': original['carbs']! * ratio,
+      'fat': original['fat']! * ratio,
+    };
   }
 
   String _formatFoodString(String input) {
@@ -512,7 +733,17 @@ class _AddFoodPageState extends State<AddFoodPage> {
                           child: Padding(
                             padding: const EdgeInsets.all(16.0),
                             child: Column(
-                              children: listOfItems,
+                              children: foodListData.map((foodData) {
+                                return _buildFoodListItem(
+                                  foodIndex: foodData['foodIndex'],
+                                  foodName: foodData['foodName'],
+                                  portion: foodData['portion'],
+                                  calories: foodData['calories'],
+                                  protein: foodData['protein'],
+                                  carbs: foodData['carbs'],
+                                  fat: foodData['fat'],
+                                );
+                              }).toList(),
                             ),
                           ),
                         ),

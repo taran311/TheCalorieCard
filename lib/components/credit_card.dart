@@ -10,6 +10,7 @@ class CreditCard extends StatefulWidget {
   final double? proteinOverride;
   final double? carbsOverride;
   final double? fatsOverride;
+  final ValueChanged<bool>? onToggleMacros;
   final bool skipFetch;
 
   const CreditCard({
@@ -19,6 +20,7 @@ class CreditCard extends StatefulWidget {
     this.proteinOverride,
     this.carbsOverride,
     this.fatsOverride,
+    this.onToggleMacros,
     this.skipFetch = false,
   }) : super(key: key);
 
@@ -76,19 +78,19 @@ class _CreditCardWidgetState extends State<CreditCard> {
 
       final data = snapshot.docs.first.data() as Map<String, dynamic>;
 
-        setState(() {
-          calories = (data['calories'] as num?)?.toInt() ?? initialCalories ?? 0;
-          proteinBalance = (data['protein_balance'] as num?)?.toDouble() ??
-              (data['protein_goal'] as num?)?.toDouble() ??
-              0;
-          carbsBalance = (data['carbs_balance'] as num?)?.toDouble() ??
-              (data['carbs_goal'] as num?)?.toDouble() ??
-              0;
-          fatsBalance = (data['fats_balance'] as num?)?.toDouble() ??
-              (data['fats_goal'] as num?)?.toDouble() ??
-              0;
-          isLoading = false;
-        });
+      setState(() {
+        calories = (data['calories'] as num?)?.toInt() ?? initialCalories ?? 0;
+        proteinBalance = (data['protein_balance'] as num?)?.toDouble() ??
+            (data['protein_goal'] as num?)?.toDouble() ??
+            0;
+        carbsBalance = (data['carbs_balance'] as num?)?.toDouble() ??
+            (data['carbs_goal'] as num?)?.toDouble() ??
+            0;
+        fatsBalance = (data['fats_balance'] as num?)?.toDouble() ??
+            (data['fats_goal'] as num?)?.toDouble() ??
+            0;
+        isLoading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -122,9 +124,11 @@ class _CreditCardWidgetState extends State<CreditCard> {
 
     return GestureDetector(
       onTap: () {
+        final newState = !_showMacros;
         setState(() {
-          _showMacros = !_showMacros;
+          _showMacros = newState;
         });
+        widget.onToggleMacros?.call(newState);
       },
       child: Container(
         height: 155,

@@ -2,7 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/components/my_button.dart';
 import 'package:namer_app/components/my_text_field.dart';
-import 'package:namer_app/pages/home_page.dart';
+import 'package:namer_app/pages/main_shell.dart';
 
 class LoginPage extends StatefulWidget {
   final Function()? onTap;
@@ -38,7 +38,8 @@ class _LoginPageState extends State<LoginPage> {
       if (context.mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => HomePage()),
+          MaterialPageRoute(
+              builder: (context) => const MainShell(initialIndex: 1)),
         );
       }
     } on FirebaseAuthException catch (e) {

@@ -2,9 +2,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/pages/login_or_register_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
+import 'package:namer_app/pages/home_page.dart';
+import 'package:namer_app/pages/recipes_page.dart';
 
 class MenuPage extends StatelessWidget {
-  const MenuPage({Key? key}) : super(key: key);
+  final bool hideNav;
+
+  const MenuPage({Key? key, this.hideNav = false}) : super(key: key);
 
   Future<void> _logout(BuildContext context) async {
     try {
@@ -29,10 +33,6 @@ class MenuPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Menu'),
-        elevation: 0,
-      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -99,6 +99,67 @@ class MenuPage extends StatelessWidget {
           ],
         ),
       ),
+      bottomNavigationBar: hideNav
+          ? null
+          : Container(
+              color: Colors.white,
+              height: 56,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          right:
+                              BorderSide(color: Colors.grey.shade200, width: 1),
+                        ),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.person,
+                            size: 24, color: Color(0xFF6366F1)),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => const HomePage()),
+                        );
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border(
+                            right: BorderSide(
+                                color: Colors.grey.shade200, width: 1),
+                          ),
+                        ),
+                        child: const Center(
+                          child: Icon(Icons.credit_card, size: 24),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const RecipesPage()),
+                        );
+                      },
+                      child: Container(
+                        child: const Center(
+                          child: Icon(Icons.restaurant, size: 24),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }
