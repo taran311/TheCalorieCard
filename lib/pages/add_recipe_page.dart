@@ -34,13 +34,26 @@ class _AddRecipePageState extends State<AddRecipePage> {
   bool _searching = false;
   bool _saving = false;
   String _servingUnit = 'Serving';
+  int? _editingIngredientIndex;
+  int? _editingSearchIndex; // Track which search result is being edited
+  late TextEditingController _ingredientPortionController;
+  late TextEditingController _searchPortionController;
 
   @override
   void initState() {
     super.initState();
+    _ingredientPortionController = TextEditingController();
+    _searchPortionController = TextEditingController();
     if (widget.recipeId != null) {
       _loadRecipeForEdit(widget.recipeId!);
     }
+  }
+
+  @override
+  void dispose() {
+    _ingredientPortionController.dispose();
+    _searchPortionController.dispose();
+    super.dispose();
   }
 
   @override
@@ -180,48 +193,197 @@ class _AddRecipePageState extends State<AddRecipePage> {
       children: _ingredients.asMap().entries.map((entry) {
         final idx = entry.key;
         final ing = entry.value;
-        return Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(ing.name),
-                if (ing.portion.isNotEmpty)
-                  Text(
-                    '(${ing.portion})',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
+        final isEditing = _editingIngredientIndex == idx;
+
+        return Column(
+          children: [
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(ing.name),
+                    if (ing.portion.isNotEmpty)
+                      Text(
+                        '(${ing.portion})',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                  ],
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${ing.calories.toStringAsFixed(0)} kcal',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF6366F1),
+                      ),
                     ),
-                  ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${ing.calories.toStringAsFixed(0)} kcal',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF6366F1),
-                  ),
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, color: Colors.blue),
+                      onPressed: () {
+                        _startEditingIngredient(idx, ing.portion);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () {
+                        setState(() {
+                          _ingredients.removeAt(idx);
+                        });
+                      },
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: () {
-                    setState(() {
-                      _ingredients.removeAt(idx);
-                    });
-                  },
-                ),
-              ],
+              ),
             ),
-          ),
+            if (isEditing)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.shade300, width: 1.5),
+                ),
+                child: Row(
+                  children: [
+                    const Text(
+                      'per ',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 55,
+                      child: TextField(
+                        controller: _ingredientPortionController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          hintText: 'Amount',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        _extractPortionUnit(ing.portion),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () async {
+                        final newPortion = double.tryParse(
+                                _ingredientPortionController.text) ??
+                            1.0;
+                        final portionUnit = _extractPortionUnit(ing.portion);
+                        final newPortionDisplay = portionUnit.isNotEmpty
+                            ? '$newPortion $portionUnit'
+                            : '$newPortion';
+
+                        // Calculate adjusted macros based on portion ratio
+                        final adjustedMacros =
+                            _calculateAdjustedIngredientMacros(ing, newPortion);
+
+                        setState(() {
+                          _ingredients[idx] = _IngredientEntry(
+                            name: ing.name,
+                            calories: adjustedMacros['calories']!,
+                            protein: adjustedMacros['protein']!,
+                            carbs: adjustedMacros['carbs']!,
+                            fat: adjustedMacros['fat']!,
+                            portion: newPortionDisplay,
+                          );
+                          _editingIngredientIndex = null;
+                        });
+                      },
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.green.shade400,
+                        ),
+                        child: const Icon(
+                          Icons.check,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _editingIngredientIndex = null;
+                        });
+                      },
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.red.shade400,
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         );
       }).toList(),
     );
+  }
+
+  void _startEditingIngredient(int idx, String currentPortion) {
+    setState(() {
+      _editingIngredientIndex = idx;
+      _ingredientPortionController.text =
+          _extractNumericPortion(currentPortion);
+    });
+  }
+
+  String _extractNumericPortion(String portion) {
+    if (portion.isEmpty) return '1';
+    final regex = RegExp(r'^(\d+(?:\.\d+)?)');
+    final match = regex.firstMatch(portion);
+    return match != null ? match.group(1)! : '1';
+  }
+
+  String _extractPortionUnit(String portion) {
+    if (portion.isEmpty) return '';
+    final regex = RegExp(r'^\d+\.?\d*\s*(.*)');
+    final match = regex.firstMatch(portion);
+    return match != null && match.group(1)!.isNotEmpty
+        ? match.group(1)!.trim()
+        : '';
   }
 
   Widget _buildSearch() {
@@ -263,38 +425,158 @@ class _AddRecipePageState extends State<AddRecipePage> {
         if (_searching) const LinearProgressIndicator(minHeight: 2),
         if (_results != null)
           Column(
-            children: _results!.food.map((food) {
+            children: _results!.food.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final food = entry.value;
+              final isEditing = _editingSearchIndex == idx;
               final calories = _formatCalories(food.foodDescription);
               final protein = _formatProtein(food.foodDescription);
               final carbs = _formatCarbs(food.foodDescription);
               final fat = _formatFat(food.foodDescription);
               final portion = _formatAmount(food.foodDescription);
 
-              return Card(
-                child: ListTile(
-                  title: Text(food.foodName),
-                  subtitle: Text(food.foodDescription,
-                      maxLines: 2, overflow: TextOverflow.ellipsis),
-                  trailing: const Icon(Icons.add_circle_outline,
-                      color: Color(0xFF6366F1)),
-                  onTap: () {
-                    setState(() {
-                      _ingredients.add(_IngredientEntry(
-                        name: food.foodName,
-                        calories: calories,
-                        protein: protein,
-                        carbs: carbs,
-                        fat: fat,
-                        portion: portion,
-                      ));
-                      _searchController.clear();
-                      _results = null;
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('${food.foodName} added')),
-                    );
-                  },
-                ),
+              return Column(
+                children: [
+                  Card(
+                    child: ListTile(
+                      title: Text(food.foodName),
+                      subtitle: Text(food.foodDescription,
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                      trailing: const Icon(Icons.add_circle_outline,
+                          color: Color(0xFF6366F1)),
+                      onTap: () {
+                        setState(() {
+                          _editingSearchIndex = idx;
+                          _searchPortionController.text =
+                              _extractNumericPortion(portion);
+                        });
+                      },
+                    ),
+                  ),
+                  if (isEditing)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: Colors.purple.shade300, width: 1.5),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'per ',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 55,
+                            child: TextField(
+                              controller: _searchPortionController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                hintText: 'Amount',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              _extractPortionUnit(portion),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () {
+                              final newPortion = double.tryParse(
+                                      _searchPortionController.text) ??
+                                  1.0;
+                              final portionUnit = _extractPortionUnit(portion);
+                              final newPortionDisplay = portionUnit.isNotEmpty
+                                  ? '$newPortion $portionUnit'
+                                  : '$newPortion';
+
+                              // Calculate adjusted macros for search result
+                              final originalPortion =
+                                  _extractPortionNumber(portion);
+                              final ratio = newPortion / originalPortion;
+
+                              setState(() {
+                                _ingredients.add(_IngredientEntry(
+                                  name: food.foodName,
+                                  calories: calories * ratio,
+                                  protein: protein * ratio,
+                                  carbs: carbs * ratio,
+                                  fat: fat * ratio,
+                                  portion: newPortionDisplay,
+                                ));
+                                _searchController.clear();
+                                _results = null;
+                                _editingSearchIndex = null;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        '${food.foodName} added with ${(calories * ratio).toStringAsFixed(0)} kcal')),
+                              );
+                            },
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.green.shade400,
+                              ),
+                              child: const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _editingSearchIndex = null;
+                              });
+                            },
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.red.shade400,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               );
             }).toList(),
           ),
@@ -611,6 +893,28 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
     if (!mounted) return;
     Navigator.pop(context, recipeRef.id);
+  }
+
+  Map<String, double> _calculateAdjustedIngredientMacros(
+    _IngredientEntry ingredient,
+    double newPortion,
+  ) {
+    final originalPortion = _extractPortionNumber(ingredient.portion);
+    final ratio = newPortion / originalPortion;
+
+    return {
+      'calories': ingredient.calories * ratio,
+      'protein': ingredient.protein * ratio,
+      'carbs': ingredient.carbs * ratio,
+      'fat': ingredient.fat * ratio,
+    };
+  }
+
+  double _extractPortionNumber(String portion) {
+    if (portion.isEmpty) return 1.0;
+    final regex = RegExp(r'^(\d+(?:\.\d+)?)');
+    final match = regex.firstMatch(portion);
+    return match != null ? double.parse(match.group(1)!) : 1.0;
   }
 }
 
