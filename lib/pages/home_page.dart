@@ -271,15 +271,96 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _deleteFoodItem(String docId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('user_food')
-          .doc(docId)
-          .delete();
-
+      final firestore = FirebaseFirestore.instance;
+      final userId = FirebaseAuth.instance.currentUser!.uid;
       final categoryService =
           Provider.of<CategoryService>(context, listen: false);
-      await _resetCategoryTotals(categoryService.selectedCategory);
+      final currentCategory = categoryService.selectedCategory;
+
+      // Get the food item data before deleting it
+      final foodDocSnapshot =
+          await firestore.collection('user_food').doc(docId).get();
+
+      if (!foodDocSnapshot.exists) {
+        throw Exception('Food item not found');
+      }
+
+      final foodData = foodDocSnapshot.data() as Map<String, dynamic>;
+      final calories = (foodData['food_calories'] as num?)?.toDouble() ?? 0;
+      final protein = (foodData['food_protein'] as num?)?.toDouble() ?? 0;
+      final carbs = (foodData['food_carbs'] as num?)?.toDouble() ?? 0;
+      final fat = (foodData['food_fat'] as num?)?.toDouble() ?? 0;
+
+      // Delete the food item
+      await firestore.collection('user_food').doc(docId).delete();
+
+      // Update user balances (add back the calories/macros since we're removing consumption)
+      final userDataSnapshot = await firestore
+          .collection('user_data')
+          .where('user_id', isEqualTo: userId)
+          .limit(1)
+          .get();
+
+      if (userDataSnapshot.docs.isNotEmpty) {
+        final doc = userDataSnapshot.docs.first;
+        final docRef = doc.reference;
+        final data = doc.data() as Map<String, dynamic>;
+
+        final currentCalories = data['calories'];
+        double newCalories;
+        if (currentCalories is int) {
+          newCalories = currentCalories.toDouble() + calories;
+        } else if (currentCalories is double) {
+          newCalories = currentCalories + calories;
+        } else if (currentCalories is String) {
+          newCalories = (double.tryParse(currentCalories) ?? 0) + calories;
+        } else {
+          newCalories = 0 + calories;
+        }
+
+        double proteinBal = (data['protein_balance'] as num?)?.toDouble() ??
+            (data['protein_goal'] as num?)?.toDouble() ??
+            0.0;
+        double carbsBal = (data['carbs_balance'] as num?)?.toDouble() ??
+            (data['carbs_goal'] as num?)?.toDouble() ??
+            0.0;
+        double fatsBal = (data['fats_balance'] as num?)?.toDouble() ??
+            (data['fats_goal'] as num?)?.toDouble() ??
+            0.0;
+
+        proteinBal += protein;
+        carbsBal += carbs;
+        fatsBal += fat;
+
+        await docRef.update({
+          'calories': newCalories,
+          'protein_balance': proteinBal,
+          'carbs_balance': carbsBal,
+          'fats_balance': fatsBal,
+        });
+      }
+
+      // Update category totals
+      final categoryTotalDocRef = firestore
+          .collection('category_totals')
+          .doc('${userId}_$currentCategory');
+      final categoryTotalSnapshot = await categoryTotalDocRef.get();
+
+      if (categoryTotalSnapshot.exists) {
+        await categoryTotalDocRef.update({
+          'total_calories':
+              (categoryTotalSnapshot['total_calories'] as num? ?? 0) - calories,
+          'total_protein':
+              (categoryTotalSnapshot['total_protein'] as num? ?? 0) - protein,
+          'total_carbs':
+              (categoryTotalSnapshot['total_carbs'] as num? ?? 0) - carbs,
+          'total_fat': (categoryTotalSnapshot['total_fat'] as num? ?? 0) - fat,
+        });
+      }
+
+      // Refresh the UI
       await populateFoodItems();
+      await _fetchCategoryTotals(currentCategory);
 
       if (mounted) {
         setState(() {
