@@ -2,6 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/components/my_button.dart';
 import 'package:namer_app/components/my_text_field.dart';
+import 'package:namer_app/pages/email_verification_page.dart';
+import 'package:namer_app/pages/forgot_password_page.dart';
 import 'package:namer_app/pages/main_shell.dart';
 
 class LoginPage extends StatefulWidget {
@@ -35,12 +37,29 @@ class _LoginPageState extends State<LoginPage> {
         Navigator.pop(context);
       }
 
-      if (context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-              builder: (context) => const MainShell(initialIndex: 1)),
-        );
+      // Check if email is verified
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && !user.emailVerified) {
+        // Email not verified, take them to verification page
+        if (context.mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EmailVerificationPage(
+                email: user.email ?? '',
+              ),
+            ),
+          );
+        }
+      } else {
+        // Email verified, allow login
+        if (context.mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const MainShell(initialIndex: 1)),
+          );
+        }
       }
     } on FirebaseAuthException catch (e) {
       if (context.mounted) {
@@ -177,7 +196,15 @@ class _LoginPageState extends State<LoginPage> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           GestureDetector(
-                            onTap: () {},
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const ForgotPasswordPage(),
+                                ),
+                              );
+                            },
                             child: Text(
                               'Forgot Password?',
                               style: TextStyle(

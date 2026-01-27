@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/components/my_button.dart';
 import 'package:namer_app/components/my_text_field.dart';
+import 'package:namer_app/pages/email_verification_page.dart';
 import 'package:namer_app/pages/get_started_page.dart';
 import 'package:namer_app/services/category_service.dart';
 
@@ -49,9 +50,15 @@ class _RegisterPageState extends State<RegisterPage> {
         setState(() {
           isLoading = false;
         });
+
+        // Navigate to email verification page instead of directly to GetStartedPage
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => GetStartedPage()),
+          MaterialPageRoute(
+            builder: (context) => EmailVerificationPage(
+              email: emailController.text.trim(),
+            ),
+          ),
         );
       }
     } on FirebaseAuthException catch (e) {

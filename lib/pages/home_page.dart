@@ -93,6 +93,7 @@ class _HomePageState extends State<HomePage> {
   Map<String, bool> _foodMacrosVisibility = {};
 
   String _roundMacro(dynamic value) {
+    if (value == null) return '0';
     final numVal =
         (value is num) ? value.toDouble() : double.tryParse('$value') ?? 0.0;
     return numVal.toStringAsFixed(1).endsWith('.5')
@@ -585,12 +586,10 @@ class _HomePageState extends State<HomePage> {
 
       if (docSnapshot.exists && mounted) {
         setState(() {
-          _totalCalories =
-              (docSnapshot['total_calories'] as num?)?.toInt() ?? 0;
-          _totalProtein =
-              (docSnapshot['total_protein'] as num?)?.toDouble() ?? 0.0;
-          _totalCarbs = (docSnapshot['total_carbs'] as num?)?.toDouble() ?? 0.0;
-          _totalFat = (docSnapshot['total_fat'] as num?)?.toDouble() ?? 0.0;
+          _totalCalories = ((docSnapshot['total_calories'] ?? 0) as num).toInt();
+          _totalProtein = ((docSnapshot['total_protein'] ?? 0.0) as num).toDouble();
+          _totalCarbs = ((docSnapshot['total_carbs'] ?? 0.0) as num).toDouble();
+          _totalFat = ((docSnapshot['total_fat'] ?? 0.0) as num).toDouble();
           _lastFetchedCategory = category;
         });
       } else if (mounted) {
