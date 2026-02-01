@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:namer_app/components/my_button.dart';
 import 'package:namer_app/components/my_text_field.dart';
 import 'package:namer_app/pages/email_verification_page.dart';
-import 'package:namer_app/pages/get_started_page.dart';
 import 'package:namer_app/services/category_service.dart';
 
 class RegisterPage extends StatefulWidget {

@@ -12,6 +12,10 @@ class CreditCard extends StatefulWidget {
   final double? fatsOverride;
   final ValueChanged<bool>? onToggleMacros;
   final bool skipFetch;
+  final VoidCallback? triggerFlash;
+  final String? validThruDate;
+  final String? userIdOverride;
+  final String? cardUserNameOverride;
 
   const CreditCard({
     Key? key,
@@ -22,23 +26,46 @@ class CreditCard extends StatefulWidget {
     this.fatsOverride,
     this.onToggleMacros,
     this.skipFetch = false,
+    this.triggerFlash,
+    this.validThruDate,
+    this.userIdOverride,
+    this.cardUserNameOverride,
   }) : super(key: key);
 
   @override
   State<CreditCard> createState() => _CreditCardWidgetState();
 }
 
-class _CreditCardWidgetState extends State<CreditCard> {
+class _CreditCardWidgetState extends State<CreditCard>
+    with TickerProviderStateMixin {
   int calories = 0;
   double proteinBalance = 0;
   double carbsBalance = 0;
   double fatsBalance = 0;
   bool _showMacros = false;
   bool isLoading = true;
+  AnimationController? _flashController;
+  Animation<double>? _flashAnimation;
 
   @override
   void initState() {
     super.initState();
+
+    _flashController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+
+    _flashAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 1),
+    ]).animate(CurvedAnimation(
+      parent: _flashController!,
+      curve: Curves.easeInOut,
+    ));
+
     if (widget.skipFetch) {
       // Skip fetch entirely, just use overrides
       calories = widget.caloriesOverride ?? widget.initialCalories ?? 0;
@@ -51,9 +78,16 @@ class _CreditCardWidgetState extends State<CreditCard> {
     }
   }
 
+  @override
+  void dispose() {
+    _flashController?.dispose();
+    super.dispose();
+  }
+
   Future<void> _fetchUserData({int? initialCalories}) async {
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
+        final userId = widget.userIdOverride ??
+          FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) {
         setState(() {
           isLoading = false;
@@ -76,7 +110,7 @@ class _CreditCardWidgetState extends State<CreditCard> {
         return;
       }
 
-      final data = snapshot.docs.first.data() as Map<String, dynamic>;
+      final data = snapshot.docs.first.data();
 
       setState(() {
         calories = (data['calories'] as num?)?.toInt() ?? initialCalories ?? 0;
@@ -101,8 +135,8 @@ class _CreditCardWidgetState extends State<CreditCard> {
 
   @override
   Widget build(BuildContext context) {
-    final today =
-        '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}';
+    final today = widget.validThruDate ??
+      '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}';
 
     if (isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -124,6 +158,7 @@ class _CreditCardWidgetState extends State<CreditCard> {
 
     return GestureDetector(
       onTap: () {
+        _flashController?.forward(from: 0);
         final newState = !_showMacros;
         setState(() {
           _showMacros = newState;
@@ -176,73 +211,91 @@ class _CreditCardWidgetState extends State<CreditCard> {
               Positioned(
                 top: 8,
                 right: 16,
-                child: _showMacros
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'Protein: ${displayProtein.toStringAsFixed(0)}g',
-                            style: GoogleFonts.robotoMono(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Text(
-                            'Carbs: ${displayCarbs.toStringAsFixed(0)}g',
-                            style: GoogleFonts.robotoMono(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Text(
-                            'Fats: ${displayFats.toStringAsFixed(0)}g',
-                            style: GoogleFonts.robotoMono(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Balance',
-                            style: GoogleFonts.robotoMono(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Row(
-                            children: [
-                              CalorieCurrencyIcon(),
-                              const SizedBox(width: 6),
-                              Text(
-                                displayCalories.toString(),
-                                style: GoogleFonts.robotoMono(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Balance',
-                            style: TextStyle(
-                              fontSize: 8,
-                              color: Colors.white.withOpacity(0.8),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                child: AnimatedBuilder(
+                  animation:
+                      _flashAnimation ?? const AlwaysStoppedAnimation(0.0),
+                  builder: (context, child) {
+                    final flashValue = _flashAnimation?.value ?? 0.0;
+                    return Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Colors.white.withOpacity(flashValue * 0.8),
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
                       ),
+                      child: child,
+                    );
+                  },
+                  child: _showMacros
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Protein: ${displayProtein.toStringAsFixed(0)}g',
+                              style: GoogleFonts.robotoMono(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              'Carbs: ${displayCarbs.toStringAsFixed(0)}g',
+                              style: GoogleFonts.robotoMono(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              'Fats: ${displayFats.toStringAsFixed(0)}g',
+                              style: GoogleFonts.robotoMono(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Balance',
+                              style: GoogleFonts.robotoMono(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Row(
+                              children: [
+                                CalorieCurrencyIcon(),
+                                const SizedBox(width: 6),
+                                Text(
+                                  displayCalories.toString(),
+                                  style: GoogleFonts.robotoMono(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Balance',
+                              style: TextStyle(
+                                fontSize: 8,
+                                color: Colors.white.withOpacity(0.8),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
               ),
               Positioned(
                 top: 40,
@@ -300,7 +353,9 @@ class _CreditCardWidgetState extends State<CreditCard> {
                   alignment: Alignment.bottomRight,
                   child: Text(
                     _getTruncatedName(
-                        FirebaseAuth.instance.currentUser?.email ?? 'User'),
+                      widget.cardUserNameOverride ??
+                        FirebaseAuth.instance.currentUser?.email ??
+                        'User'),
                     style: GoogleFonts.poppins(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,

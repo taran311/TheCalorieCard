@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/menu_page.dart';
 import 'package:namer_app/pages/recipes_page.dart';
@@ -14,17 +16,11 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   late int _currentIndex;
-  late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, 2);
-    _pages = const [
-      MenuPage(hideNav: true),
-      HomePage(hideNav: true),
-      RecipesPage(hideNav: true),
-    ];
   }
 
   void _onTap(int index) {
@@ -35,10 +31,16 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      MenuPage(hideNav: true),
+      const HomePage(hideNav: true),
+      const RecipesPage(hideNav: true),
+    ];
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _pages,
+        children: pages,
       ),
       bottomNavigationBar: Container(
         color: Colors.white,
@@ -46,25 +48,67 @@ class _MainShellState extends State<MainShell> {
         child: Row(
           children: [
             Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _onTap(0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      right: BorderSide(color: Colors.grey.shade200, width: 1),
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('friend_requests')
+                    .where('to_user_id',
+                        isEqualTo: FirebaseAuth.instance.currentUser?.uid ?? '')
+                    .where('status', isEqualTo: 'pending')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  final pendingCount = snapshot.data?.docs.length ?? 0;
+
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _onTap(0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          right:
+                              BorderSide(color: Colors.grey.shade200, width: 1),
+                        ),
+                      ),
+                      child: Stack(
+                        children: [
+                          Center(
+                            child: Icon(
+                              Icons.person,
+                              size: 24,
+                              color: _currentIndex == 0
+                                  ? const Color(0xFF6366F1)
+                                  : Colors.black,
+                            ),
+                          ),
+                          if (pendingCount > 0)
+                            Positioned(
+                              right: 2,
+                              top: 2,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                child: Text(
+                                  pendingCount.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.person,
-                      size: 24,
-                      color: _currentIndex == 0
-                          ? const Color(0xFF6366F1)
-                          : Colors.black,
-                    ),
-                  ),
-                ),
+                  );
+                },
               ),
             ),
             Expanded(

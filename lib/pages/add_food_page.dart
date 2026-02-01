@@ -3,9 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/pages/fat_secret_api.dart';
-import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/pages/main_shell.dart';
+import 'package:namer_app/services/achievement_service.dart';
 
 class AddFoodPage extends StatefulWidget {
   AddFoodPage({
@@ -71,6 +71,10 @@ class _AddFoodPageState extends State<AddFoodPage> {
         'foodCategory': category,
         'time_added': DateTime.now()
       });
+
+      await AchievementService.markFirstTimeLogger(
+        FirebaseAuth.instance.currentUser!.uid,
+      );
 
       // Update category totals
       await _updateCategoryTotals(category);

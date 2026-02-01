@@ -10,13 +10,24 @@ import 'package:namer_app/pages/menu_page.dart';
 import 'package:namer_app/pages/recipes_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/services/category_service.dart';
+import 'package:namer_app/services/achievement_service.dart';
 
 class HomePage extends StatefulWidget {
   final bool addFoodAnimation;
   final bool hideNav;
+  final bool readOnly;
+  final String? userIdOverride;
+  final String? bannerTitle;
+  final bool showBanner;
 
   const HomePage(
-      {Key? key, this.addFoodAnimation = false, this.hideNav = false})
+      {Key? key,
+      this.addFoodAnimation = false,
+      this.hideNav = false,
+      this.readOnly = false,
+      this.userIdOverride,
+      this.bannerTitle,
+      this.showBanner = false})
       : super(key: key);
 
   @override
@@ -74,12 +85,20 @@ class _SelectExistingRecipePage extends StatelessWidget {
   }
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+  String get _activeUserId =>
+      widget.userIdOverride ?? FirebaseAuth.instance.currentUser!.uid;
   List<QueryDocumentSnapshot> _foodDocs = [];
   final List<String> _tabs = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
   int _creditCardRefreshKey = 0;
   bool _isLoading = true;
   bool _deleteMode = false;
+  bool _isDayFinished = false;
+  bool _isUpdatingDailyLog = false;
+  double _cardDragDx = 0;
+  DateTime _selectedLogDate = DateTime.now();
+  Map<String, dynamic>? _selectedDailyLog;
+  bool _isDailyLogLoading = false;
 
   // Category totals tracking
   bool _showMacrosTotal = false;
@@ -92,8 +111,15 @@ class _HomePageState extends State<HomePage> {
   // Individual food item macro visibility tracking
   Map<String, bool> _foodMacrosVisibility = {};
 
+  // Card animations
+  AnimationController? _jiggleAnimationController;
+  Animation<double>? _jiggleAnimation;
+  AnimationController? _cardDragResetController;
+  double _dragEndDx = 0;
+  bool _isResettingCard = false;
+  bool _pendingSwipePrompt = false;
+
   String _roundMacro(dynamic value) {
-    if (value == null) return '0';
     final numVal =
         (value is num) ? value.toDouble() : double.tryParse('$value') ?? 0.0;
     return numVal.toStringAsFixed(1).endsWith('.5')
@@ -104,11 +130,58 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _jiggleAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    _jiggleAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 0.05), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 0.05, end: -0.05), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -0.05, end: 0.05), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 0.05, end: -0.05), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -0.05, end: 0.0), weight: 1),
+    ]).animate(CurvedAnimation(
+      parent: _jiggleAnimationController!,
+      curve: Curves.easeInOut,
+    ));
+
+    _cardDragResetController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+
     _initializeHome();
+  }
+
+  @override
+  void dispose() {
+    _jiggleAnimationController?.dispose();
+    _cardDragResetController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _resetCardPosition({required bool promptAfterReset}) async {
+    if (_cardDragResetController == null) return;
+    _pendingSwipePrompt = promptAfterReset;
+    _dragEndDx = _cardDragDx;
+    _isResettingCard = true;
+    _cardDragResetController!.reset();
+    await _cardDragResetController!.forward();
+    if (!mounted) return;
+    setState(() {
+      _isResettingCard = false;
+      _cardDragDx = 0;
+    });
+    if (_pendingSwipePrompt) {
+      _pendingSwipePrompt = false;
+      await _handleCardSwipe();
+    }
   }
 
   Future<void> _initializeHome() async {
     await populateFoodItems();
+    await _fetchDailyLogForDate(_selectedLogDate);
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -116,21 +189,303 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  bool get _isSelectedDateToday => _isSameDay(_selectedLogDate, DateTime.now());
+
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  Future<void> _fetchDailyLogForDate(DateTime date) async {
+    try {
+      setState(() {
+        _isDailyLogLoading = true;
+      });
+      final userId = _activeUserId;
+      final key = _dateKey(date);
+      final docRef = FirebaseFirestore.instance
+          .collection('daily_logs')
+          .doc('${userId}_$key');
+      final doc = await docRef.get();
+      if (!mounted) return;
+      final data = doc.data();
+      setState(() {
+        _selectedDailyLog = data;
+      });
+      await _loadDailyLogStatusForSelectedDate(data);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _selectedDailyLog = null;
+        _isDayFinished = false;
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isDailyLogLoading = false;
+      });
+    }
+  }
+
+  String _dateKey(DateTime date) {
+    final y = date.year.toString();
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  Future<void> _loadDailyLogStatusForSelectedDate(
+      Map<String, dynamic>? data) async {
+    final finished = data?['finished'] as bool? ?? false;
+    if (!mounted) return;
+    setState(() {
+      _isDayFinished = finished;
+      if (_isDayFinished) {
+        _deleteMode = false;
+      }
+    });
+  }
+
+  Future<void> _setDailyLogFinished(DateTime date, bool finished) async {
+    try {
+      final userId = _activeUserId;
+      final key = _dateKey(date);
+      final docRef = FirebaseFirestore.instance
+          .collection('daily_logs')
+          .doc('${userId}_$key');
+      await docRef.set({
+        'user_id': userId,
+        'date_key': key,
+        'date': Timestamp.fromDate(date),
+        'finished': finished,
+        'updated_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<void> _upsertDailyLogForDate(DateTime date) async {
+    if (_isUpdatingDailyLog) return;
+    setState(() {
+      _isUpdatingDailyLog = true;
+    });
+
+    try {
+      final userId = _activeUserId;
+
+      final firestore = FirebaseFirestore.instance;
+      final key = _dateKey(date);
+
+      final foodSnapshot = await firestore
+          .collection('user_food')
+          .where('user_id', isEqualTo: userId)
+          .get();
+
+      final startOfDay = DateTime(date.year, date.month, date.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+
+      DateTime? _extractDocDate(QueryDocumentSnapshot doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final timeAdded = data['time_added'];
+        final createdAt = data['created_at'];
+
+        if (timeAdded is Timestamp) return timeAdded.toDate();
+        if (timeAdded is DateTime) return timeAdded;
+        if (createdAt is Timestamp) return createdAt.toDate();
+        if (createdAt is DateTime) return createdAt;
+        return null;
+      }
+
+      final filteredDocs = foodSnapshot.docs.where((doc) {
+        final docDate = _extractDocDate(doc);
+        if (docDate == null) return false;
+        return !docDate.isBefore(startOfDay) && docDate.isBefore(endOfDay);
+      }).toList();
+
+      final foodEntries = filteredDocs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          ...data,
+        };
+      }).toList();
+
+      double totalCalories = 0;
+      double totalProtein = 0;
+      double totalCarbs = 0;
+      double totalFat = 0;
+
+      for (final entry in foodEntries) {
+        totalCalories += (entry['food_calories'] as num?)?.toDouble() ?? 0;
+        totalProtein += (entry['food_protein'] as num?)?.toDouble() ?? 0;
+        totalCarbs += (entry['food_carbs'] as num?)?.toDouble() ?? 0;
+        totalFat += (entry['food_fat'] as num?)?.toDouble() ?? 0;
+      }
+
+      final userDataSnapshot = await firestore
+          .collection('user_data')
+          .where('user_id', isEqualTo: userId)
+          .limit(1)
+          .get();
+
+      final userData = userDataSnapshot.docs.isNotEmpty
+          ? (userDataSnapshot.docs.first.data() as Map<String, dynamic>)
+          : <String, dynamic>{};
+
+      final docRef = firestore.collection('daily_logs').doc('${userId}_$key');
+      final existingDoc = await docRef.get();
+      final existingFinished =
+          (existingDoc.data()?['finished'] as bool?) ?? false;
+      await docRef.set({
+        'user_id': userId,
+        'date_key': key,
+        'date': Timestamp.fromDate(date),
+        'food_entries': foodEntries,
+        'totals': {
+          'calories': totalCalories,
+          'protein': totalProtein,
+          'carbs': totalCarbs,
+          'fat': totalFat,
+        },
+        'balances': {
+          'calories': (userData['calories'] as num?)?.toDouble(),
+          'protein_balance':
+              (userData['protein_balance'] as num?)?.toDouble(),
+          'carbs_balance': (userData['carbs_balance'] as num?)?.toDouble(),
+          'fats_balance': (userData['fats_balance'] as num?)?.toDouble(),
+        },
+        'goals': {
+          'protein_goal': (userData['protein_goal'] as num?)?.toDouble(),
+          'carbs_goal': (userData['carbs_goal'] as num?)?.toDouble(),
+          'fats_goal': (userData['fats_goal'] as num?)?.toDouble(),
+        },
+        'finished': existingFinished,
+        'updated_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      // ignore
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingDailyLog = false;
+        });
+      }
+    }
+  }
+
+  Future<bool> _showConfirmDialog({
+    required String title,
+    required String message,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('No'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+    return result ?? false;
+  }
+
+  Future<void> _handleCardSwipe() async {
+    if (_isUpdatingDailyLog) return;
+    if (!_isSelectedDateToday || widget.readOnly) return;
+    if (_isDayFinished) {
+      final confirm = await _showConfirmDialog(
+        title: 'Continue logging',
+        message: 'Are you sure you wish to continue logging for today?',
+      );
+      if (!confirm) return;
+      setState(() {
+        _isDayFinished = false;
+      });
+      await _setDailyLogFinished(_selectedLogDate, false);
+      await _fetchDailyLogForDate(_selectedLogDate);
+      return;
+    }
+
+    final confirm = await _showConfirmDialog(
+      title: 'Finish logging',
+      message: 'Are you sure you wish to finish logging for today?',
+    );
+    if (!confirm) return;
+
+    setState(() {
+      _isDayFinished = true;
+      _deleteMode = false;
+    });
+    await _upsertDailyLogForDate(_selectedLogDate);
+    await _setDailyLogFinished(_selectedLogDate, true);
+    await _fetchDailyLogForDate(_selectedLogDate);
+    await AchievementService.updateAchievementsForUser(_activeUserId);
+  }
+
   Future<void> populateFoodItems() async {
     try {
       final categoryService =
           Provider.of<CategoryService>(context, listen: false);
+      final selectedDate = _selectedLogDate;
+      final startOfDay =
+          DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+
+      DateTime? _extractDocDate(QueryDocumentSnapshot doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final timeAdded = data['time_added'];
+        final createdAt = data['created_at'];
+
+        if (timeAdded is Timestamp) return timeAdded.toDate();
+        if (timeAdded is DateTime) return timeAdded;
+        if (createdAt is Timestamp) return createdAt.toDate();
+        if (createdAt is DateTime) return createdAt;
+        return null;
+      }
+
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('user_food')
-          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+          .where('user_id', isEqualTo: _activeUserId)
           .get();
 
       if (querySnapshot.docs.isNotEmpty) {
-        final filteredDocs = querySnapshot.docs
-            .where((doc) =>
-                (doc['foodCategory'] ?? 'Brekkie') ==
-                categoryService.selectedCategory)
-            .toList();
+        final filteredDocs = querySnapshot.docs.where((doc) {
+          final categoryMatches =
+            (doc['foodCategory'] ?? 'Brekkie') ==
+              categoryService.selectedCategory;
+          if (!categoryMatches) return false;
+          final docDate = _extractDocDate(doc);
+            if (docDate == null) return false;
+            return !docDate.isBefore(startOfDay) && docDate.isBefore(endOfDay);
+        }).toList();
 
         if (mounted) {
           setState(() {
@@ -228,6 +583,11 @@ class _HomePageState extends State<HomePage> {
       // Refresh the list of food items
       await populateFoodItems();
 
+      if (_isSelectedDateToday) {
+        await _upsertDailyLogForDate(_selectedLogDate);
+        await _fetchDailyLogForDate(_selectedLogDate);
+      }
+
       // Trigger CreditCard refresh
       setState(() {
         _creditCardRefreshKey++;
@@ -305,7 +665,7 @@ class _HomePageState extends State<HomePage> {
       if (userDataSnapshot.docs.isNotEmpty) {
         final doc = userDataSnapshot.docs.first;
         final docRef = doc.reference;
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data();
 
         final currentCalories = data['calories'];
         double newCalories;
@@ -363,6 +723,11 @@ class _HomePageState extends State<HomePage> {
       await populateFoodItems();
       await _fetchCategoryTotals(currentCategory);
 
+      if (_isSelectedDateToday) {
+        await _upsertDailyLogForDate(_selectedLogDate);
+        await _fetchDailyLogForDate(_selectedLogDate);
+      }
+
       if (mounted) {
         setState(() {
           _creditCardRefreshKey++;
@@ -405,6 +770,10 @@ class _HomePageState extends State<HomePage> {
                     MaterialPageRoute(builder: (_) => AddFoodPage()),
                   );
                   await populateFoodItems();
+                  if (_isSelectedDateToday) {
+                    await _upsertDailyLogForDate(_selectedLogDate);
+                    await _fetchDailyLogForDate(_selectedLogDate);
+                  }
                   setState(() => _creditCardRefreshKey++);
                 },
               ),
@@ -423,6 +792,10 @@ class _HomePageState extends State<HomePage> {
                     ),
                   );
                   await populateFoodItems();
+                  if (_isSelectedDateToday) {
+                    await _upsertDailyLogForDate(_selectedLogDate);
+                    await _fetchDailyLogForDate(_selectedLogDate);
+                  }
                   setState(() => _creditCardRefreshKey++);
                 },
               ),
@@ -440,6 +813,10 @@ class _HomePageState extends State<HomePage> {
                   if (recipeId != null) {
                     await _addRecipeToHome(recipeId, currentCategory);
                     await populateFoodItems();
+                    if (_isSelectedDateToday) {
+                      await _upsertDailyLogForDate(_selectedLogDate);
+                      await _fetchDailyLogForDate(_selectedLogDate);
+                    }
                     setState(() => _creditCardRefreshKey++);
                   }
                 },
@@ -472,6 +849,7 @@ class _HomePageState extends State<HomePage> {
       'foodCategory': category,
       'recipe_id': recipeId,
       'is_recipe': true,
+      'time_added': DateTime.now(),
       'created_at': FieldValue.serverTimestamp(),
     });
 
@@ -536,7 +914,7 @@ class _HomePageState extends State<HomePage> {
 
       final doc = userDataSnapshot.docs.first;
       final docRef = doc.reference;
-      final data = doc.data() as Map<String, dynamic>;
+      final data = doc.data();
 
       final currentCalories = data['calories'];
       double newCalories;
@@ -577,7 +955,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _fetchCategoryTotals(String category) async {
     try {
-      final userId = FirebaseAuth.instance.currentUser!.uid;
+      final userId = _activeUserId;
       final docRef = FirebaseFirestore.instance
           .collection('category_totals')
           .doc('${userId}_$category');
@@ -586,10 +964,12 @@ class _HomePageState extends State<HomePage> {
 
       if (docSnapshot.exists && mounted) {
         setState(() {
-          _totalCalories = ((docSnapshot['total_calories'] ?? 0) as num).toInt();
-          _totalProtein = ((docSnapshot['total_protein'] ?? 0.0) as num).toDouble();
-          _totalCarbs = ((docSnapshot['total_carbs'] ?? 0.0) as num).toDouble();
-          _totalFat = ((docSnapshot['total_fat'] ?? 0.0) as num).toDouble();
+          _totalCalories =
+              (docSnapshot['total_calories'] as num?)?.toInt() ?? 0;
+          _totalProtein =
+              (docSnapshot['total_protein'] as num?)?.toDouble() ?? 0.0;
+          _totalCarbs = (docSnapshot['total_carbs'] as num?)?.toDouble() ?? 0.0;
+          _totalFat = (docSnapshot['total_fat'] as num?)?.toDouble() ?? 0.0;
           _lastFetchedCategory = category;
         });
       } else if (mounted) {
@@ -727,21 +1107,201 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const SizedBox(height: 16),
+                if (widget.showBanner) ...[
+                  Container(
+                    padding: EdgeInsets.fromLTRB(
+                      8,
+                      MediaQuery.of(context).padding.top + 8,
+                      8,
+                      8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1),
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            Navigator.of(context).maybePop();
+                          },
+                          icon: const Icon(Icons.arrow_back),
+                          color: Colors.white,
+                          splashRadius: 20,
+                          tooltip: 'Back',
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              widget.bannerTitle ?? 'Card',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 48),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ] else ...[
+                  const SizedBox(height: 16),
+                ],
                 Center(
-                  child: CreditCard(
-                    key: ValueKey(_creditCardRefreshKey),
-                    onToggleMacros: (showMacros) {
-                      setState(() {
-                        _showMacrosTotal = showMacros;
-                        for (var doc in _foodDocs) {
-                          _foodMacrosVisibility[doc.id] = showMacros;
-                        }
-                      });
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([
+                      _jiggleAnimationController!,
+                      _cardDragResetController!,
+                    ]),
+                    builder: (context, child) {
+                      final resetValue =
+                          _cardDragResetController?.value ?? 0.0;
+                      final effectiveDx = _isResettingCard
+                          ? _dragEndDx * (1 - Curves.easeOut.transform(resetValue))
+                          : _cardDragDx;
+                      return Transform.translate(
+                        offset: Offset(effectiveDx, 0),
+                        child: Transform.rotate(
+                          angle: _jiggleAnimation?.value ?? 0.0,
+                          child: child,
+                        ),
+                      );
                     },
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragStart: (_) {
+                        _cardDragDx = 0;
+                        _cardDragResetController?.stop();
+                        _isResettingCard = false;
+                      },
+                      onHorizontalDragUpdate: (details) {
+                        setState(() {
+                          _cardDragDx += details.delta.dx;
+                        });
+                      },
+                      onHorizontalDragEnd: (_) {
+                        final shouldPrompt = _cardDragDx.abs() > 40;
+                        _resetCardPosition(promptAfterReset: shouldPrompt);
+                      },
+                      child: Stack(
+                        children: [
+                          CreditCard(
+                            key: ValueKey(_creditCardRefreshKey),
+                            userIdOverride: widget.userIdOverride,
+                            cardUserNameOverride: widget.bannerTitle,
+                            validThruDate:
+                                '${_selectedLogDate.day}/${_selectedLogDate.month}/${_selectedLogDate.year}',
+                            onToggleMacros: (showMacros) {
+                              // Trigger jiggle when card is flipped
+                              _jiggleAnimationController?.forward(from: 0);
+                              setState(() {
+                                _showMacrosTotal = showMacros;
+                                for (var doc in _foodDocs) {
+                                  _foodMacrosVisibility[doc.id] = showMacros;
+                                }
+                              });
+                            },
+                          ),
+                          if (_isDayFinished)
+                            Positioned(
+                              top: 10,
+                              right: 12,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.9),
+                                  shape: BoxShape.circle,
+                                ),
+                                padding: const EdgeInsets.all(4),
+                                child: const Icon(
+                                  Icons.check_circle,
+                                  color: Color(0xFF10B981),
+                                  size: 22,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedLogDate,
+                        firstDate: DateTime(2020, 1, 1),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _selectedLogDate = picked;
+                          _deleteMode = false;
+                        });
+                        await populateFoodItems();
+                        await _fetchDailyLogForDate(picked);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.03),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.calendar_month,
+                            color: Color(0xFF6366F1),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _formatDate(_selectedLogDate),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: Colors.grey,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 // Tabs
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -986,7 +1546,9 @@ class _HomePageState extends State<HomePage> {
                                           trailing: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              if (_deleteMode)
+                                              if (_deleteMode &&
+                                                  _isSelectedDateToday &&
+                                                  !_isDayFinished)
                                                 GestureDetector(
                                                   onTap: () async {
                                                     await _deleteFoodItem(
@@ -1087,23 +1649,39 @@ class _HomePageState extends State<HomePage> {
                                     MainAxisAlignment.spaceEvenly,
                                 children: <Widget>[
                                   FloatingActionButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _deleteMode = !_deleteMode;
-                                      });
-                                    },
+                                    onPressed: (_isDayFinished ||
+                                            !_isSelectedDateToday ||
+                                            widget.readOnly)
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _deleteMode = !_deleteMode;
+                                            });
+                                          },
                                     heroTag: 'delete',
-                                    backgroundColor: _deleteMode
-                                        ? Colors.red.shade600
-                                        : Colors.red.shade400,
+                                    backgroundColor: (_isDayFinished ||
+                                            !_isSelectedDateToday ||
+                                            widget.readOnly)
+                                        ? Colors.grey.shade400
+                                        : _deleteMode
+                                            ? Colors.red.shade600
+                                            : Colors.red.shade400,
                                     child: Icon(_deleteMode
                                         ? Icons.close
                                         : Icons.delete_outline),
                                   ),
                                   FloatingActionButton(
-                                    onPressed: _showAddOptions,
+                                    onPressed: (_isDayFinished ||
+                                        !_isSelectedDateToday ||
+                                        widget.readOnly)
+                                        ? null
+                                        : _showAddOptions,
                                     heroTag: 'add',
-                                    backgroundColor: Colors.green.shade400,
+                                    backgroundColor: (_isDayFinished ||
+                                        !_isSelectedDateToday ||
+                                        widget.readOnly)
+                                        ? Colors.grey.shade400
+                                        : Colors.green.shade400,
                                     child: const Icon(Icons.add),
                                   ),
                                 ],

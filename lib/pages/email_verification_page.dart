@@ -17,7 +17,6 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
   late User? _user;
   bool _isCheckingVerification = false;
   bool _canResendEmail = true;
-  late DateTime _resendTimer;
   int _resendCountdown = 0;
 
   @override
@@ -34,7 +33,6 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
         await _user!.sendEmailVerification();
         setState(() {
           _canResendEmail = false;
-          _resendTimer = DateTime.now().add(const Duration(seconds: 60));
           _resendCountdown = 60;
         });
         _startResendTimer();

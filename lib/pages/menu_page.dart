@@ -1,9 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/pages/login_or_register_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/recipes_page.dart';
+import 'package:namer_app/pages/friends_page.dart';
+import 'package:namer_app/pages/achievements_page.dart';
 
 class MenuPage extends StatelessWidget {
   final bool hideNav;
@@ -68,6 +71,99 @@ class MenuPage extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) => UserSettingsPage(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Friends
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('friend_requests')
+                  .where('to_user_id',
+                      isEqualTo: FirebaseAuth.instance.currentUser?.uid ?? '')
+                  .where('status', isEqualTo: 'pending')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final pendingCount = snapshot.data?.docs.length ?? 0;
+
+                return Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListTile(
+                    leading: const Icon(Icons.people, color: Color(0xFF6366F1)),
+                    title: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Friends',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                        if (pendingCount > 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              pendingCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    trailing: const Icon(Icons.arrow_forward_ios),
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const FriendsPage(),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            // Achievements
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListTile(
+                leading: const Icon(Icons.emoji_events,
+                    color: Color(0xFF6366F1)),
+                title: const Text(
+                  'Achievements',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AchievementsPage(),
                     ),
                   );
                 },

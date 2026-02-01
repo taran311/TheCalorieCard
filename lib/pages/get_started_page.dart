@@ -84,8 +84,10 @@ class _GetStartedPageState extends State<GetStartedPage> {
   final date = DateTime.now().add(const Duration(days: 31));
 
   void saveData() async {
+    final userId = FirebaseAuth.instance.currentUser!.uid;
+
     await FirebaseFirestore.instance.collection('user_data').add({
-      'user_id': FirebaseAuth.instance.currentUser!.uid,
+      'user_id': userId,
       'age': _selectedAge,
       'gender': genderSelections.first ? 'male' : 'female',
       'height': _selectedHeight,
@@ -100,6 +102,12 @@ class _GetStartedPageState extends State<GetStartedPage> {
       'carbs_balance': _carbsGoal ?? 0,
       'fats_balance': _fatsGoal ?? 0,
     });
+
+    // Create user document with friends list
+    await FirebaseFirestore.instance.collection('users').doc(userId).set({
+      'email': FirebaseAuth.instance.currentUser!.email,
+      'friends': [],
+    }, SetOptions(merge: true));
   }
 
   void updateCardActiveCalories() {
