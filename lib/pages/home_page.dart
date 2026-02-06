@@ -111,6 +111,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   // Individual food item macro visibility tracking
   Map<String, bool> _foodMacrosVisibility = {};
 
+  // Food reaction tracking
+  Map<String, List<Map<String, dynamic>>> _foodReactions = {};
+  Map<String, bool> _showEmojiPicker = {};
+  Map<String, bool> _showReactions = {};
+  String? _reactionConfirmationFoodId;
+  String? _reactionConfirmationEmoji;
+  String? _reactionConfirmationUsername;
+  AnimationController? _reactionFadeController;
+  Animation<double>? _reactionFadeAnimation;
+
   // Card animations
   AnimationController? _jiggleAnimationController;
   Animation<double>? _jiggleAnimation;
@@ -133,6 +143,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     _jiggleAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
+    );
+
+    _reactionFadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _reactionFadeAnimation = CurvedAnimation(
+      parent: _reactionFadeController!,
+      curve: Curves.easeInOut,
     );
 
     _jiggleAnimation = TweenSequence<double>([
@@ -158,6 +177,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   void dispose() {
     _jiggleAnimationController?.dispose();
     _cardDragResetController?.dispose();
+    _reactionFadeController?.dispose();
     super.dispose();
   }
 
@@ -367,8 +387,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         },
         'balances': {
           'calories': (userData['calories'] as num?)?.toDouble(),
-          'protein_balance':
-              (userData['protein_balance'] as num?)?.toDouble(),
+          'protein_balance': (userData['protein_balance'] as num?)?.toDouble(),
           'carbs_balance': (userData['carbs_balance'] as num?)?.toDouble(),
           'fats_balance': (userData['fats_balance'] as num?)?.toDouble(),
         },
@@ -478,13 +497,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
       if (querySnapshot.docs.isNotEmpty) {
         final filteredDocs = querySnapshot.docs.where((doc) {
-          final categoryMatches =
-            (doc['foodCategory'] ?? 'Brekkie') ==
+          final categoryMatches = (doc['foodCategory'] ?? 'Brekkie') ==
               categoryService.selectedCategory;
           if (!categoryMatches) return false;
           final docDate = _extractDocDate(doc);
-            if (docDate == null) return false;
-            return !docDate.isBefore(startOfDay) && docDate.isBefore(endOfDay);
+          if (docDate == null) return false;
+          return !docDate.isBefore(startOfDay) && docDate.isBefore(endOfDay);
         }).toList();
 
         if (mounted) {
@@ -496,6 +514,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               _foodMacrosVisibility[doc.id] = false;
             }
           });
+          // Fetch reactions for all food items
+          await _fetchReactionsForFoodItems();
         }
       } else {
         if (mounted) {
@@ -513,6 +533,136 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           _foodMacrosVisibility.clear();
         });
       }
+    }
+  }
+
+  Future<void> _fetchReactionsForFoodItems() async {
+    try {
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) return;
+
+      for (var doc in _foodDocs) {
+        final reactionsSnapshot = await FirebaseFirestore.instance
+            .collection('food_reactions')
+            .where('food_item_id', isEqualTo: doc.id)
+            .get();
+
+        final reactions =
+            await Future.wait(reactionsSnapshot.docs.map((reactionDoc) async {
+          final userId = reactionDoc['user_id'];
+          // Fetch user email/username
+          String username = 'Unknown';
+          try {
+            final userDoc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(userId)
+                .get();
+            username = userDoc.data()?['email']?.split('@')[0] ?? 'Unknown';
+          } catch (e) {
+            print('Error fetching user data: $e');
+          }
+
+          return {
+            'id': reactionDoc.id,
+            'emoji': reactionDoc['emoji'],
+            'user_id': userId,
+            'username': username,
+          };
+        }));
+
+        if (mounted) {
+          setState(() {
+            _foodReactions[doc.id] = reactions;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error fetching reactions: $e');
+    }
+  }
+
+  Future<void> _addReaction(String foodItemId, String emoji) async {
+    try {
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) return;
+
+      // Get current user's email for display
+      final currentUserEmail = FirebaseAuth.instance.currentUser?.email ?? '';
+      final username = currentUserEmail.split('@')[0];
+
+      // Check if user already reacted to this food item
+      final existingReaction = await FirebaseFirestore.instance
+          .collection('food_reactions')
+          .where('food_item_id', isEqualTo: foodItemId)
+          .where('user_id', isEqualTo: currentUserId)
+          .limit(1)
+          .get();
+
+      if (existingReaction.docs.isNotEmpty) {
+        // Update existing reaction
+        await existingReaction.docs.first.reference.update({
+          'emoji': emoji,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Create new reaction
+        await FirebaseFirestore.instance.collection('food_reactions').add({
+          'food_item_id': foodItemId,
+          'owner_id': _activeUserId,
+          'user_id': currentUserId,
+          'emoji': emoji,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // Refresh reactions
+      await _fetchReactionsForFoodItems();
+
+      if (mounted) {
+        setState(() {
+          _showEmojiPicker[foodItemId] = false;
+          // Show confirmation animation
+          _reactionConfirmationFoodId = foodItemId;
+          _reactionConfirmationEmoji = emoji;
+          _reactionConfirmationUsername = username;
+        });
+
+        // Fade in animation
+        _reactionFadeController?.forward(from: 0.0);
+
+        // Wait 2 seconds then fade out
+        await Future.delayed(const Duration(seconds: 2));
+        await _reactionFadeController?.reverse();
+
+        if (mounted) {
+          setState(() {
+            _reactionConfirmationFoodId = null;
+            _reactionConfirmationEmoji = null;
+            _reactionConfirmationUsername = null;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error adding reaction: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error adding reaction: $e')),
+        );
+      }
+    }
+  }
+
+  void _handleFoodItemTap(String foodItemId) {
+    if (widget.readOnly) {
+      // Show emoji picker
+      setState(() {
+        _showEmojiPicker[foodItemId] = !(_showEmojiPicker[foodItemId] ?? false);
+      });
+    } else {
+      // Toggle reactions display
+      setState(() {
+        _showReactions[foodItemId] = !(_showReactions[foodItemId] ?? false);
+      });
     }
   }
 
@@ -1168,10 +1318,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       _cardDragResetController!,
                     ]),
                     builder: (context, child) {
-                      final resetValue =
-                          _cardDragResetController?.value ?? 0.0;
+                      final resetValue = _cardDragResetController?.value ?? 0.0;
                       final effectiveDx = _isResettingCard
-                          ? _dragEndDx * (1 - Curves.easeOut.transform(resetValue))
+                          ? _dragEndDx *
+                              (1 - Curves.easeOut.transform(resetValue))
                           : _cardDragDx;
                       return Transform.translate(
                         offset: Offset(effectiveDx, 0),
@@ -1502,141 +1652,336 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                       ),
                                       child: GestureDetector(
                                         onTap: () {
-                                          setState(() {
-                                            // Toggle only this food item's macro visibility
-                                            _foodMacrosVisibility[doc.id] =
-                                                !(_foodMacrosVisibility[
-                                                        doc.id] ??
-                                                    false);
-                                          });
+                                          _handleFoodItemTap(doc.id);
                                         },
-                                        child: ListTile(
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 8,
-                                          ),
-                                          title: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                doc["food_description"],
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  color: Colors.black87,
-                                                  fontWeight: FontWeight.w500,
+                                        child: Column(
+                                          children: [
+                                            ListTile(
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 8,
+                                              ),
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              title: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    doc["food_description"],
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.black87,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                  if (doc["food_portion"] !=
+                                                          null &&
+                                                      (doc["food_portion"]
+                                                              as String)
+                                                          .isNotEmpty)
+                                                    Text(
+                                                      '(${doc["food_portion"]})',
+                                                      style: TextStyle(
+                                                        color: Colors
+                                                            .grey.shade600,
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w400,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                              trailing: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                children: [
+                                                  if (_deleteMode &&
+                                                      _isSelectedDateToday &&
+                                                      !_isDayFinished)
+                                                    GestureDetector(
+                                                      onTap: () async {
+                                                        await _deleteFoodItem(
+                                                            doc.id);
+                                                      },
+                                                      child: Icon(
+                                                        Icons.delete_outline,
+                                                        color:
+                                                            Colors.red.shade400,
+                                                        size: 24,
+                                                      ),
+                                                    )
+                                                  else
+                                                    Container(
+                                                      padding:
+                                                          EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical:
+                                                            (_foodMacrosVisibility[
+                                                                        doc.id] ??
+                                                                    false)
+                                                                ? 1
+                                                                : 4,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        gradient:
+                                                            LinearGradient(
+                                                          colors: [
+                                                            Colors.orange
+                                                                .shade400,
+                                                            Colors.orange
+                                                                .shade600,
+                                                          ],
+                                                        ),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(12),
+                                                      ),
+                                                      child:
+                                                          (_foodMacrosVisibility[
+                                                                      doc.id] ??
+                                                                  false)
+                                                              ? Column(
+                                                                  mainAxisAlignment:
+                                                                      MainAxisAlignment
+                                                                          .center,
+                                                                  mainAxisSize:
+                                                                      MainAxisSize
+                                                                          .min,
+                                                                  children: [
+                                                                    Text(
+                                                                      '${_roundMacro(doc["food_protein"])}g Protein',
+                                                                      style:
+                                                                          const TextStyle(
+                                                                        color: Colors
+                                                                            .white,
+                                                                        fontWeight:
+                                                                            FontWeight.bold,
+                                                                        fontSize:
+                                                                            10,
+                                                                        height:
+                                                                            1.2,
+                                                                      ),
+                                                                    ),
+                                                                    Text(
+                                                                      '${_roundMacro(doc["food_carbs"])}g Carbs',
+                                                                      style:
+                                                                          const TextStyle(
+                                                                        color: Colors
+                                                                            .white,
+                                                                        fontWeight:
+                                                                            FontWeight.bold,
+                                                                        fontSize:
+                                                                            10,
+                                                                        height:
+                                                                            1.2,
+                                                                      ),
+                                                                    ),
+                                                                    Text(
+                                                                      '${_roundMacro(doc["food_fat"])}g Fat',
+                                                                      style:
+                                                                          const TextStyle(
+                                                                        color: Colors
+                                                                            .white,
+                                                                        fontWeight:
+                                                                            FontWeight.bold,
+                                                                        fontSize:
+                                                                            10,
+                                                                        height:
+                                                                            1.2,
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                )
+                                                              : Text(
+                                                                  '${doc["food_calories"]} kcal',
+                                                                  style:
+                                                                      const TextStyle(
+                                                                    color: Colors
+                                                                        .white,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                    fontSize:
+                                                                        12,
+                                                                  ),
+                                                                ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                            // Show emoji picker when in readOnly mode
+                                            if (widget.readOnly &&
+                                                (_showEmojiPicker[doc.id] ??
+                                                    false))
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.all(12),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey.shade100,
+                                                  borderRadius:
+                                                      const BorderRadius.only(
+                                                    bottomLeft:
+                                                        Radius.circular(12),
+                                                    bottomRight:
+                                                        Radius.circular(12),
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment
+                                                          .spaceEvenly,
+                                                  children: [
+                                                    GestureDetector(
+                                                      onTap: () => _addReaction(
+                                                          doc.id, '🔥'),
+                                                      child: const Text('🔥',
+                                                          style: TextStyle(
+                                                              fontSize: 32)),
+                                                    ),
+                                                    GestureDetector(
+                                                      onTap: () => _addReaction(
+                                                          doc.id, '😈'),
+                                                      child: const Text('😈',
+                                                          style: TextStyle(
+                                                              fontSize: 32)),
+                                                    ),
+                                                    GestureDetector(
+                                                      onTap: () => _addReaction(
+                                                          doc.id, '💪'),
+                                                      child: const Text('💪',
+                                                          style: TextStyle(
+                                                              fontSize: 32)),
+                                                    ),
+                                                    GestureDetector(
+                                                      onTap: () => _addReaction(
+                                                          doc.id, '❤️'),
+                                                      child: const Text('❤️',
+                                                          style: TextStyle(
+                                                              fontSize: 32)),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
-                                              if (doc["food_portion"] != null &&
-                                                  (doc["food_portion"]
-                                                          as String)
-                                                      .isNotEmpty)
-                                                Text(
-                                                  '(${doc["food_portion"]})',
-                                                  style: TextStyle(
-                                                    color: Colors.grey.shade600,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w400,
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                          trailing: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              if (_deleteMode &&
-                                                  _isSelectedDateToday &&
-                                                  !_isDayFinished)
-                                                GestureDetector(
-                                                  onTap: () async {
-                                                    await _deleteFoodItem(
-                                                        doc.id);
-                                                  },
-                                                  child: Icon(
-                                                    Icons.delete_outline,
-                                                    color: Colors.red.shade400,
-                                                    size: 24,
-                                                  ),
-                                                )
-                                              else
-                                                Container(
+                                            // Show reaction confirmation when in readOnly mode after adding emoji
+                                            if (widget.readOnly &&
+                                                _reactionConfirmationFoodId ==
+                                                    doc.id &&
+                                                _reactionFadeAnimation != null)
+                                              FadeTransition(
+                                                opacity:
+                                                    _reactionFadeAnimation!,
+                                                child: Container(
                                                   padding: const EdgeInsets
                                                       .symmetric(
-                                                    horizontal: 12,
-                                                    vertical: 4,
+                                                    horizontal: 16,
+                                                    vertical: 8,
                                                   ),
                                                   decoration: BoxDecoration(
-                                                    gradient: LinearGradient(
-                                                      colors: [
-                                                        Colors.orange.shade400,
-                                                        Colors.orange.shade600,
-                                                      ],
-                                                    ),
+                                                    color: Colors.green.shade50,
                                                     borderRadius:
-                                                        BorderRadius.circular(
-                                                            20),
+                                                        const BorderRadius.only(
+                                                      bottomLeft:
+                                                          Radius.circular(12),
+                                                      bottomRight:
+                                                          Radius.circular(12),
+                                                    ),
                                                   ),
-                                                  child: (_foodMacrosVisibility[
-                                                              doc.id] ??
-                                                          false)
-                                                      ? Column(
-                                                          mainAxisAlignment:
-                                                              MainAxisAlignment
-                                                                  .center,
-                                                          children: [
-                                                            Text(
-                                                              '${_roundMacro(doc["food_protein"])}g Protein',
-                                                              style:
-                                                                  const TextStyle(
-                                                                color: Colors
-                                                                    .white,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                fontSize: 10,
-                                                              ),
-                                                            ),
-                                                            Text(
-                                                              '${_roundMacro(doc["food_carbs"])}g Carbs',
-                                                              style:
-                                                                  const TextStyle(
-                                                                color: Colors
-                                                                    .white,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                fontSize: 10,
-                                                              ),
-                                                            ),
-                                                            Text(
-                                                              '${_roundMacro(doc["food_fat"])}g Fat',
-                                                              style:
-                                                                  const TextStyle(
-                                                                color: Colors
-                                                                    .white,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                fontSize: 10,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        )
-                                                      : Text(
-                                                          '${doc["food_calories"]} kcal',
-                                                          style:
-                                                              const TextStyle(
-                                                            color: Colors.white,
+                                                  child: Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          _reactionConfirmationUsername ??
+                                                              '',
+                                                          style: TextStyle(
+                                                            color: Colors
+                                                                .grey.shade700,
                                                             fontWeight:
-                                                                FontWeight.bold,
-                                                            fontSize: 12,
+                                                                FontWeight.w500,
                                                           ),
                                                         ),
+                                                      ),
+                                                      Text(
+                                                        _reactionConfirmationEmoji ??
+                                                            '',
+                                                        style: const TextStyle(
+                                                            fontSize: 24),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                            ],
-                                          ),
+                                              ),
+                                            // Show reactions when owner taps food item
+                                            if (!widget.readOnly &&
+                                                (_showReactions[doc.id] ??
+                                                    false) &&
+                                                _foodReactions[doc.id] !=
+                                                    null &&
+                                                _foodReactions[doc.id]!
+                                                    .isNotEmpty)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 16,
+                                                  vertical: 8,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blue.shade50,
+                                                  borderRadius:
+                                                      const BorderRadius.only(
+                                                    bottomLeft:
+                                                        Radius.circular(12),
+                                                    bottomRight:
+                                                        Radius.circular(12),
+                                                  ),
+                                                ),
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children:
+                                                      _foodReactions[doc.id]!
+                                                          .map(
+                                                              (reaction) =>
+                                                                  Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .symmetric(
+                                                                      vertical:
+                                                                          2,
+                                                                    ),
+                                                                    child: Row(
+                                                                      children: [
+                                                                        Expanded(
+                                                                          child:
+                                                                              Text(
+                                                                            reaction['username'] ??
+                                                                                'Unknown',
+                                                                            style:
+                                                                                TextStyle(
+                                                                              color: Colors.grey.shade700,
+                                                                              fontWeight: FontWeight.w500,
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                        Text(
+                                                                          reaction['emoji'] ??
+                                                                              '',
+                                                                          style:
+                                                                              const TextStyle(fontSize: 20),
+                                                                        ),
+                                                                      ],
+                                                                    ),
+                                                                  ))
+                                                          .toList(),
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                       ),
                                     );
@@ -1644,48 +1989,45 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                 ),
                               ),
                               const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                children: <Widget>[
-                                  FloatingActionButton(
-                                    onPressed: (_isDayFinished ||
-                                            !_isSelectedDateToday ||
-                                            widget.readOnly)
-                                        ? null
-                                        : () {
-                                            setState(() {
-                                              _deleteMode = !_deleteMode;
-                                            });
-                                          },
-                                    heroTag: 'delete',
-                                    backgroundColor: (_isDayFinished ||
-                                            !_isSelectedDateToday ||
-                                            widget.readOnly)
-                                        ? Colors.grey.shade400
-                                        : _deleteMode
-                                            ? Colors.red.shade600
-                                            : Colors.red.shade400,
-                                    child: Icon(_deleteMode
-                                        ? Icons.close
-                                        : Icons.delete_outline),
-                                  ),
-                                  FloatingActionButton(
-                                    onPressed: (_isDayFinished ||
-                                        !_isSelectedDateToday ||
-                                        widget.readOnly)
-                                        ? null
-                                        : _showAddOptions,
-                                    heroTag: 'add',
-                                    backgroundColor: (_isDayFinished ||
-                                        !_isSelectedDateToday ||
-                                        widget.readOnly)
-                                        ? Colors.grey.shade400
-                                        : Colors.green.shade400,
-                                    child: const Icon(Icons.add),
-                                  ),
-                                ],
-                              ),
+                              if (!widget.readOnly)
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: <Widget>[
+                                    FloatingActionButton(
+                                      onPressed: (_isDayFinished ||
+                                              !_isSelectedDateToday)
+                                          ? null
+                                          : () {
+                                              setState(() {
+                                                _deleteMode = !_deleteMode;
+                                              });
+                                            },
+                                      heroTag: 'delete',
+                                      backgroundColor: (_isDayFinished ||
+                                              !_isSelectedDateToday)
+                                          ? Colors.grey.shade400
+                                          : _deleteMode
+                                              ? Colors.red.shade600
+                                              : Colors.red.shade400,
+                                      child: Icon(_deleteMode
+                                          ? Icons.close
+                                          : Icons.delete_outline),
+                                    ),
+                                    FloatingActionButton(
+                                      onPressed: (_isDayFinished ||
+                                              !_isSelectedDateToday)
+                                          ? null
+                                          : _showAddOptions,
+                                      heroTag: 'add',
+                                      backgroundColor: (_isDayFinished ||
+                                              !_isSelectedDateToday)
+                                          ? Colors.grey.shade400
+                                          : Colors.green.shade400,
+                                      child: const Icon(Icons.add),
+                                    ),
+                                  ],
+                                ),
                             ],
                           ),
                         ),

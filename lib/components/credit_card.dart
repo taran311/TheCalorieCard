@@ -86,8 +86,8 @@ class _CreditCardWidgetState extends State<CreditCard>
 
   Future<void> _fetchUserData({int? initialCalories}) async {
     try {
-        final userId = widget.userIdOverride ??
-          FirebaseAuth.instance.currentUser?.uid;
+      final userId =
+          widget.userIdOverride ?? FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) {
         setState(() {
           isLoading = false;
@@ -136,7 +136,7 @@ class _CreditCardWidgetState extends State<CreditCard>
   @override
   Widget build(BuildContext context) {
     final today = widget.validThruDate ??
-      '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}';
+        '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}';
 
     if (isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -352,8 +352,7 @@ class _CreditCardWidgetState extends State<CreditCard>
                 child: Align(
                   alignment: Alignment.bottomRight,
                   child: Text(
-                    _getTruncatedName(
-                      widget.cardUserNameOverride ??
+                    _getTruncatedName(widget.cardUserNameOverride ??
                         FirebaseAuth.instance.currentUser?.email ??
                         'User'),
                     style: GoogleFonts.poppins(

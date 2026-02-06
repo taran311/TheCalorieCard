@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/achievements_page.dart';
+import 'package:namer_app/pages/friend_group_page.dart';
+import 'package:namer_app/pages/messages_page.dart';
 
 class FriendsPage extends StatefulWidget {
   const FriendsPage({Key? key}) : super(key: key);
@@ -18,6 +20,12 @@ class _FriendsPageState extends State<FriendsPage> {
   bool _isSubmitting = false;
   bool _isDeleteMode = false;
   String? _errorMessage;
+  
+  // Friend group creation
+  bool _showAddGroupModal = false;
+  final TextEditingController _groupNameController = TextEditingController();
+  Set<String> _selectedFriendIds = {};
+  bool _isCreatingGroup = false;
 
   @override
   void initState() {
@@ -265,6 +273,350 @@ class _FriendsPageState extends State<FriendsPage> {
         );
       }
     }
+  }
+
+  Future<void> _startChatWithFriend(String friendId, String friendEmail) async {
+    try {
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) return;
+
+      // Create a sorted list to ensure consistent conversation ID
+      final participantIds = [currentUserId, friendId]..sort();
+      final conversationId = '${participantIds[0]}_${participantIds[1]}';
+
+      // Check if conversation already exists
+      final conversationDoc = await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId)
+          .get();
+
+      if (!conversationDoc.exists) {
+        // Create new conversation
+        await FirebaseFirestore.instance
+            .collection('conversations')
+            .doc(conversationId)
+            .set({
+          'participant_ids': participantIds,
+          'conversation_name': friendEmail.split('@')[0],
+          'is_group': false,
+          'created_at': FieldValue.serverTimestamp(),
+          'last_message': '',
+          'last_message_time': FieldValue.serverTimestamp(),
+          'unread_count': {
+            currentUserId: 0,
+            friendId: 0,
+          },
+        });
+      }
+
+      // Navigate to chat
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatDetailPage(
+              conversationId: conversationId,
+              conversationName: friendEmail.split('@')[0],
+              isGroup: false,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting chat: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _createFriendGroup() async {
+    final groupName = _groupNameController.text.trim();
+    
+    if (groupName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a group name')),
+      );
+      return;
+    }
+
+    if (_selectedFriendIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one friend')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isCreatingGroup = true;
+    });
+
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      // Add creator to the members list
+      final allMembers = [currentUser.uid, ..._selectedFriendIds];
+
+      await FirebaseFirestore.instance.collection('friend_groups').add({
+        'name': groupName,
+        'creator_id': currentUser.uid,
+        'members': allMembers,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+
+      _groupNameController.clear();
+      setState(() {
+        _showAddGroupModal = false;
+        _selectedFriendIds.clear();
+        _isCreatingGroup = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend group created!')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isCreatingGroup = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  void _showGroupCreationModal(List<String> friendIds) {
+    final groupNameSuggestions = [
+      'SoberGophers',
+      'CleanMachines',
+      'KetoGang',
+      'TeamVegan',
+      'FatBurnersUnited',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Create Friend Group',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _selectedFriendIds.clear();
+                          _groupNameController.clear();
+                        });
+                      },
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Group Name',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _groupNameController,
+                        decoration: InputDecoration(
+                          hintText: 'Enter group name',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Suggested Names',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: groupNameSuggestions.map((name) {
+                          return GestureDetector(
+                            onTap: () {
+                              setModalState(() {
+                                _groupNameController.text = name;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo.shade50,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: const Color(0xFF6366F1).withOpacity(0.3),
+                                ),
+                              ),
+                              child: Text(
+                                name,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: const Color(0xFF6366F1),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Select Friends',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...friendIds.map((friendId) {
+                        return FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(friendId)
+                              .get(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const SizedBox.shrink();
+                            }
+
+                            final friendEmail =
+                                snapshot.data?.get('email') ?? 'Unknown';
+
+                            return CheckboxListTile(
+                              value: _selectedFriendIds.contains(friendId),
+                              onChanged: (bool? value) {
+                                setModalState(() {
+                                  if (value == true) {
+                                    _selectedFriendIds.add(friendId);
+                                  } else {
+                                    _selectedFriendIds.remove(friendId);
+                                  }
+                                });
+                                setState(() {});
+                              },
+                              title: Text(
+                                friendEmail,
+                                style: GoogleFonts.poppins(fontSize: 14),
+                              ),
+                              activeColor: const Color(0xFF6366F1),
+                            );
+                          },
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isCreatingGroup
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            _createFriendGroup();
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: _isCreatingGroup
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            'Create Group',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -590,6 +942,16 @@ class _FriendsPageState extends State<FriendsPage> {
                                                     ),
                                                     tooltip: 'View achievements',
                                                   ),
+                                                  IconButton(
+                                                    onPressed: () {
+                                                      _startChatWithFriend(friendId, friendEmail);
+                                                    },
+                                                    icon: const Icon(
+                                                      Icons.chat_bubble_outline,
+                                                      color: Color(0xFF6366F1),
+                                                    ),
+                                                    tooltip: 'Chat',
+                                                  ),
                                                 if (_isDeleteMode)
                                                   IconButton(
                                                     onPressed: () {
@@ -606,6 +968,118 @@ class _FriendsPageState extends State<FriendsPage> {
                                           ),
                                         );
                                       },
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Friend Groups Section
+                            Text(
+                              'Friend Groups',
+                              style: GoogleFonts.poppins(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance
+                                  .collection('friend_groups')
+                                  .where('creator_id', isEqualTo: currentUser.uid)
+                                  .snapshots(),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                    ConnectionState.waiting) {
+                                  return const Center(
+                                    child: CircularProgressIndicator(),
+                                  );
+                                }
+
+                                if (!snapshot.hasData ||
+                                    snapshot.data!.docs.isEmpty) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 24),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      'No friend groups yet',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                return ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: snapshot.data!.docs.length,
+                                  itemBuilder: (context, index) {
+                                    final doc = snapshot.data!.docs[index];
+                                    final groupName = doc['name'] as String? ?? 'Unnamed Group';
+                                    final memberIds = (doc['members'] as List?)?.cast<String>() ?? [];
+
+                                    return GestureDetector(
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => FriendGroupPage(
+                                              groupId: doc.id,
+                                              groupName: groupName,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: Container(
+                                        margin: const EdgeInsets.only(bottom: 12),
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.indigo.shade50,
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: const Color(0xFF6366F1).withOpacity(0.3),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.group,
+                                              color: const Color(0xFF6366F1),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    groupName,
+                                                    style: GoogleFonts.poppins(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
+                                                    style: GoogleFonts.poppins(
+                                                      fontSize: 12,
+                                                      color: Colors.grey.shade600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const Icon(
+                                              Icons.arrow_forward_ios,
+                                              size: 16,
+                                              color: Colors.grey,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     );
                                   },
                                 );
@@ -687,37 +1161,60 @@ class _FriendsPageState extends State<FriendsPage> {
             ),
       floatingActionButton: currentUser == null
           ? null
-          : Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                FloatingActionButton(
-                  heroTag: 'friends-add',
-                  onPressed: () {
-                    setState(() {
-                      _showAddFriendForm = !_showAddFriendForm;
-                      _errorMessage = null;
-                    });
-                  },
-                  backgroundColor: Colors.green.shade400,
-                  child: Icon(
-                    _showAddFriendForm ? Icons.close : Icons.person_add,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FloatingActionButton(
-                  heroTag: 'friends-delete',
-                  onPressed: () {
-                    setState(() {
-                      _isDeleteMode = !_isDeleteMode;
-                    });
-                  },
-                  backgroundColor:
-                      _isDeleteMode ? Colors.red.shade600 : Colors.red.shade400,
-                  child: Icon(
-                    _isDeleteMode ? Icons.close : Icons.delete_outline,
-                  ),
-                ),
-              ],
+          : StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(currentUser.uid)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final friendIds =
+                    (snapshot.data?.get('friends') as List?)?.cast<String>() ??
+                        [];
+                final hasFriends = friendIds.isNotEmpty;
+
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (hasFriends)
+                      FloatingActionButton(
+                        heroTag: 'friends-group',
+                        onPressed: () {
+                          _showGroupCreationModal(friendIds);
+                        },
+                        backgroundColor: const Color(0xFF6366F1),
+                        child: const Icon(Icons.group_add),
+                      ),
+                    if (hasFriends) const SizedBox(height: 12),
+                    FloatingActionButton(
+                      heroTag: 'friends-add',
+                      onPressed: () {
+                        setState(() {
+                          _showAddFriendForm = !_showAddFriendForm;
+                          _errorMessage = null;
+                        });
+                      },
+                      backgroundColor: Colors.green.shade400,
+                      child: Icon(
+                        _showAddFriendForm ? Icons.close : Icons.person_add,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    FloatingActionButton(
+                      heroTag: 'friends-delete',
+                      onPressed: () {
+                        setState(() {
+                          _isDeleteMode = !_isDeleteMode;
+                        });
+                      },
+                      backgroundColor:
+                          _isDeleteMode ? Colors.red.shade600 : Colors.red.shade400,
+                      child: Icon(
+                        _isDeleteMode ? Icons.close : Icons.delete_outline,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
     );
   }
