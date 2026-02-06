@@ -20,7 +20,7 @@ class _FriendsPageState extends State<FriendsPage> {
   bool _isSubmitting = false;
   bool _isDeleteMode = false;
   String? _errorMessage;
-  
+
   // Friend group creation
   bool _showAddGroupModal = false;
   final TextEditingController _groupNameController = TextEditingController();
@@ -331,9 +331,67 @@ class _FriendsPageState extends State<FriendsPage> {
     }
   }
 
+  Future<void> _startGroupChat(
+      String groupId, String groupName, List<String> memberIds) async {
+    try {
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) return;
+
+      final conversationId = 'group_$groupId';
+
+      // Check if conversation already exists
+      final conversationDoc = await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId)
+          .get();
+
+      if (!conversationDoc.exists) {
+        // Create new group conversation
+        Map<String, int> unreadCount = {};
+        for (final memberId in memberIds) {
+          unreadCount[memberId] = 0;
+        }
+
+        await FirebaseFirestore.instance
+            .collection('conversations')
+            .doc(conversationId)
+            .set({
+          'participant_ids': memberIds,
+          'conversation_name': groupName,
+          'is_group': true,
+          'group_id': groupId,
+          'created_at': FieldValue.serverTimestamp(),
+          'last_message': '',
+          'last_message_time': FieldValue.serverTimestamp(),
+          'unread_count': unreadCount,
+        });
+      }
+
+      // Navigate to chat
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatDetailPage(
+              conversationId: conversationId,
+              conversationName: groupName,
+              isGroup: true,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting chat: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _createFriendGroup() async {
     final groupName = _groupNameController.text.trim();
-    
+
     if (groupName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a group name')),
@@ -500,7 +558,8 @@ class _FriendsPageState extends State<FriendsPage> {
                                 color: Colors.indigo.shade50,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: const Color(0xFF6366F1).withOpacity(0.3),
+                                  color:
+                                      const Color(0xFF6366F1).withOpacity(0.3),
                                 ),
                               ),
                               child: Text(
@@ -902,64 +961,72 @@ class _FriendsPageState extends State<FriendsPage> {
                                                     ),
                                                   ),
                                                 ),
-                                                  IconButton(
-                                                    onPressed: () {
-                                                      Navigator.push(
-                                                        context,
-                                                        MaterialPageRoute(
-                                                          builder: (_) => HomePage(
-                                                            readOnly: true,
-                                                            hideNav: true,
-                                                            userIdOverride: friendId,
-                                                            showBanner: true,
-                                                            bannerTitle: friendEmail,
-                                                          ),
+                                                IconButton(
+                                                  onPressed: () {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            HomePage(
+                                                          readOnly: true,
+                                                          hideNav: true,
+                                                          userIdOverride:
+                                                              friendId,
+                                                          showBanner: true,
+                                                          bannerTitle:
+                                                              friendEmail,
                                                         ),
-                                                      );
-                                                    },
-                                                    icon: const Icon(
-                                                      Icons.credit_card,
-                                                      color: Color(0xFF6366F1),
-                                                    ),
-                                                    tooltip: 'View card',
+                                                      ),
+                                                    );
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.credit_card,
+                                                    color: Color(0xFF6366F1),
                                                   ),
-                                                  IconButton(
-                                                    onPressed: () {
-                                                      Navigator.push(
-                                                        context,
-                                                        MaterialPageRoute(
-                                                          builder: (_) => AchievementsPage(
-                                                            userIdOverride: friendId,
-                                                            titleOverride:
-                                                                '${friendEmail}\'s Achievements',
-                                                          ),
+                                                  tooltip: 'View card',
+                                                ),
+                                                IconButton(
+                                                  onPressed: () {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            AchievementsPage(
+                                                          userIdOverride:
+                                                              friendId,
+                                                          titleOverride:
+                                                              '${friendEmail}\'s Achievements',
                                                         ),
-                                                      );
-                                                    },
-                                                    icon: const Icon(
-                                                      Icons.emoji_events,
-                                                      color: Color(0xFFF59E0B),
-                                                    ),
-                                                    tooltip: 'View achievements',
+                                                      ),
+                                                    );
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.emoji_events,
+                                                    color: Color(0xFFF59E0B),
                                                   ),
-                                                  IconButton(
-                                                    onPressed: () {
-                                                      _startChatWithFriend(friendId, friendEmail);
-                                                    },
-                                                    icon: const Icon(
-                                                      Icons.chat_bubble_outline,
-                                                      color: Color(0xFF6366F1),
-                                                    ),
-                                                    tooltip: 'Chat',
+                                                  tooltip: 'View achievements',
+                                                ),
+                                                IconButton(
+                                                  onPressed: () {
+                                                    _startChatWithFriend(
+                                                        friendId, friendEmail);
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.chat_bubble_outline,
+                                                    color: Color(0xFF6366F1),
                                                   ),
+                                                  tooltip: 'Chat',
+                                                ),
                                                 if (_isDeleteMode)
                                                   IconButton(
                                                     onPressed: () {
-                                                      _deleteFriends([friendId]);
+                                                      _deleteFriends(
+                                                          [friendId]);
                                                     },
                                                     icon: Icon(
                                                       Icons.delete_outline,
-                                                      color: Colors.red.shade400,
+                                                      color:
+                                                          Colors.red.shade400,
                                                     ),
                                                     tooltip: 'Delete',
                                                   ),
@@ -987,7 +1054,8 @@ class _FriendsPageState extends State<FriendsPage> {
                             StreamBuilder<QuerySnapshot>(
                               stream: FirebaseFirestore.instance
                                   .collection('friend_groups')
-                                  .where('creator_id', isEqualTo: currentUser.uid)
+                                  .where('creator_id',
+                                      isEqualTo: currentUser.uid)
                                   .snapshots(),
                               builder: (context, snapshot) {
                                 if (snapshot.connectionState ==
@@ -1019,8 +1087,11 @@ class _FriendsPageState extends State<FriendsPage> {
                                   itemCount: snapshot.data!.docs.length,
                                   itemBuilder: (context, index) {
                                     final doc = snapshot.data!.docs[index];
-                                    final groupName = doc['name'] as String? ?? 'Unnamed Group';
-                                    final memberIds = (doc['members'] as List?)?.cast<String>() ?? [];
+                                    final groupName = doc['name'] as String? ??
+                                        'Unnamed Group';
+                                    final memberIds = (doc['members'] as List?)
+                                            ?.cast<String>() ??
+                                        [];
 
                                     return GestureDetector(
                                       onTap: () {
@@ -1035,13 +1106,16 @@ class _FriendsPageState extends State<FriendsPage> {
                                         );
                                       },
                                       child: Container(
-                                        margin: const EdgeInsets.only(bottom: 12),
+                                        margin:
+                                            const EdgeInsets.only(bottom: 12),
                                         padding: const EdgeInsets.all(12),
                                         decoration: BoxDecoration(
                                           color: Colors.indigo.shade50,
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                           border: Border.all(
-                                            color: const Color(0xFF6366F1).withOpacity(0.3),
+                                            color: const Color(0xFF6366F1)
+                                                .withOpacity(0.3),
                                           ),
                                         ),
                                         child: Row(
@@ -1053,24 +1127,38 @@ class _FriendsPageState extends State<FriendsPage> {
                                             const SizedBox(width: 12),
                                             Expanded(
                                               child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
                                                     groupName,
                                                     style: GoogleFonts.poppins(
                                                       fontSize: 14,
-                                                      fontWeight: FontWeight.w600,
+                                                      fontWeight:
+                                                          FontWeight.w600,
                                                     ),
                                                   ),
                                                   Text(
                                                     '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
                                                     style: GoogleFonts.poppins(
                                                       fontSize: 12,
-                                                      color: Colors.grey.shade600,
+                                                      color:
+                                                          Colors.grey.shade600,
                                                     ),
                                                   ),
                                                 ],
                                               ),
+                                            ),
+                                            IconButton(
+                                              onPressed: () {
+                                                _startGroupChat(doc.id,
+                                                    groupName, memberIds);
+                                              },
+                                              icon: const Icon(
+                                                Icons.chat_bubble_outline,
+                                                color: Color(0xFF6366F1),
+                                              ),
+                                              tooltip: 'Group Chat',
                                             ),
                                             const Icon(
                                               Icons.arrow_forward_ios,
@@ -1113,8 +1201,9 @@ class _FriendsPageState extends State<FriendsPage> {
                                 children: [
                                   Expanded(
                                     child: ElevatedButton(
-                                      onPressed:
-                                          _isSubmitting ? null : _submitFriendRequest,
+                                      onPressed: _isSubmitting
+                                          ? null
+                                          : _submitFriendRequest,
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor:
                                             const Color(0xFF10B981),
@@ -1127,8 +1216,8 @@ class _FriendsPageState extends State<FriendsPage> {
                                               child: CircularProgressIndicator(
                                                 strokeWidth: 2,
                                                 valueColor:
-                                                    AlwaysStoppedAnimation<Color>(
-                                                        Colors.white),
+                                                    AlwaysStoppedAnimation<
+                                                        Color>(Colors.white),
                                               ),
                                             )
                                           : const Text('Send Request'),
@@ -1206,8 +1295,9 @@ class _FriendsPageState extends State<FriendsPage> {
                           _isDeleteMode = !_isDeleteMode;
                         });
                       },
-                      backgroundColor:
-                          _isDeleteMode ? Colors.red.shade600 : Colors.red.shade400,
+                      backgroundColor: _isDeleteMode
+                          ? Colors.red.shade600
+                          : Colors.red.shade400,
                       child: Icon(
                         _isDeleteMode ? Icons.close : Icons.delete_outline,
                       ),

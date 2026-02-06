@@ -79,6 +79,62 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
     }
   }
 
+  Future<void> _startChatWithMember(String memberId, String memberEmail) async {
+    try {
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) return;
+
+      // Create a sorted list to ensure consistent conversation ID
+      final participantIds = [currentUserId, memberId]..sort();
+      final conversationId = '${participantIds[0]}_${participantIds[1]}';
+
+      // Check if conversation already exists
+      final conversationDoc = await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId)
+          .get();
+
+      if (!conversationDoc.exists) {
+        // Create new conversation
+        await FirebaseFirestore.instance
+            .collection('conversations')
+            .doc(conversationId)
+            .set({
+          'participant_ids': participantIds,
+          'conversation_name': memberEmail.split('@')[0],
+          'is_group': false,
+          'created_at': FieldValue.serverTimestamp(),
+          'last_message': '',
+          'last_message_time': FieldValue.serverTimestamp(),
+          'unread_count': {
+            currentUserId: 0,
+            memberId: 0,
+          },
+        });
+      }
+
+      // Navigate to chat
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatDetailPage(
+              conversationId: conversationId,
+              conversationName: memberEmail.split('@')[0],
+              isGroup: false,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting chat: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
@@ -323,6 +379,17 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
+                                      ),
+                                      IconButton(
+                                        onPressed: () {
+                                          _startChatWithMember(
+                                              memberId, memberEmail);
+                                        },
+                                        icon: const Icon(
+                                          Icons.chat_bubble_outline,
+                                          color: Color(0xFF6366F1),
+                                        ),
+                                        tooltip: 'Chat',
                                       ),
                                       IconButton(
                                         onPressed: () {

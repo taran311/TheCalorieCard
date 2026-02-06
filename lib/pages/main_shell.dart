@@ -162,15 +162,18 @@ class _MainShellState extends State<MainShell> {
                 stream: FirebaseFirestore.instance
                     .collection('conversations')
                     .where('participant_ids',
-                        arrayContains: FirebaseAuth.instance.currentUser?.uid ?? '')
+                        arrayContains:
+                            FirebaseAuth.instance.currentUser?.uid ?? '')
                     .snapshots(),
                 builder: (context, snapshot) {
                   int unreadCount = 0;
                   if (snapshot.hasData) {
-                    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+                    final currentUserId =
+                        FirebaseAuth.instance.currentUser?.uid;
                     for (final doc in snapshot.data!.docs) {
                       final data = doc.data() as Map<String, dynamic>;
-                      final unreadMap = data['unread_count'] as Map<String, dynamic>?;
+                      final unreadMap =
+                          data['unread_count'] as Map<String, dynamic>?;
                       unreadCount += (unreadMap?[currentUserId] as int?) ?? 0;
                     }
                   }
