@@ -202,6 +202,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Future<void> _initializeHome() async {
     await populateFoodItems();
     await _fetchDailyLogForDate(_selectedLogDate);
+    // Fetch category totals on initial load
+    final categoryService =
+        Provider.of<CategoryService>(context, listen: false);
+    await _fetchCategoryTotals(categoryService.selectedCategory);
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -493,7 +497,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('user_food')
           .where('user_id', isEqualTo: _activeUserId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (querySnapshot.docs.isNotEmpty) {
         final filteredDocs = querySnapshot.docs.where((doc) {
@@ -789,8 +793,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       final currentCategory = categoryService.selectedCategory;
 
       // Get the food item data before deleting it
-      final foodDocSnapshot =
-          await firestore.collection('user_food').doc(docId).get();
+      final foodDocSnapshot = await firestore
+          .collection('user_food')
+          .doc(docId)
+          .get(const GetOptions(source: Source.server));
 
       if (!foodDocSnapshot.exists) {
         throw Exception('Food item not found');
@@ -855,7 +861,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       final categoryTotalDocRef = firestore
           .collection('category_totals')
           .doc('${userId}_$currentCategory');
-      final categoryTotalSnapshot = await categoryTotalDocRef.get();
+      final categoryTotalSnapshot = await categoryTotalDocRef
+          .get(const GetOptions(source: Source.server));
 
       if (categoryTotalSnapshot.exists) {
         await categoryTotalDocRef.update({
@@ -1106,28 +1113,73 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Future<void> _fetchCategoryTotals(String category) async {
     try {
       final userId = _activeUserId;
+
+      // Calculate totals from actual food items instead of trusting stored totals
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+
+      final foodSnapshot = await FirebaseFirestore.instance
+          .collection('user_food')
+          .where('user_id', isEqualTo: userId)
+          .get(const GetOptions(source: Source.server));
+
+      double totalCalories = 0;
+      double totalProtein = 0;
+      double totalCarbs = 0;
+      double totalFat = 0;
+
+      for (final doc in foodSnapshot.docs) {
+        final data = doc.data();
+
+        // Check if food is in the selected category
+        final foodCategory = data['foodCategory'] ?? 'Brekkie';
+        if (foodCategory != category) continue;
+
+        // Extract date from time_added or created_at
+        DateTime? docDate;
+        final timeAdded = data['time_added'];
+        final createdAt = data['created_at'];
+
+        if (timeAdded is Timestamp) {
+          docDate = timeAdded.toDate();
+        } else if (timeAdded is DateTime) {
+          docDate = timeAdded;
+        } else if (createdAt is Timestamp) {
+          docDate = createdAt.toDate();
+        } else if (createdAt is DateTime) {
+          docDate = createdAt;
+        }
+
+        // Only include items from today
+        if (docDate != null &&
+            !docDate.isBefore(startOfDay) &&
+            docDate.isBefore(endOfDay)) {
+          totalCalories += (data['food_calories'] as num?)?.toDouble() ?? 0;
+          totalProtein += (data['food_protein'] as num?)?.toDouble() ?? 0;
+          totalCarbs += (data['food_carbs'] as num?)?.toDouble() ?? 0;
+          totalFat += (data['food_fat'] as num?)?.toDouble() ?? 0;
+        }
+      }
+
+      // Update the stored totals to match reality
       final docRef = FirebaseFirestore.instance
           .collection('category_totals')
           .doc('${userId}_$category');
 
-      final docSnapshot = await docRef.get();
+      await docRef.set({
+        'total_calories': totalCalories,
+        'total_protein': totalProtein,
+        'total_carbs': totalCarbs,
+        'total_fat': totalFat,
+      });
 
-      if (docSnapshot.exists && mounted) {
+      if (mounted) {
         setState(() {
-          _totalCalories =
-              (docSnapshot['total_calories'] as num?)?.toInt() ?? 0;
-          _totalProtein =
-              (docSnapshot['total_protein'] as num?)?.toDouble() ?? 0.0;
-          _totalCarbs = (docSnapshot['total_carbs'] as num?)?.toDouble() ?? 0.0;
-          _totalFat = (docSnapshot['total_fat'] as num?)?.toDouble() ?? 0.0;
-          _lastFetchedCategory = category;
-        });
-      } else if (mounted) {
-        setState(() {
-          _totalCalories = 0;
-          _totalProtein = 0.0;
-          _totalCarbs = 0.0;
-          _totalFat = 0.0;
+          _totalCalories = totalCalories.toInt();
+          _totalProtein = totalProtein;
+          _totalCarbs = totalCarbs;
+          _totalFat = totalFat;
           _lastFetchedCategory = category;
         });
       }

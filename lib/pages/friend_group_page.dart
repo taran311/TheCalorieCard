@@ -21,6 +21,48 @@ class FriendGroupPage extends StatefulWidget {
 }
 
 class _FriendGroupPageState extends State<FriendGroupPage> {
+  String? _selectedChallengeType;
+
+  final List<String> _challengeTypes = [
+    'Lowest Calories Consumed',
+    'Lowest Protein Consumed',
+    'Lowest Carbs Consumed',
+    'Lowest Fat Consumed',
+    'Highest Calories Consumed',
+    'Highest Protein Consumed',
+    'Highest Carbs Consumed',
+    'Highest Fat Consumed',
+  ];
+
+  String _truncateName(String email) {
+    final username = email.split('@').first;
+    if (username.length <= 15) {
+      return username;
+    }
+    return '${username.substring(0, 15)}...';
+  }
+
+  Future<void> _updateChallengeType(String? newType) async {
+    if (newType == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('friend_groups')
+          .doc(widget.groupId)
+          .update({'challenge_type': newType});
+
+      setState(() {
+        _selectedChallengeType = newType;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating challenge type: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _startGroupChat(List<String> memberIds) async {
     try {
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
@@ -235,6 +277,19 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                   final memberIds =
                       (groupData['members'] as List?)?.cast<String>() ?? [];
 
+                  // Sync challenge type from group data if it changed
+                  final groupChallengeType =
+                      groupData['challenge_type'] as String?;
+                  if (groupChallengeType != _selectedChallengeType) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        setState(() {
+                          _selectedChallengeType = groupChallengeType;
+                        });
+                      }
+                    });
+                  }
+
                   if (memberIds.isEmpty) {
                     return const Center(
                         child: Text('No members in this group'));
@@ -341,26 +396,125 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      Expanded(
-                        child: ListView.builder(
+                      // Challenge Type Dropdown
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Card(
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Challenge Type',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  value: _selectedChallengeType,
+                                  hint: Text(
+                                    'Select a challenge',
+                                    style: GoogleFonts.poppins(fontSize: 14),
+                                  ),
+                                  decoration: InputDecoration(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                  ),
+                                  items: _challengeTypes.map((type) {
+                                    return DropdownMenuItem(
+                                      value: type,
+                                      child: Text(
+                                        type,
+                                        style:
+                                            GoogleFonts.poppins(fontSize: 14),
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: _updateChallengeType,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Rankings Header
+                      if (_selectedChallengeType != null)
+                        Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: memberIds.length,
-                          itemBuilder: (context, index) {
-                            final memberId = memberIds[index];
+                          child: Text(
+                            'Rankings',
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF6366F1),
+                            ),
+                          ),
+                        ),
+                      if (_selectedChallengeType != null)
+                        const SizedBox(height: 8),
+                      Expanded(
+                        child: StreamBuilder<List<Map<String, dynamic>>>(
+                          stream: _getMemberConsumptionStream(memberIds),
+                          builder: (context, consumptionSnapshot) {
+                            if (!consumptionSnapshot.hasData) {
+                              return const Center(
+                                  child: CircularProgressIndicator());
+                            }
 
-                            return FutureBuilder<DocumentSnapshot>(
-                              future: FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(memberId)
-                                  .get(),
-                              builder: (context, userSnapshot) {
-                                if (!userSnapshot.hasData) {
-                                  return const SizedBox.shrink();
-                                }
+                            var members = consumptionSnapshot.data!;
 
+                            // Sort members based on challenge type
+                            List<int> ranks = [];
+                            if (_selectedChallengeType != null) {
+                              members = _sortMembersByChallenge(
+                                  members, _selectedChallengeType!);
+                              // Calculate ranks with ties
+                              ranks = _calculateRanksWithTies(
+                                  members, _selectedChallengeType!);
+                            }
+
+                            return ListView.builder(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: members.length,
+                              itemBuilder: (context, index) {
+                                final memberData = members[index];
+                                final memberId = memberData['userId'] as String;
                                 final memberEmail =
-                                    userSnapshot.data?.get('email') ??
-                                        'Unknown';
+                                    memberData['email'] as String;
+                                final calories =
+                                    memberData['consumed_calories'] as double;
+                                final protein =
+                                    memberData['consumed_protein'] as double;
+                                final carbs =
+                                    memberData['consumed_carbs'] as double;
+                                final fats =
+                                    memberData['consumed_fats'] as double;
+                                final rank =
+                                    ranks.isNotEmpty ? ranks[index] : index + 1;
 
                                 return Container(
                                   margin: const EdgeInsets.only(bottom: 12),
@@ -371,13 +525,49 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                   ),
                                   child: Row(
                                     children: [
+                                      // Ranking Medal
+                                      if (_selectedChallengeType != null)
+                                        _buildRankingMedal(rank),
+                                      if (_selectedChallengeType != null)
+                                        const SizedBox(width: 12),
                                       Expanded(
-                                        child: Text(
-                                          memberEmail,
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w500,
-                                          ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _truncateName(memberEmail),
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            if (_selectedChallengeType != null)
+                                              const SizedBox(height: 6),
+                                            if (_selectedChallengeType != null)
+                                              Wrap(
+                                                spacing: 8,
+                                                runSpacing: 4,
+                                                children: [
+                                                  _buildNutritionChip(
+                                                    '${calories.toStringAsFixed(0)} cal',
+                                                    Colors.orange.shade600,
+                                                  ),
+                                                  _buildNutritionChip(
+                                                    '${protein.toStringAsFixed(0)}g protein',
+                                                    Colors.red.shade600,
+                                                  ),
+                                                  _buildNutritionChip(
+                                                    '${carbs.toStringAsFixed(0)}g carbs',
+                                                    Colors.blue.shade600,
+                                                  ),
+                                                  _buildNutritionChip(
+                                                    '${fats.toStringAsFixed(0)}g fat',
+                                                    Colors.green.shade600,
+                                                  ),
+                                                ],
+                                              ),
+                                          ],
                                         ),
                                       ),
                                       IconButton(
@@ -504,6 +694,252 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
 
       yield memberBalances;
     });
+  }
+
+  Stream<List<Map<String, dynamic>>> _getMemberConsumptionStream(
+      List<String> memberIds) {
+    if (memberIds.isEmpty) {
+      return Stream.value([]);
+    }
+
+    // Listen to all user_food changes for all members
+    return FirebaseFirestore.instance
+        .collection('user_food')
+        .where('user_id', whereIn: memberIds)
+        .snapshots()
+        .asyncMap((snapshot) async {
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+
+      // Group food items by user
+      Map<String, List<QueryDocumentSnapshot>> userFoodMap = {};
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final userId = data['user_id'] as String?;
+
+        if (userId != null) {
+          // Extract date from time_added or created_at
+          DateTime? docDate;
+          final timeAdded = data['time_added'];
+          final createdAt = data['created_at'];
+
+          if (timeAdded is Timestamp) {
+            docDate = timeAdded.toDate();
+          } else if (timeAdded is DateTime) {
+            docDate = timeAdded;
+          } else if (createdAt is Timestamp) {
+            docDate = createdAt.toDate();
+          } else if (createdAt is DateTime) {
+            docDate = createdAt;
+          }
+
+          // Only include items from today
+          if (docDate != null &&
+              !docDate.isBefore(startOfDay) &&
+              docDate.isBefore(endOfDay)) {
+            userFoodMap.putIfAbsent(userId, () => []).add(doc);
+          }
+        }
+      }
+
+      // Build member data list
+      final List<Map<String, dynamic>> memberData = [];
+
+      for (final memberId in memberIds) {
+        try {
+          // Fetch user email
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(memberId)
+              .get();
+
+          final email = userDoc.data()?['email'] ?? 'Unknown';
+
+          // Calculate consumed values from today's food items
+          double consumedCalories = 0;
+          double consumedProtein = 0;
+          double consumedCarbs = 0;
+          double consumedFats = 0;
+
+          final userFoodDocs = userFoodMap[memberId] ?? [];
+          for (final doc in userFoodDocs) {
+            final data = doc.data() as Map<String, dynamic>;
+            consumedCalories +=
+                (data['food_calories'] as num?)?.toDouble() ?? 0;
+            consumedProtein += (data['food_protein'] as num?)?.toDouble() ?? 0;
+            consumedCarbs += (data['food_carbs'] as num?)?.toDouble() ?? 0;
+            consumedFats += (data['food_fat'] as num?)?.toDouble() ?? 0;
+          }
+
+          memberData.add({
+            'userId': memberId,
+            'email': email,
+            'consumed_calories': consumedCalories,
+            'consumed_protein': consumedProtein,
+            'consumed_carbs': consumedCarbs,
+            'consumed_fats': consumedFats,
+          });
+        } catch (e) {
+          print('Error fetching data for $memberId: $e');
+        }
+      }
+
+      return memberData;
+    });
+  }
+
+  List<Map<String, dynamic>> _sortMembersByChallenge(
+      List<Map<String, dynamic>> members, String challengeType) {
+    final sorted = List<Map<String, dynamic>>.from(members);
+
+    switch (challengeType) {
+      case 'Lowest Calories Consumed':
+        sorted.sort((a, b) => (a['consumed_calories'] as double)
+            .compareTo(b['consumed_calories'] as double));
+        break;
+      case 'Lowest Protein Consumed':
+        sorted.sort((a, b) => (a['consumed_protein'] as double)
+            .compareTo(b['consumed_protein'] as double));
+        break;
+      case 'Lowest Carbs Consumed':
+        sorted.sort((a, b) => (a['consumed_carbs'] as double)
+            .compareTo(b['consumed_carbs'] as double));
+        break;
+      case 'Lowest Fat Consumed':
+        sorted.sort((a, b) => (a['consumed_fats'] as double)
+            .compareTo(b['consumed_fats'] as double));
+        break;
+      case 'Highest Calories Consumed':
+        sorted.sort((a, b) => (b['consumed_calories'] as double)
+            .compareTo(a['consumed_calories'] as double));
+        break;
+      case 'Highest Protein Consumed':
+        sorted.sort((a, b) => (b['consumed_protein'] as double)
+            .compareTo(a['consumed_protein'] as double));
+        break;
+      case 'Highest Carbs Consumed':
+        sorted.sort((a, b) => (b['consumed_carbs'] as double)
+            .compareTo(a['consumed_carbs'] as double));
+        break;
+      case 'Highest Fat Consumed':
+        sorted.sort((a, b) => (b['consumed_fats'] as double)
+            .compareTo(a['consumed_fats'] as double));
+        break;
+    }
+
+    return sorted;
+  }
+
+  List<int> _calculateRanksWithTies(
+      List<Map<String, dynamic>> sortedMembers, String challengeType) {
+    if (sortedMembers.isEmpty) return [];
+
+    List<int> ranks = [];
+    int currentRank = 1;
+
+    // Get the value to compare for the challenge type
+    double _getChallengeValue(Map<String, dynamic> member) {
+      switch (challengeType) {
+        case 'Lowest Calories Consumed':
+        case 'Highest Calories Consumed':
+          return member['consumed_calories'] as double;
+        case 'Lowest Protein Consumed':
+        case 'Highest Protein Consumed':
+          return member['consumed_protein'] as double;
+        case 'Lowest Carbs Consumed':
+        case 'Highest Carbs Consumed':
+          return member['consumed_carbs'] as double;
+        case 'Lowest Fat Consumed':
+        case 'Highest Fat Consumed':
+          return member['consumed_fats'] as double;
+        default:
+          return 0;
+      }
+    }
+
+    double? previousValue;
+
+    for (int i = 0; i < sortedMembers.length; i++) {
+      final currentValue = _getChallengeValue(sortedMembers[i]);
+
+      if (previousValue != null && currentValue != previousValue) {
+        // Value changed, increment rank by 1 (dense ranking)
+        currentRank++;
+      }
+
+      ranks.add(currentRank);
+      previousValue = currentValue;
+    }
+
+    return ranks;
+  }
+
+  Widget _buildRankingMedal(int rank) {
+    Color medalColor;
+
+    switch (rank) {
+      case 1:
+        medalColor = const Color(0xFFFFD700); // Gold
+        break;
+      case 2:
+        medalColor = const Color(0xFFC0C0C0); // Silver
+        break;
+      case 3:
+        medalColor = const Color(0xFFCD7F32); // Bronze
+        break;
+      default:
+        medalColor = const Color(0xFF6366F1); // Blue
+        break;
+    }
+
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: medalColor,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          rank.toString(),
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNutritionChip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.poppins(
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+          color: color,
+        ),
+      ),
+    );
   }
 
   static Widget _buildBalanceItem(String label, double value, Color color) {
