@@ -15,14 +15,14 @@ if [ "$(git branch --show-current)" != "$BRANCH_SOURCE" ]; then
   exit 1
 fi
 
-# Build
-echo "🏗️ Building Flutter web (base-href=/)"
-MSYS_NO_PATHCONV=1 flutter build web --release --base-href=/
+# Build (disable PWA/service worker to avoid white-screen caching issues)
+echo "🏗️ Building Flutter web (base-href=/, pwa-strategy=none)"
+MSYS_NO_PATHCONV=1 flutter build web --release --base-href=/ --pwa-strategy=none
 
 # Stage ONLY build/web contents
 echo "📦 Staging clean web output"
 rm -rf "$TMP_DIR"/*
-cp -R build/web/* "$TMP_DIR/"
+cp -R build/web/. "$TMP_DIR/"
 
 # Stash noise
 git stash push -u -m "$STASH_NAME" >/dev/null || true
@@ -50,18 +50,23 @@ rm -rf .dart_tool build android ios linux macos windows || true
 
 # Deploy to ROOT
 echo "📂 Deploying site to root"
-cp -R "$TMP_DIR"/* .
+cp -R "$TMP_DIR"/. .
 echo "$CNAME_VALUE" > CNAME
 touch .nojekyll
 
-# Commit & push
-git add .
-git commit -m "Deploy Flutter web (clean root)"
-git push origin "$BRANCH_PAGES"
+# Commit & push (don't fail if nothing changed)
+git add -A
+if git diff --cached --quiet; then
+  echo "ℹ️ No changes to deploy."
+else
+  git commit -m "Deploy Flutter web (clean root, no PWA SW)"
+  git push origin "$BRANCH_PAGES"
+fi
 
 # Restore master
 git checkout "$BRANCH_SOURCE"
-git stash pop >/dev/null || true
+git stash pop >/dev/null 2>&1 || true
+
 rm -rf "$TMP_DIR"
 
 echo "✅ Deployment complete"
