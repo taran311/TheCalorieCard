@@ -1755,7 +1755,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                     CrossAxisAlignment.center,
                                                 children: [
                                                   if (_deleteMode &&
-                                                      _isSelectedDateToday &&
                                                       !_isDayFinished)
                                                     GestureDetector(
                                                       onTap: () async {
@@ -2047,8 +2046,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                       MainAxisAlignment.spaceEvenly,
                                   children: <Widget>[
                                     FloatingActionButton(
-                                      onPressed: (_isDayFinished ||
-                                              !_isSelectedDateToday)
+                                      onPressed: _isDayFinished
                                           ? null
                                           : () {
                                               setState(() {
@@ -2056,8 +2054,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                               });
                                             },
                                       heroTag: 'delete',
-                                      backgroundColor: (_isDayFinished ||
-                                              !_isSelectedDateToday)
+                                      backgroundColor: _isDayFinished
                                           ? Colors.grey.shade400
                                           : _deleteMode
                                               ? Colors.red.shade600
@@ -2067,13 +2064,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                           : Icons.delete_outline),
                                     ),
                                     FloatingActionButton(
-                                      onPressed: (_isDayFinished ||
-                                              !_isSelectedDateToday)
+                                      onPressed: _isDayFinished
                                           ? null
                                           : _showAddOptions,
                                       heroTag: 'add',
-                                      backgroundColor: (_isDayFinished ||
-                                              !_isSelectedDateToday)
+                                      backgroundColor: _isDayFinished
                                           ? Colors.grey.shade400
                                           : Colors.green.shade400,
                                       child: const Icon(Icons.add),

@@ -1239,7 +1239,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                 ],
                               ),
                             ],
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 200),
                           ],
                         ),
                       ),

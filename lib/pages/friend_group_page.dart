@@ -32,6 +32,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
     'Highest Protein Consumed',
     'Highest Carbs Consumed',
     'Highest Fat Consumed',
+    'Log Streak',
   ];
 
   String _truncateName(String email) {
@@ -297,105 +298,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
 
                   return Column(
                     children: [
-                      // Group Balance Stats
-                      StreamBuilder<List<Map<String, dynamic>>>(
-                        stream: _getGroupDailyLogsStream(memberIds),
-                        builder: (context, logsSnapshot) {
-                          if (!logsSnapshot.hasData) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16),
-                              child: Card(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: Center(
-                                      child: CircularProgressIndicator()),
-                                ),
-                              ),
-                            );
-                          }
-
-                          final logs = logsSnapshot.data!;
-                          double totalCaloriesBalance = 0;
-                          double totalProteinBalance = 0;
-                          double totalCarbsBalance = 0;
-                          double totalFatsBalance = 0;
-
-                          for (var data in logs) {
-                            final balances =
-                                data['balances'] as Map<String, dynamic>?;
-                            if (balances != null) {
-                              totalCaloriesBalance +=
-                                  (balances['calories'] as num?)?.toDouble() ??
-                                      0;
-                              totalProteinBalance +=
-                                  (balances['protein_balance'] as num?)
-                                          ?.toDouble() ??
-                                      0;
-                              totalCarbsBalance +=
-                                  (balances['carbs_balance'] as num?)
-                                          ?.toDouble() ??
-                                      0;
-                              totalFatsBalance +=
-                                  (balances['fats_balance'] as num?)
-                                          ?.toDouble() ??
-                                      0;
-                            }
-                          }
-
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Card(
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Group Balance (Today)',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        _buildBalanceItem(
-                                          'Calories',
-                                          totalCaloriesBalance,
-                                          Colors.orange.shade600,
-                                        ),
-                                        _buildBalanceItem(
-                                          'Protein',
-                                          totalProteinBalance,
-                                          Colors.red.shade600,
-                                        ),
-                                        _buildBalanceItem(
-                                          'Carbs',
-                                          totalCarbsBalance,
-                                          Colors.blue.shade600,
-                                        ),
-                                        _buildBalanceItem(
-                                          'Fats',
-                                          totalFatsBalance,
-                                          Colors.green.shade600,
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 16),
                       // Challenge Type Dropdown
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -513,6 +415,8 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                     memberData['consumed_carbs'] as double;
                                 final fats =
                                     memberData['consumed_fats'] as double;
+                                final logStreak =
+                                    memberData['log_streak'] as int? ?? 0;
                                 final rank =
                                     ranks.isNotEmpty ? ranks[index] : index + 1;
 
@@ -545,28 +449,35 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                             if (_selectedChallengeType != null)
                                               const SizedBox(height: 6),
                                             if (_selectedChallengeType != null)
-                                              Wrap(
-                                                spacing: 8,
-                                                runSpacing: 4,
-                                                children: [
-                                                  _buildNutritionChip(
-                                                    '${calories.toStringAsFixed(0)} cal',
-                                                    Colors.orange.shade600,
-                                                  ),
-                                                  _buildNutritionChip(
-                                                    '${protein.toStringAsFixed(0)}g protein',
-                                                    Colors.red.shade600,
-                                                  ),
-                                                  _buildNutritionChip(
-                                                    '${carbs.toStringAsFixed(0)}g carbs',
-                                                    Colors.blue.shade600,
-                                                  ),
-                                                  _buildNutritionChip(
-                                                    '${fats.toStringAsFixed(0)}g fat',
-                                                    Colors.green.shade600,
-                                                  ),
-                                                ],
-                                              ),
+                                              _selectedChallengeType ==
+                                                      'Log Streak'
+                                                  ? _buildNutritionChip(
+                                                      '$logStreak Days',
+                                                      const Color(0xFF6366F1),
+                                                    )
+                                                  : Wrap(
+                                                      spacing: 8,
+                                                      runSpacing: 4,
+                                                      children: [
+                                                        _buildNutritionChip(
+                                                          '${calories.toStringAsFixed(0)} cal',
+                                                          Colors
+                                                              .orange.shade600,
+                                                        ),
+                                                        _buildNutritionChip(
+                                                          '${protein.toStringAsFixed(0)}g protein',
+                                                          Colors.red.shade600,
+                                                        ),
+                                                        _buildNutritionChip(
+                                                          '${carbs.toStringAsFixed(0)}g carbs',
+                                                          Colors.blue.shade600,
+                                                        ),
+                                                        _buildNutritionChip(
+                                                          '${fats.toStringAsFixed(0)}g fat',
+                                                          Colors.green.shade600,
+                                                        ),
+                                                      ],
+                                                    ),
                                           ],
                                         ),
                                       ),
@@ -638,62 +549,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
         ),
       ),
     );
-  }
-
-  static Stream<List<Map<String, dynamic>>> _getGroupDailyLogsStream(
-      List<String> memberIds) {
-    final today = DateTime.now();
-    final dateKey =
-        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-
-    if (memberIds.isEmpty) {
-      return Stream.value([]);
-    }
-
-    // Fetch all member daily logs or user_data and emit whenever any changes
-    return Stream.periodic(const Duration(milliseconds: 500))
-        .asyncExpand((_) async* {
-      final List<Map<String, dynamic>> memberBalances = [];
-
-      for (final memberId in memberIds) {
-        try {
-          // First try to get daily_logs
-          final dailyLogDoc = await FirebaseFirestore.instance
-              .collection('daily_logs')
-              .doc('${memberId}_$dateKey')
-              .get();
-
-          if (dailyLogDoc.exists) {
-            // Use balance from daily_logs if it exists
-            memberBalances.add(dailyLogDoc.data() as Map<String, dynamic>);
-          } else {
-            // Fall back to user_data if no daily log exists yet
-            final userDataSnapshot = await FirebaseFirestore.instance
-                .collection('user_data')
-                .where('user_id', isEqualTo: memberId)
-                .limit(1)
-                .get();
-
-            if (userDataSnapshot.docs.isNotEmpty) {
-              final userData = userDataSnapshot.docs.first.data();
-              // Create a balance object from user_data
-              memberBalances.add({
-                'balances': {
-                  'calories': userData['calories'],
-                  'protein_balance': userData['protein_balance'],
-                  'carbs_balance': userData['carbs_balance'],
-                  'fats_balance': userData['fats_balance'],
-                },
-              });
-            }
-          }
-        } catch (e) {
-          print('Error fetching balance for $memberId: $e');
-        }
-      }
-
-      yield memberBalances;
-    });
   }
 
   Stream<List<Map<String, dynamic>>> _getMemberConsumptionStream(
@@ -772,6 +627,9 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
             consumedFats += (data['food_fat'] as num?)?.toDouble() ?? 0;
           }
 
+          // Calculate log streak
+          final logStreak = await _calculateLogStreak(memberId);
+
           memberData.add({
             'userId': memberId,
             'email': email,
@@ -779,6 +637,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
             'consumed_protein': consumedProtein,
             'consumed_carbs': consumedCarbs,
             'consumed_fats': consumedFats,
+            'log_streak': logStreak,
           });
         } catch (e) {
           print('Error fetching data for $memberId: $e');
@@ -826,6 +685,11 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
         sorted.sort((a, b) => (b['consumed_fats'] as double)
             .compareTo(a['consumed_fats'] as double));
         break;
+      case 'Log Streak':
+        // Sort by log streak descending (highest first)
+        sorted.sort((a, b) =>
+            (b['log_streak'] as int).compareTo(a['log_streak'] as int));
+        break;
     }
 
     return sorted;
@@ -839,7 +703,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
     int currentRank = 1;
 
     // Get the value to compare for the challenge type
-    double _getChallengeValue(Map<String, dynamic> member) {
+    num _getChallengeValue(Map<String, dynamic> member) {
       switch (challengeType) {
         case 'Lowest Calories Consumed':
         case 'Highest Calories Consumed':
@@ -853,12 +717,14 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
         case 'Lowest Fat Consumed':
         case 'Highest Fat Consumed':
           return member['consumed_fats'] as double;
+        case 'Log Streak':
+          return member['log_streak'] as int;
         default:
           return 0;
       }
     }
 
-    double? previousValue;
+    num? previousValue;
 
     for (int i = 0; i < sortedMembers.length; i++) {
       final currentValue = _getChallengeValue(sortedMembers[i]);
@@ -873,6 +739,54 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
     }
 
     return ranks;
+  }
+
+  String _dateKey(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<int> _calculateLogStreak(String userId) async {
+    try {
+      int streak = 0;
+      final today = DateTime.now();
+      DateTime checkDate = DateTime(today.year, today.month, today.day);
+
+      // Check consecutive days backwards from today
+      while (true) {
+        final key = _dateKey(checkDate);
+        final docSnapshot = await FirebaseFirestore.instance
+            .collection('daily_logs')
+            .doc('${userId}_$key')
+            .get();
+
+        if (!docSnapshot.exists) {
+          // No log for this day, streak ends
+          break;
+        }
+
+        final data = docSnapshot.data();
+        final finished = data?['finished'] as bool? ?? false;
+
+        if (!finished) {
+          // Day not finished, streak ends
+          break;
+        }
+
+        // Day is finished, increment streak
+        streak++;
+
+        // Move to previous day
+        checkDate = checkDate.subtract(const Duration(days: 1));
+
+        // Prevent infinite loop - max 365 days
+        if (streak >= 365) break;
+      }
+
+      return streak;
+    } catch (e) {
+      print('Error calculating log streak for $userId: $e');
+      return 0;
+    }
   }
 
   Widget _buildRankingMedal(int rank) {
@@ -939,30 +853,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
           color: color,
         ),
       ),
-    );
-  }
-
-  static Widget _buildBalanceItem(String label, double value, Color color) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: Colors.grey.shade600,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value.toStringAsFixed(0),
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-      ],
     );
   }
 }
