@@ -24,6 +24,7 @@ dependencies:
   http: ^1.2.2
   crypto: ^3.0.5
   timeago: ^3.6.1
+  speech_to_text: ^7.0.0
 
 dev_dependencies:
   flutter_test:

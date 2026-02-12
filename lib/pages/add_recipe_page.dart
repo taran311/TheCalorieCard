@@ -7,6 +7,7 @@ import 'package:namer_app/pages/fat_secret_api.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:namer_app/components/mini_game.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class AddRecipePage extends StatefulWidget {
   final bool addToHome;
@@ -52,11 +53,18 @@ class _AddRecipePageState extends State<AddRecipePage> {
   bool _isAiLoading = false;
   bool _showMiniGame = false;
 
+  // Speech to text
+  late stt.SpeechToText _speech;
+  bool _isListening = false;
+  String _speechText = '';
+  bool _speechInitialized = false;
+
   @override
   void initState() {
     super.initState();
     _ingredientPortionController = TextEditingController();
     _searchPortionController = TextEditingController();
+    _speech = stt.SpeechToText();
     if (widget.recipeId != null) {
       _loadRecipeForEdit(widget.recipeId!);
     }
@@ -67,7 +75,155 @@ class _AddRecipePageState extends State<AddRecipePage> {
     _ingredientPortionController.dispose();
     _searchPortionController.dispose();
     _freeTextController.dispose();
+    if (_speechInitialized) {
+      _speech.stop();
+    }
     super.dispose();
+  }
+
+  void _toggleListening() async {
+    if (_isListening) {
+      // Stop listening and process the text
+      await _speech.stop();
+      setState(() {
+        _isListening = false;
+      });
+      _processSpeechText(_speechText);
+      _speechText = '';
+    } else {
+      // Initialize speech if not already done
+      if (!_speechInitialized) {
+        try {
+          final available = await _speech.initialize(
+            onStatus: (status) {
+              if (status == 'done' || status == 'notListening') {
+                // Don't auto-stop, user controls it
+              }
+            },
+            onError: (error) {
+              setState(() {
+                _isListening = false;
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Speech error: ${error.errorMsg}'),
+                    action: SnackBarAction(
+                      label: 'OK',
+                      onPressed: () {},
+                    ),
+                  ),
+                );
+              }
+            },
+          );
+
+          if (!available) {
+            if (mounted) {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Permission Required'),
+                  content: const Text(
+                    'Microphone permission is needed to use voice input. Please enable it in your device settings.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return;
+          }
+
+          setState(() {
+            _speechInitialized = true;
+          });
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Could not initialize speech: $e')),
+            );
+          }
+          return;
+        }
+      }
+
+      // Start listening
+      try {
+        setState(() {
+          _isListening = true;
+          _speechText = '';
+        });
+        
+        await _speech.listen(
+          onResult: (result) {
+            setState(() {
+              _speechText = result.recognizedWords;
+            });
+          },
+          listenMode: stt.ListenMode.confirmation,
+        );
+      } catch (e) {
+        setState(() {
+          _isListening = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to start listening: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  void _processSpeechText(String text) {
+    if (text.trim().isEmpty) return;
+
+    // Split by "add" keyword (case-insensitive) or commas
+    List<String> items = [];
+
+    // First, try to split by "add" keyword
+    final addPattern = RegExp(r'\badd\b', caseSensitive: false);
+    final parts = text.split(addPattern);
+
+    if (parts.length > 1) {
+      // Found "add" keywords, process each part
+      for (var part in parts) {
+        final cleaned = part.trim();
+        if (cleaned.isNotEmpty) {
+          // Also check for commas within each part
+          if (cleaned.contains(',')) {
+            items.addAll(cleaned
+                .split(',')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty));
+          } else {
+            items.add(cleaned);
+          }
+        }
+      }
+    } else {
+      // No "add" keywords, split by commas
+      items = text
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+
+    setState(() {
+      _freeTextIngredients.addAll(items);
+    });
+
+    if (items.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Added ${items.length} ingredient(s)')),
+      );
+    }
   }
 
   @override
@@ -1135,26 +1291,73 @@ class _AddRecipePageState extends State<AddRecipePage> {
   Widget _buildFreeTextInput() {
     return Column(
       children: [
-        TextField(
-          controller: _freeTextController,
-          decoration: InputDecoration(
-            labelText: 'Enter ingredients (comma-separated)',
-            hintText: 'e.g. 100g banana, 200g cinnamon, 1 apple',
-            border: const OutlineInputBorder(),
-            helperText: 'Type ingredients and press comma to add',
-          ),
-          onChanged: (value) {
-            if (value.endsWith(',')) {
-              final ingredient = value.substring(0, value.length - 1).trim();
-              if (ingredient.isNotEmpty) {
-                setState(() {
-                  _freeTextIngredients.add(ingredient);
-                  _freeTextController.clear();
-                });
-              }
-            }
-          },
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _freeTextController,
+                decoration: InputDecoration(
+                  labelText: 'Enter ingredients (comma-separated)',
+                  hintText: 'e.g. 100g banana, 200g cinnamon, 1 apple',
+                  border: const OutlineInputBorder(),
+                  helperText: 'Type ingredients and press comma to add',
+                ),
+                onChanged: (value) {
+                  if (value.endsWith(',')) {
+                    final ingredient =
+                        value.substring(0, value.length - 1).trim();
+                    if (ingredient.isNotEmpty) {
+                      setState(() {
+                        _freeTextIngredients.add(ingredient);
+                        _freeTextController.clear();
+                      });
+                    }
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              child: Column(
+                children: [
+                  FloatingActionButton(
+                    onPressed: _toggleListening,
+                    backgroundColor: _isListening ? Colors.red : Colors.blue,
+                    child: Icon(
+                      _isListening ? Icons.mic : Icons.mic_none,
+                      color: Colors.white,
+                    ),
+                  ),
+                  if (_isListening) ...[
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Listening...',
+                      style: TextStyle(fontSize: 10, color: Colors.red),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
+        if (_isListening && _speechText.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Text(
+              _speechText,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         if (_freeTextIngredients.isNotEmpty)
           Wrap(
