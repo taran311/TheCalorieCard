@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
 import 'package:namer_app/pages/main_shell.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class GetStartedPage extends StatefulWidget {
   GetStartedPage({
@@ -52,6 +54,12 @@ class _GetStartedPageState extends State<GetStartedPage> {
   int? _fatsGoal;
   final TextEditingController _fatsController = TextEditingController();
   late FocusNode _fatsFocusNode;
+
+  // AI estimation state
+  bool _isEstimatingWithAI = false;
+  bool _canEstimateWithAI = false;
+  bool _macrosFromAI = false;
+  Map<String, dynamic>? _lastAIData;
 
   @override
   void initState() {
@@ -147,7 +155,110 @@ class _GetStartedPageState extends State<GetStartedPage> {
     await FirebaseAuth.instance.signOut();
   }
 
+  void _markFieldsChanged() {
+    if (!_isEstimatingWithAI && _lastAIData != null) {
+      setState(() {
+        _canEstimateWithAI = true;
+      });
+    }
+  }
+
+  String _getExerciseLevelText() {
+    if (_exerciseLevel == 0) return 'No activity';
+    if (_exerciseLevel == 1) return '1-3 hours per week';
+    if (_exerciseLevel == 2) return '4-6 hours per week';
+    if (_exerciseLevel == 3) return '7-9 hours per week';
+    if (_exerciseLevel == 4) return '10+ hours per week';
+    return 'No activity';
+  }
+
+  Future<void> _estimateWithAI() async {
+    if (_selectedAge == null ||
+        _selectedHeight == null ||
+        _selectedWeight == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please fill in age, height, and weight first')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isEstimatingWithAI = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://fatsecret-proxy.onrender.com/macro-targets'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'age': _selectedAge,
+          'gender': genderSelections.first ? 'male' : 'female',
+          'height_cm': _selectedHeight,
+          'weight_kg': _selectedWeight,
+          'exercise_level': _getExerciseLevelText(),
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final targets =
+            data['ai']?['final']?['targets'] ?? data['baseline']?['targets'];
+
+        if (targets != null) {
+          setState(() {
+            calorieDeficit = targets['lose']?['calories'];
+            calorieMaintenance = targets['maintain']?['calories'];
+            calorieSurplus = targets['gain']?['calories'];
+
+            // Set macros based on selected goal
+            final selectedTarget = calorieSelections[0]
+                ? targets['lose']
+                : calorieSelections[1]
+                    ? targets['maintain']
+                    : targets['gain'];
+
+            _proteinGoal = selectedTarget?['protein_g'];
+            _carbsGoal = selectedTarget?['carbs_g'];
+            _fatsGoal = selectedTarget?['fat_g'];
+
+            _proteinController.text = _proteinGoal?.toString() ?? '0';
+            _carbsController.text = _carbsGoal?.toString() ?? '0';
+            _fatsController.text = _fatsGoal?.toString() ?? '0';
+
+            updateCardActiveCalories();
+
+            _macrosFromAI = true;
+            _canEstimateWithAI = false;
+            _lastAIData = {
+              'age': _selectedAge,
+              'gender': genderSelections.first,
+              'height': _selectedHeight,
+              'weight': _selectedWeight,
+              'exercise': _exerciseLevel,
+            };
+          });
+        }
+      } else {
+        throw Exception('Failed to estimate macros');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error estimating with AI: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isEstimatingWithAI = false;
+        });
+      }
+    }
+  }
+
   void updateCalories() {
+    _markFieldsChanged();
     var genderAdjustment = genderSelections.first ? 5 : -161;
     double activityMultiplier = 0;
 
@@ -189,416 +300,482 @@ class _GetStartedPageState extends State<GetStartedPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.indigo.shade50,
-            Colors.blue.shade50,
-          ],
-        ),
-      ),
-      child: Center(
-        child: Card(
-          elevation: 8,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+    return Stack(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.indigo.shade50,
+                Colors.blue.shade50,
+              ],
+            ),
           ),
-          margin: const EdgeInsets.all(16),
-          child: ScrollConfiguration(
-            behavior:
-                ScrollConfiguration.of(context).copyWith(scrollbars: false),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  const SizedBox(height: 24),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        MeasurementInputField(
-                          label: 'Age',
-                          controller: _ageController,
-                          focusNode: _ageFocusNode,
-                          hintText: 'E.g. 30',
-                          suffix: ' Years Old',
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedAge = value;
-                              if (_selectedAge != null &&
-                                  _selectedAge! >= 18 &&
-                                  _selectedAge! <= 117) {
-                                updateCalories();
-                              }
-                            });
-                          },
+          child: Center(
+            child: Card(
+              elevation: 8,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              margin: const EdgeInsets.all(16),
+              child: ScrollConfiguration(
+                behavior:
+                    ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            MeasurementInputField(
+                              label: 'Age',
+                              controller: _ageController,
+                              focusNode: _ageFocusNode,
+                              hintText: 'E.g. 30',
+                              suffix: ' Years Old',
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedAge = value;
+                                  if (_selectedAge != null &&
+                                      _selectedAge! >= 18 &&
+                                      _selectedAge! <= 117) {
+                                    updateCalories();
+                                  }
+                                });
+                              },
+                            ),
+                            Expanded(
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                title: const Text(
+                                  'Gender',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                subtitle: ToggleButtons(
+                                  isSelected: genderSelections,
+                                  selectedColor: Color(0xFF6366F1),
+                                  fillColor: Color(0xFF6366F1).withOpacity(0.2),
+                                  borderColor: Color(0xFF6366F1),
+                                  selectedBorderColor: Color(0xFF6366F1),
+                                  onPressed: (int index) {
+                                    setState(() {
+                                      for (int i = 0;
+                                          i < genderSelections.length;
+                                          i++) {
+                                        genderSelections[i] = i == index;
+                                      }
+                                      updateCalories();
+                                    });
+                                  },
+                                  children: const [
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 8.0,
+                                      ),
+                                      child: Icon(Icons.man),
+                                    ),
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 8.0,
+                                      ),
+                                      child: Icon(Icons.woman),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        Expanded(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            MeasurementInputField(
+                              label: 'Height',
+                              controller: _heightController,
+                              focusNode: _heightFocusNode,
+                              hintText: 'E.g. 180cm',
+                              suffix: 'cm',
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedHeight = value;
+                                  if (_selectedHeight != null &&
+                                      _selectedHeight! >= 100 &&
+                                      _selectedHeight! <= 250) {
+                                    updateCalories();
+                                  }
+                                });
+                              },
                             ),
-                            title: const Text(
-                              'Gender',
-                              style: TextStyle(fontWeight: FontWeight.w600),
+                            MeasurementInputField(
+                              label: 'Weight',
+                              controller: _weightController,
+                              focusNode: _weightFocusNode,
+                              hintText: 'E.g. 80kg',
+                              suffix: 'kg',
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedWeight = value;
+                                  if (_selectedWeight != null &&
+                                      _selectedWeight! >= 30 &&
+                                      _selectedWeight! <= 200) {
+                                    updateCalories();
+                                  }
+                                });
+                              },
                             ),
-                            subtitle: ToggleButtons(
-                              isSelected: genderSelections,
-                              selectedColor: Color(0xFF6366F1),
-                              fillColor: Color(0xFF6366F1).withOpacity(0.2),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            'Exercise Level',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Column(
+                            children: [
+                              Slider(
+                                value: _exerciseLevel,
+                                min: 0,
+                                max: 4,
+                                divisions: 4,
+                                activeColor: Color(0xFF6366F1),
+                                onChanged: (double value) {
+                                  setState(
+                                    () {
+                                      _exerciseLevel = value;
+                                      if (_exerciseLevel == 0) {
+                                        _exerciseText = 'No Activity';
+                                      } else if (_exerciseLevel == 1) {
+                                        _exerciseText =
+                                            'Little Activity (1-3 hrs)';
+                                      } else if (_exerciseLevel == 2) {
+                                        _exerciseText =
+                                            'Some Activity (4-6 hrs)';
+                                      } else if (_exerciseLevel == 3) {
+                                        _exerciseText =
+                                            'A lot of activity (7-9 hrs)';
+                                      } else if (_exerciseLevel == 4) {
+                                        _exerciseText =
+                                            'A ton of activity (10+ hrs)';
+                                      }
+                                      updateCalories();
+                                    },
+                                  );
+                                },
+                              ),
+                              Text(
+                                _exerciseText,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: ElevatedButton.icon(
+                          onPressed:
+                              (_canEstimateWithAI || _lastAIData == null) &&
+                                      !_isEstimatingWithAI
+                                  ? _estimateWithAI
+                                  : null,
+                          icon: const Icon(Icons.auto_awesome),
+                          label: const Text('Estimate Via AI'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(double.infinity, 48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            'Goal',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: IntrinsicWidth(
+                            child: ToggleButtons(
+                              isSelected: calorieSelections,
+                              selectedColor: Colors.white,
+                              fillColor: Color(0xFF6366F1),
                               borderColor: Color(0xFF6366F1),
                               selectedBorderColor: Color(0xFF6366F1),
                               onPressed: (int index) {
                                 setState(() {
                                   for (int i = 0;
-                                      i < genderSelections.length;
+                                      i < calorieSelections.length;
                                       i++) {
-                                    genderSelections[i] = i == index;
+                                    calorieSelections[i] = i == index;
                                   }
-                                  updateCalories();
                                 });
+                                if (calorieSelections.first) {
+                                  calorieMode = 'lose';
+                                } else if (calorieSelections[1]) {
+                                  calorieMode = 'maintain';
+                                } else if (calorieSelections[2]) {
+                                  calorieMode = 'gain';
+                                }
+
+                                updateCardActiveCalories();
                               },
-                              children: const [
+                              constraints: const BoxConstraints(
+                                minWidth: 90,
+                                minHeight: 40,
+                              ),
+                              children: [
                                 Padding(
-                                  padding: EdgeInsets.symmetric(
+                                  padding: const EdgeInsets.symmetric(
                                     horizontal: 8.0,
                                   ),
-                                  child: Icon(Icons.man),
+                                  child: Text(
+                                    'Lose\n${calorieDeficit ?? 0}',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
                                 ),
                                 Padding(
-                                  padding: EdgeInsets.symmetric(
+                                  padding: const EdgeInsets.symmetric(
                                     horizontal: 8.0,
                                   ),
-                                  child: Icon(Icons.woman),
+                                  child: Text(
+                                    'Maintain\n${calorieMaintenance ?? 0}',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8.0,
+                                  ),
+                                  child: Text(
+                                    'Gain\n${calorieSurplus ?? 0}',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        MeasurementInputField(
-                          label: 'Height',
-                          controller: _heightController,
-                          focusNode: _heightFocusNode,
-                          hintText: 'E.g. 180cm',
-                          suffix: 'cm',
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedHeight = value;
-                              if (_selectedHeight != null &&
-                                  _selectedHeight! >= 100 &&
-                                  _selectedHeight! <= 250) {
-                                updateCalories();
-                              }
-                            });
-                          },
-                        ),
-                        MeasurementInputField(
-                          label: 'Weight',
-                          controller: _weightController,
-                          focusNode: _weightFocusNode,
-                          hintText: 'E.g. 80kg',
-                          suffix: 'kg',
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedWeight = value;
-                              if (_selectedWeight != null &&
-                                  _selectedWeight! >= 30 &&
-                                  _selectedWeight! <= 200) {
-                                updateCalories();
-                              }
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text(
-                        'Exercise Level',
-                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      subtitle: Column(
-                        children: [
-                          Slider(
-                            value: _exerciseLevel,
-                            min: 0,
-                            max: 4,
-                            divisions: 4,
-                            activeColor: Color(0xFF6366F1),
-                            onChanged: (double value) {
-                              setState(
-                                () {
-                                  _exerciseLevel = value;
-                                  if (_exerciseLevel == 0) {
-                                    _exerciseText = 'No Activity';
-                                  } else if (_exerciseLevel == 1) {
-                                    _exerciseText = 'Little Activity (1-3 hrs)';
-                                  } else if (_exerciseLevel == 2) {
-                                    _exerciseText = 'Some Activity (4-6 hrs)';
-                                  } else if (_exerciseLevel == 3) {
-                                    _exerciseText =
-                                        'A lot of activity (7-9 hrs)';
-                                  } else if (_exerciseLevel == 4) {
-                                    _exerciseText =
-                                        'A ton of activity (10+ hrs)';
-                                  }
-                                  updateCalories();
-                                },
+                      const SizedBox(height: 20),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Macros',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _proteinController,
+                                    focusNode: _proteinFocusNode,
+                                    keyboardType: TextInputType.number,
+                                    enabled: !_macrosFromAI,
+                                    decoration: InputDecoration(
+                                      labelText: 'Protein (g)',
+                                      hintText: 'Protein',
+                                      floatingLabelBehavior:
+                                          FloatingLabelBehavior.always,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _proteinGoal = int.tryParse(value);
+                                      });
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _carbsController,
+                                    focusNode: _carbsFocusNode,
+                                    keyboardType: TextInputType.number,
+                                    enabled: !_macrosFromAI,
+                                    decoration: InputDecoration(
+                                      labelText: 'Carbs (g)',
+                                      hintText: 'Carbs',
+                                      floatingLabelBehavior:
+                                          FloatingLabelBehavior.always,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _carbsGoal = int.tryParse(value);
+                                      });
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _fatsController,
+                                    focusNode: _fatsFocusNode,
+                                    keyboardType: TextInputType.number,
+                                    enabled: !_macrosFromAI,
+                                    decoration: InputDecoration(
+                                      labelText: 'Fats (g)',
+                                      hintText: 'Fats',
+                                      floatingLabelBehavior:
+                                          FloatingLabelBehavior.always,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _fatsGoal = int.tryParse(value);
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: CreditCard(
+                            key: ValueKey(
+                                '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_${_fatsGoal}'),
+                            initialCalories: cardActiveCalories ?? 0,
+                            caloriesOverride: cardActiveCalories ?? 0,
+                            proteinOverride: (_proteinGoal ?? 0).toDouble(),
+                            carbsOverride: (_carbsGoal ?? 0).toDouble(),
+                            fatsOverride: (_fatsGoal ?? 0).toDouble(),
+                            skipFetch: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              saveData();
+                              await Navigator.pushAndRemoveUntil(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const MainShell(initialIndex: 1),
+                                ),
+                                (route) => false,
                               );
                             },
-                          ),
-                          Text(
-                            _exerciseText,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text(
-                        'Goal',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: IntrinsicWidth(
-                        child: ToggleButtons(
-                          isSelected: calorieSelections,
-                          selectedColor: Colors.white,
-                          fillColor: Color(0xFF6366F1),
-                          borderColor: Color(0xFF6366F1),
-                          selectedBorderColor: Color(0xFF6366F1),
-                          onPressed: (int index) {
-                            setState(() {
-                              for (int i = 0;
-                                  i < calorieSelections.length;
-                                  i++) {
-                                calorieSelections[i] = i == index;
-                              }
-                            });
-                            if (calorieSelections.first) {
-                              calorieMode = 'lose';
-                            } else if (calorieSelections[1]) {
-                              calorieMode = 'maintain';
-                            } else if (calorieSelections[2]) {
-                              calorieMode = 'gain';
-                            }
-
-                            updateCardActiveCalories();
-                          },
-                          constraints: const BoxConstraints(
-                            minWidth: 90,
-                            minHeight: 40,
-                          ),
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8.0,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF10B981),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Text(
-                                'Lose\n${calorieDeficit ?? 0}',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 12),
+                              elevation: 4,
+                            ),
+                            child: const Text(
+                              "Let's get started!",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8.0,
-                              ),
-                              child: Text(
-                                'Maintain\n${calorieMaintenance ?? 0}',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8.0,
-                              ),
-                              child: Text(
-                                'Gain\n${calorieSurplus ?? 0}',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Macros',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _proteinController,
-                                focusNode: _proteinFocusNode,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: 'Protein (g)',
-                                  hintText: 'Protein',
-                                  floatingLabelBehavior:
-                                      FloatingLabelBehavior.always,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 12,
-                                  ),
-                                ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _proteinGoal = int.tryParse(value);
-                                  });
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _carbsController,
-                                focusNode: _carbsFocusNode,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: 'Carbs (g)',
-                                  hintText: 'Carbs',
-                                  floatingLabelBehavior:
-                                      FloatingLabelBehavior.always,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 12,
-                                  ),
-                                ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _carbsGoal = int.tryParse(value);
-                                  });
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _fatsController,
-                                focusNode: _fatsFocusNode,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: 'Fats (g)',
-                                  hintText: 'Fats',
-                                  floatingLabelBehavior:
-                                      FloatingLabelBehavior.always,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 12,
-                                  ),
-                                ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _fatsGoal = int.tryParse(value);
-                                  });
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Flexible(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: CreditCard(
-                        key: ValueKey(
-                            '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_${_fatsGoal}'),
-                        initialCalories: cardActiveCalories ?? 0,
-                        caloriesOverride: cardActiveCalories ?? 0,
-                        proteinOverride: (_proteinGoal ?? 0).toDouble(),
-                        carbsOverride: (_carbsGoal ?? 0).toDouble(),
-                        fatsOverride: (_fatsGoal ?? 0).toDouble(),
-                        skipFetch: true,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          saveData();
-                          await Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const MainShell(initialIndex: 1),
-                            ),
-                            (route) => false,
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFF10B981),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 4,
-                        ),
-                        child: const Text(
-                          "Let's get started!",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 24),
+                    ],
                   ),
-                  const SizedBox(height: 24),
-                ],
+                ),
               ),
             ),
           ),
         ),
-      ),
+        if (_isEstimatingWithAI)
+          Container(
+            color: Colors.black.withOpacity(0.5),
+            child: Center(
+              child: Card(
+                elevation: 8,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      CircularProgressIndicator(
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'AI is calculating your\nmacros and calories...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
