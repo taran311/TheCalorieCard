@@ -61,9 +61,5 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>This app needs microphone access to add ingredients via voice</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>This app needs speech recognition to convert your voice to text for adding ingredients</string>
 </dict>
 </plist>
