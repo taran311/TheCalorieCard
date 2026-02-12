@@ -116,6 +116,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
   Future<Map<String, double>> _getCurrentIntakeTotals() async {
     final userId = FirebaseAuth.instance.currentUser!.uid;
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
     final snapshot = await FirebaseFirestore.instance
         .collection('user_food')
         .where('user_id', isEqualTo: userId)
@@ -128,6 +131,26 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
     for (final doc in snapshot.docs) {
       final data = doc.data();
+      DateTime? docDate;
+      final timeAdded = data['time_added'];
+      final createdAt = data['created_at'];
+
+      if (timeAdded is Timestamp) {
+        docDate = timeAdded.toDate();
+      } else if (timeAdded is DateTime) {
+        docDate = timeAdded;
+      } else if (createdAt is Timestamp) {
+        docDate = createdAt.toDate();
+      } else if (createdAt is DateTime) {
+        docDate = createdAt;
+      }
+
+      if (docDate == null ||
+          docDate.isBefore(startOfDay) ||
+          !docDate.isBefore(endOfDay)) {
+        continue;
+      }
+
       calories += (data['food_calories'] as num?)?.toDouble() ?? 0;
       protein += (data['food_protein'] as num?)?.toDouble() ?? 0;
       carbs += (data['food_carbs'] as num?)?.toDouble() ?? 0;
