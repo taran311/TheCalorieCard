@@ -36,7 +36,6 @@ class FatSecretApi {
           // Parse the error response
           final errorResponse = json.decode(response.body);
           if (errorResponse['error']?['code'] == 21) {
-            print('Invalid IP address detected. Retrying... Attempt: $attempt');
             await Future.delayed(Duration(seconds: 1)); // Add a short delay
             continue; // Retry the request
           } else {
@@ -48,7 +47,6 @@ class FatSecretApi {
         if (attempt >= maxRetries) {
           throw Exception('Maximum retries reached. Error: $e');
         }
-        print('Retry attempt $attempt failed: $e');
         await Future.delayed(Duration(seconds: 1)); // Add a short delay
       }
     }

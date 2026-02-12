@@ -581,7 +581,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         }
       }
     } catch (e) {
-      print('Error marking as delivered: $e');
+      // Error marking as delivered
     }
   }
 
@@ -615,7 +615,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         }
       }
     } catch (e) {
-      print('Error marking as read: $e');
+      // Error marking as read
     }
   }
 
@@ -690,7 +690,6 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         );
       }
     } catch (e) {
-      print('Error sending message: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error sending message: $e')),

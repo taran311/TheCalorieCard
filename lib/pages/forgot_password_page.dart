@@ -25,14 +25,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     });
 
     try {
-      print(
-          'Attempting to send password reset email to: ${emailController.text.trim()}');
       // Send password reset email
       await FirebaseAuth.instance.sendPasswordResetEmail(
         email: emailController.text.trim(),
       );
-
-      print('Password reset email sent successfully!');
 
       if (mounted) {
         setState(() {
@@ -54,8 +50,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         setState(() {
           isLoading = false;
         });
-        print('FirebaseAuthException: ${e.code} - ${e.message}');
-        print('Full error: $e');
         await showErrorDialog(getErrorMessage(e.code));
       }
     } catch (e) {
@@ -63,9 +57,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         setState(() {
           isLoading = false;
         });
-        print('Unexpected error in resetPassword: $e');
-        print('Error type: ${e.runtimeType}');
-        print('Full error: ${e.toString()}');
         // Show the actual error to help debug
         await showErrorDialog('Error: ${e.toString()}');
       }

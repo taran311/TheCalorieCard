@@ -17,14 +17,11 @@ class AuthPage extends StatelessWidget {
           .get();
 
       if (querySnapshot.docs.isNotEmpty) {
-        print('User exists.');
         return true;
       } else {
-        print('User does not exist.');
         return false;
       }
     } catch (e) {
-      print('Error checking user existence: $e');
       return false;
     }
   }

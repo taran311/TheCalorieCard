@@ -847,7 +847,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         }
       }
     } catch (e) {
-      print('Error populating food items: $e');
       if (mounted) {
         setState(() {
           _foodDocs = [];
@@ -880,7 +879,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 .get();
             username = userDoc.data()?['email']?.split('@')[0] ?? 'Unknown';
           } catch (e) {
-            print('Error fetching user data: $e');
+            // Error fetching user data
           }
 
           return {
@@ -898,7 +897,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         }
       }
     } catch (e) {
-      print('Error fetching reactions: $e');
+      // Error fetching reactions
     }
   }
 
@@ -964,7 +963,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         }
       }
     } catch (e) {
-      print('Error adding reaction: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error adding reaction: $e')),
@@ -1014,7 +1012,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       QuerySnapshot userDataSnapshot = await FirebaseFirestore.instance
           .collection('user_data')
           .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       final docRef = FirebaseFirestore.instance
           .collection('user_data')
@@ -1064,7 +1062,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         _creditCardRefreshKey++;
       });
     } catch (e) {
-      print('Error deleting food items: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error deleting food: $e')),
@@ -1143,7 +1140,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           .collection('user_data')
           .where('user_id', isEqualTo: userId)
           .limit(1)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (userDataSnapshot.docs.isNotEmpty) {
         final doc = userDataSnapshot.docs.first;
@@ -1418,7 +1415,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           .collection('user_data')
           .where('user_id', isEqualTo: userId)
           .limit(1)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (userDataSnapshot.docs.isEmpty) return;
 
@@ -1459,7 +1456,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         'fats_balance': fatsBal,
       });
     } catch (e) {
-      print('Error applying recipe balances: $e');
+      // Error applying recipe balances
     }
   }
 
@@ -1537,7 +1534,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         });
       }
     } catch (e) {
-      print('Error fetching category totals: $e');
+      // Error fetching category totals
     }
   }
 
@@ -1565,7 +1562,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         });
       }
     } catch (e) {
-      print('Error resetting category totals: $e');
+      // Error resetting category totals
     }
   }
 

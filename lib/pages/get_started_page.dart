@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
+import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -29,7 +30,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
   int? calorieMaintenance = 0;
   int? calorieSurplus = 0;
   int? cardActiveCalories = 0;
-  String? calorieMode;
+  String? calorieMode = 'lose'; // Default to match calorieSelections
 
   List<bool> genderSelections = [true, false];
   List<bool> calorieSelections = [true, false, false];
@@ -57,6 +58,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
 
   // AI estimation state
   bool _isEstimatingWithAI = false;
+  bool _showMiniGame = false;
   bool _canEstimateWithAI = false;
   bool _macrosFromAI = false;
   Map<String, dynamic>? _lastAIData;
@@ -252,6 +254,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
       if (mounted) {
         setState(() {
           _isEstimatingWithAI = false;
+          _showMiniGame = false;
         });
       }
     }
@@ -742,7 +745,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
             ),
           ),
         ),
-        if (_isEstimatingWithAI)
+        if (_isEstimatingWithAI && _showMiniGame) const PingPongGame(),
+        if (_isEstimatingWithAI && !_showMiniGame)
           Container(
             color: Colors.black.withOpacity(0.5),
             child: Center(
@@ -755,18 +759,32 @@ class _GetStartedPageState extends State<GetStartedPage> {
                   padding: const EdgeInsets.all(32),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      CircularProgressIndicator(
+                    children: [
+                      const CircularProgressIndicator(
                         valueColor:
                             AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
                       ),
-                      SizedBox(height: 16),
-                      Text(
+                      const SizedBox(height: 16),
+                      const Text(
                         'AI is calculating your\nmacros and calories...',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _showMiniGame = true;
+                          });
+                        },
+                        icon: const Icon(Icons.sports_esports, size: 18),
+                        label: const Text('Play Solo Ping Pong'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6366F1),
+                          foregroundColor: Colors.white,
                         ),
                       ),
                     ],

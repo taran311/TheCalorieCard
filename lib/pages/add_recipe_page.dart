@@ -6,6 +6,7 @@ import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/pages/fat_secret_api.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:namer_app/components/mini_game.dart';
 
 class AddRecipePage extends StatefulWidget {
   final bool addToHome;
@@ -49,6 +50,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
   final List<String> _freeTextIngredients = [];
   bool _calculatingAi = false;
   bool _isAiLoading = false;
+  bool _showMiniGame = false;
 
   @override
   void initState() {
@@ -218,6 +220,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
               color: Colors.black45,
               child: const Center(child: CircularProgressIndicator()),
             ),
+          if ((_isAiLoading || _calculatingAi) && _showMiniGame)
+            const PingPongGame(),
         ],
       ),
     );
@@ -530,6 +534,22 @@ class _AddRecipePageState extends State<AddRecipePage> {
                   fontSize: 12,
                 ),
               ),
+              if (!_showMiniGame) ...[
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _showMiniGame = true;
+                    });
+                  },
+                  icon: const Icon(Icons.sports_esports),
+                  label: const Text('Play Ping Pong While You Wait'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple.shade600,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
             ],
           ),
         if (_results != null)
@@ -1085,6 +1105,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
           ));
           _searchController.clear();
           _isAiLoading = false;
+          _showMiniGame = false;
         });
 
         if (mounted) {
@@ -1101,6 +1122,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       if (mounted) {
         setState(() {
           _isAiLoading = false;
+          _showMiniGame = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to get AI estimate: $e')),
@@ -1178,6 +1200,22 @@ class _AddRecipePageState extends State<AddRecipePage> {
               ),
             ),
           ),
+          if (_calculatingAi && !_showMiniGame) ...[
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _showMiniGame = true;
+                });
+              },
+              icon: const Icon(Icons.sports_esports),
+              label: const Text('Play Ping Pong While You Wait'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple.shade600,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         ],
       ],
     );
@@ -1257,6 +1295,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
         _ingredients.addAll(results);
         _freeTextIngredients.clear();
         _calculatingAi = false;
+        _showMiniGame = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(

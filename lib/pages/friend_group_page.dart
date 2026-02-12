@@ -638,7 +638,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
             'log_streak': logStreak,
           });
         } catch (e) {
-          print('Error fetching data for $memberId: $e');
+          // Error fetching member data
         }
       }
 
@@ -782,7 +782,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
 
       return streak;
     } catch (e) {
-      print('Error calculating log streak for $userId: $e');
       return 0;
     }
   }

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/pages/fat_secret_api.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/pages/main_shell.dart';
@@ -30,6 +31,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
   bool _isTextFieldTapped = false;
   bool _isLoading = false;
   bool _isAiLoading = false;
+  bool _showMiniGame = false;
   bool isEmpty = true;
 
   // Portion editing state
@@ -86,7 +88,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       await updateCalories(foodCalories);
       await updateMacros(foodProtein, foodCarbs, foodFat);
     } catch (e) {
-      print('Error adding user food: $e');
+      // Error adding user food
     }
   }
 
@@ -129,7 +131,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
         'last_updated': DateTime.now()
       });
     } catch (e) {
-      print('Error updating category totals: $e');
+      // Error updating category totals
     }
   }
 
@@ -140,7 +142,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('user_data')
           .where('user_id', isEqualTo: userId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (querySnapshot.docs.isNotEmpty) {
         final docId = querySnapshot.docs.first.id;
@@ -157,12 +159,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
               "Unexpected 'calories' type: ${currentCalories.runtimeType}");
         }
         await docRef.update({'calories': newCalories});
-        print('User data updated successfully!');
-      } else {
-        print('No document found with the provided user_id.');
       }
     } catch (e) {
-      print('Error updating user data: $e');
+      // Error updating user data
     }
   }
 
@@ -174,7 +173,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('user_data')
           .where('user_id', isEqualTo: userId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (querySnapshot.docs.isNotEmpty) {
         final docId = querySnapshot.docs.first.id;
@@ -203,7 +202,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
         });
       }
     } catch (e) {
-      print('Error updating macros: $e');
+      // Error updating macros
     }
   }
 
@@ -264,12 +263,14 @@ class _AddFoodPageState extends State<AddFoodPage> {
         setState(() {
           isEmpty = false;
           _isLoading = false;
+          _showMiniGame = false;
         });
       }
     } else {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _showMiniGame = false;
         });
       }
     }
@@ -360,16 +361,17 @@ class _AddFoodPageState extends State<AddFoodPage> {
             setState(() {
               isEmpty = false;
               _isAiLoading = false;
+              _showMiniGame = false;
             });
           }
         } else {
           throw Exception('Failed to get AI estimate: ${response.statusCode}');
         }
       } catch (e) {
-        print('Error with AI estimate: $e');
         if (mounted) {
           setState(() {
             _isAiLoading = false;
+            _showMiniGame = false;
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Failed to get AI estimate')),
@@ -380,6 +382,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       if (mounted) {
         setState(() {
           _isAiLoading = false;
+          _showMiniGame = false;
         });
       }
     }
@@ -902,7 +905,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                 ),
               ),
             ),
-            if (_isLoading || _isAiLoading)
+            if ((_isLoading || _isAiLoading) && _showMiniGame)
+              const PingPongGame(),
+            if ((_isLoading || _isAiLoading) && !_showMiniGame)
               Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -922,6 +927,24 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _showMiniGame = true;
+                        });
+                      },
+                      icon: const Icon(Icons.sports_esports, size: 18),
+                      label: const Text('Play Solo Ping Pong'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),

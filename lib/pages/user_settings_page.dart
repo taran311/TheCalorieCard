@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
+import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -110,6 +111,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
   // AI estimation state
   bool _isEstimatingWithAI = false;
+  bool _showMiniGame = false;
   bool _canEstimateWithAI = false;
   bool _macrosFromAI = false;
   Map<String, dynamic>? _lastAIData;
@@ -122,7 +124,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     final snapshot = await FirebaseFirestore.instance
         .collection('user_food')
         .where('user_id', isEqualTo: userId)
-        .get();
+        .get(const GetOptions(source: Source.server));
 
     double calories = 0;
     double protein = 0;
@@ -150,7 +152,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           !docDate.isBefore(endOfDay)) {
         continue;
       }
-
       calories += (data['food_calories'] as num?)?.toDouble() ?? 0;
       protein += (data['food_protein'] as num?)?.toDouble() ?? 0;
       carbs += (data['food_carbs'] as num?)?.toDouble() ?? 0;
@@ -165,6 +166,61 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     };
   }
 
+  Future<void> _clearAllTodaysFoodItems() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser!.uid;
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('user_food')
+          .where('user_id', isEqualTo: userId)
+          .get(const GetOptions(source: Source.server));
+
+      final batch = FirebaseFirestore.instance.batch();
+      int count = 0;
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        DateTime? docDate;
+        final timeAdded = data['time_added'];
+        final createdAt = data['created_at'];
+
+        if (timeAdded is Timestamp) {
+          docDate = timeAdded.toDate();
+        } else if (timeAdded is DateTime) {
+          docDate = timeAdded;
+        } else if (createdAt is Timestamp) {
+          docDate = createdAt.toDate();
+        } else if (createdAt is DateTime) {
+          docDate = createdAt;
+        }
+
+        if (docDate != null &&
+            !docDate.isBefore(startOfDay) &&
+            docDate.isBefore(endOfDay)) {
+          batch.delete(doc.reference);
+          count++;
+        }
+      }
+
+      await batch.commit();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cleared $count food items from today')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error clearing food items: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> saveData() async {
     try {
       final userId = FirebaseAuth.instance.currentUser!.uid;
@@ -172,7 +228,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('user_data')
           .where('user_id', isEqualTo: userId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (querySnapshot.docs.isNotEmpty) {
         // Get the document ID
@@ -213,12 +269,11 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           'fats_balance': fatsGoal - (totals['fats'] ?? 0),
         });
 
-        print('User data updated successfully!');
-      } else {
-        print('No document found with the provided user_id.');
+        // Wait a moment to ensure Firestore write propagates to server
+        await Future.delayed(const Duration(milliseconds: 500));
       }
     } catch (e) {
-      print('Error updating user data: $e');
+      // Error updating user data
     }
   }
 
@@ -231,13 +286,11 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('user_data')
           .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (querySnapshot.docs.isNotEmpty) {
         Map<String, dynamic> userData =
             querySnapshot.docs.first.data() as Map<String, dynamic>;
-
-        print('Retrieved user data: $userData'); // Debugging line
 
         setState(() {
           _selectedAge = userData['age'] as int?;
@@ -262,7 +315,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           } else if (_exerciseLevel == 4) {
             _exerciseText = 'A ton of activity (10+ hrs)';
           }
-          cardActiveCalories = userData['calories'] as int?;
 
           // Gender selection
           if (userData['gender'] == 'male') {
@@ -271,12 +323,23 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             genderSelections = [false, true];
           }
 
-          if (userData['calorie_mode'] == 'deficit') {
+          // Load calorie mode (default to 'lose' if null)
+          calorieMode = userData['calorie_mode'] as String?;
+          if (calorieMode == null ||
+              calorieMode == 'deficit' ||
+              calorieMode == 'lose') {
             calorieSelections = [true, false, false];
-          } else if (userData['calorie_mode'] == 'maintain') {
+            calorieMode = 'lose'; // Normalize to 'lose'
+          } else if (calorieMode == 'maintain') {
             calorieSelections = [false, true, false];
-          } else if (userData['calorie_mode'] == 'gain') {
+            calorieMode = 'maintain';
+          } else if (calorieMode == 'gain') {
             calorieSelections = [false, false, true];
+            calorieMode = 'gain';
+          } else {
+            // Fallback to lose if unrecognized
+            calorieSelections = [true, false, false];
+            calorieMode = 'lose';
           }
 
           _proteinGoal = (userData['protein_goal'] as num?)?.toInt();
@@ -289,11 +352,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           updateCalories();
           updateCardActiveCalories();
         });
-      } else {
-        print('No user found with the provided user_id.');
       }
     } catch (e) {
-      print('Error getting user data: $e');
+      // Error getting user data
     } finally {
       if (context.mounted) {
         setState(() {
@@ -432,6 +493,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       if (mounted) {
         setState(() {
           _isEstimatingWithAI = false;
+          _showMiniGame = false;
         });
       }
     }
@@ -954,6 +1016,48 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                 SizedBox(
                                   width: double.infinity,
                                   height: 50,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title:
+                                              const Text('Clear Today\'s Food'),
+                                          content: const Text(
+                                              'This will delete all food items logged for today. This action cannot be undone. Continue?'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(context, false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            ElevatedButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(context, true),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.red,
+                                              ),
+                                              child: const Text('Clear All'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirm == true) {
+                                        await _clearAllTodaysFoodItems();
+                                      }
+                                    },
+                                    icon: const Icon(Icons.delete_sweep),
+                                    label: const Text('Clear Today\'s Food'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 50,
                                   child: ElevatedButton(
                                     onPressed: _isSaving
                                         ? null
@@ -966,6 +1070,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                             setState(() {
                                               _isSaving = false;
                                             });
+                                            // Navigate to home and clear all previous routes
                                             await Navigator.pushAndRemoveUntil(
                                               context,
                                               MaterialPageRoute(
@@ -1012,7 +1117,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                     ),
             ),
           ),
-          if (_isEstimatingWithAI)
+          if (_isEstimatingWithAI && _showMiniGame) const PingPongGame(),
+          if (_isEstimatingWithAI && !_showMiniGame)
             Container(
               color: Colors.black.withOpacity(0.5),
               child: Center(
@@ -1025,18 +1131,32 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                     padding: const EdgeInsets.all(32),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        CircularProgressIndicator(
+                      children: [
+                        const CircularProgressIndicator(
                           valueColor:
                               AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
                         ),
-                        SizedBox(height: 16),
-                        Text(
+                        const SizedBox(height: 16),
+                        const Text(
                           'AI is calculating your\nmacros and calories...',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _showMiniGame = true;
+                            });
+                          },
+                          icon: const Icon(Icons.sports_esports, size: 18),
+                          label: const Text('Play Solo Ping Pong'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            foregroundColor: Colors.white,
                           ),
                         ),
                       ],
