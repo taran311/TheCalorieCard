@@ -1754,23 +1754,64 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       },
                       child: Stack(
                         children: [
-                          CreditCard(
-                            key: ValueKey(_creditCardRefreshKey),
-                            userIdOverride: widget.userIdOverride,
-                            cardUserNameOverride: widget.bannerTitle,
-                            validThruDate:
-                                '${_selectedLogDate.day}/${_selectedLogDate.month}/${_selectedLogDate.year}',
-                            onToggleMacros: (showMacros) {
-                              // Trigger jiggle when card is flipped
-                              _jiggleAnimationController?.forward(from: 0);
-                              setState(() {
-                                _showMacrosTotal = showMacros;
-                                for (var doc in _foodDocs) {
-                                  _foodMacrosVisibility[doc.id] = showMacros;
-                                }
-                              });
-                            },
-                          ),
+                          _isSelectedDateToday
+                              ? CreditCard(
+                                  key: ValueKey(_creditCardRefreshKey),
+                                  userIdOverride: widget.userIdOverride,
+                                  cardUserNameOverride: widget.bannerTitle,
+                                  validThruDate:
+                                      '${_selectedLogDate.day}/${_selectedLogDate.month}/${_selectedLogDate.year}',
+                                  onToggleMacros: (showMacros) {
+                                    // Trigger jiggle when card is flipped
+                                    _jiggleAnimationController?.forward(
+                                        from: 0);
+                                    setState(() {
+                                      _showMacrosTotal = showMacros;
+                                      for (var doc in _foodDocs) {
+                                        _foodMacrosVisibility[doc.id] =
+                                            showMacros;
+                                      }
+                                    });
+                                  },
+                                )
+                              : CreditCard(
+                                  key: ValueKey(
+                                      '$_creditCardRefreshKey-${_selectedLogDate.toIso8601String()}'),
+                                  skipFetch: true,
+                                  caloriesOverride:
+                                      (_selectedDailyLog?['balances']
+                                                  ?['calories'] as num?)
+                                              ?.toInt() ??
+                                          0,
+                                  proteinOverride:
+                                      (_selectedDailyLog?['balances']
+                                                  ?['protein_balance'] as num?)
+                                              ?.toDouble() ??
+                                          0,
+                                  carbsOverride: (_selectedDailyLog?['balances']
+                                              ?['carbs_balance'] as num?)
+                                          ?.toDouble() ??
+                                      0,
+                                  fatsOverride: (_selectedDailyLog?['balances']
+                                              ?['fats_balance'] as num?)
+                                          ?.toDouble() ??
+                                      0,
+                                  userIdOverride: widget.userIdOverride,
+                                  cardUserNameOverride: widget.bannerTitle,
+                                  validThruDate:
+                                      '${_selectedLogDate.day}/${_selectedLogDate.month}/${_selectedLogDate.year}',
+                                  onToggleMacros: (showMacros) {
+                                    _jiggleAnimationController?.forward(
+                                        from: 0);
+                                    setState(() {
+                                      _showMacrosTotal = showMacros;
+                                      for (var doc in _foodDocs) {
+                                        _foodMacrosVisibility[doc.id] =
+                                            showMacros;
+                                      }
+                                    });
+                                  },
+                                ),
                           if (_isDayFinished)
                             Positioned(
                               top: 10,

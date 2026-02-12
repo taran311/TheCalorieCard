@@ -98,7 +98,7 @@ class _CreditCardWidgetState extends State<CreditCard>
           .collection('user_data')
           .where('user_id', isEqualTo: userId)
           .limit(1)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (!mounted) return;
 
