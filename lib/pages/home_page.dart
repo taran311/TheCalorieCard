@@ -1098,6 +1098,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         context,
         MaterialPageRoute(builder: (context) => UserSettingsPage()),
       );
+      if (!mounted) return;
+      setState(() {
+        _creditCardRefreshKey++;
+      });
     }
   }
 
