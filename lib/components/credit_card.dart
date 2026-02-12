@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:namer_app/components/calorie_currency_icon.dart';
 
 class CreditCard extends StatefulWidget {
@@ -200,7 +199,7 @@ class _CreditCardWidgetState extends State<CreditCard>
                 left: 16,
                 child: Text(
                   'TheCalorieCard',
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -234,7 +233,7 @@ class _CreditCardWidgetState extends State<CreditCard>
                           children: [
                             Text(
                               'Protein: ${displayProtein.toStringAsFixed(0)}g',
-                              style: GoogleFonts.robotoMono(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
@@ -242,7 +241,7 @@ class _CreditCardWidgetState extends State<CreditCard>
                             ),
                             Text(
                               'Carbs: ${displayCarbs.toStringAsFixed(0)}g',
-                              style: GoogleFonts.robotoMono(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
@@ -250,7 +249,7 @@ class _CreditCardWidgetState extends State<CreditCard>
                             ),
                             Text(
                               'Fats: ${displayFats.toStringAsFixed(0)}g',
-                              style: GoogleFonts.robotoMono(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
@@ -259,7 +258,7 @@ class _CreditCardWidgetState extends State<CreditCard>
                             const SizedBox(height: 4),
                             Text(
                               'Balance',
-                              style: GoogleFonts.robotoMono(
+                              style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.white,
@@ -276,7 +275,7 @@ class _CreditCardWidgetState extends State<CreditCard>
                                 const SizedBox(width: 6),
                                 Text(
                                   displayCalories.toString(),
-                                  style: GoogleFonts.robotoMono(
+                                  style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
@@ -337,7 +336,7 @@ class _CreditCardWidgetState extends State<CreditCard>
                     const SizedBox(height: 2),
                     Text(
                       today,
-                      style: GoogleFonts.robotoMono(
+                      style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
@@ -355,7 +354,7 @@ class _CreditCardWidgetState extends State<CreditCard>
                     _getTruncatedName(widget.cardUserNameOverride ??
                         FirebaseAuth.instance.currentUser?.email ??
                         'User'),
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: Colors.white,

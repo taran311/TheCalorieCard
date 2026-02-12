@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
@@ -313,7 +312,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                               children: [
                                 Text(
                                   'Challenge Type',
-                                  style: GoogleFonts.poppins(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.grey.shade700,
@@ -324,7 +323,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                   value: _selectedChallengeType,
                                   hint: Text(
                                     'Select a challenge',
-                                    style: GoogleFonts.poppins(fontSize: 14),
+                                    style: TextStyle(fontSize: 14),
                                   ),
                                   decoration: InputDecoration(
                                     contentPadding: const EdgeInsets.symmetric(
@@ -349,8 +348,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                       value: type,
                                       child: Text(
                                         type,
-                                        style:
-                                            GoogleFonts.poppins(fontSize: 14),
+                                        style: TextStyle(fontSize: 14),
                                       ),
                                     );
                                   }).toList(),
@@ -368,7 +366,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
                             'Rankings',
-                            style: GoogleFonts.poppins(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: const Color(0xFF6366F1),
@@ -441,7 +439,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                           children: [
                                             Text(
                                               _truncateName(memberEmail),
-                                              style: GoogleFonts.poppins(
+                                              style: TextStyle(
                                                 fontSize: 14,
                                                 fontWeight: FontWeight.w500,
                                               ),
@@ -824,7 +822,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
       child: Center(
         child: Text(
           rank.toString(),
-          style: GoogleFonts.poppins(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -847,7 +845,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
       ),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
+        style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w500,
           color: color,

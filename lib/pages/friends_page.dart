@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/friend_group_page.dart';
@@ -487,7 +486,7 @@ class _FriendsPageState extends State<FriendsPage> {
                     Expanded(
                       child: Text(
                         'Create Friend Group',
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -515,7 +514,7 @@ class _FriendsPageState extends State<FriendsPage> {
                     children: [
                       Text(
                         'Group Name',
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
@@ -533,7 +532,7 @@ class _FriendsPageState extends State<FriendsPage> {
                       const SizedBox(height: 16),
                       Text(
                         'Suggested Names',
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
@@ -564,7 +563,7 @@ class _FriendsPageState extends State<FriendsPage> {
                               ),
                               child: Text(
                                 name,
-                                style: GoogleFonts.poppins(
+                                style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                   color: const Color(0xFF6366F1),
@@ -577,7 +576,7 @@ class _FriendsPageState extends State<FriendsPage> {
                       const SizedBox(height: 24),
                       Text(
                         'Select Friends',
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
@@ -611,7 +610,7 @@ class _FriendsPageState extends State<FriendsPage> {
                               },
                               title: Text(
                                 friendEmail,
-                                style: GoogleFonts.poppins(fontSize: 14),
+                                style: TextStyle(fontSize: 14),
                               ),
                               activeColor: const Color(0xFF6366F1),
                             );
@@ -662,7 +661,7 @@ class _FriendsPageState extends State<FriendsPage> {
                           )
                         : Text(
                             'Create Group',
-                            style: GoogleFonts.poppins(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
@@ -745,7 +744,7 @@ class _FriendsPageState extends State<FriendsPage> {
                             // Friend Requests Section
                             Text(
                               'Friend Requests',
-                              style: GoogleFonts.poppins(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -774,7 +773,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                     alignment: Alignment.center,
                                     child: Text(
                                       'No pending friend requests',
-                                      style: GoogleFonts.poppins(
+                                      style: TextStyle(
                                         fontSize: 14,
                                         color: Colors.grey,
                                       ),
@@ -808,7 +807,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                         children: [
                                           Text(
                                             fromEmail ?? 'Unknown',
-                                            style: GoogleFonts.poppins(
+                                            style: TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w600,
                                             ),
@@ -872,7 +871,7 @@ class _FriendsPageState extends State<FriendsPage> {
                             // Friends List Section
                             Text(
                               'Your Friends',
-                              style: GoogleFonts.poppins(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -907,7 +906,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                     alignment: Alignment.center,
                                     child: Text(
                                       'No friends yet',
-                                      style: GoogleFonts.poppins(
+                                      style: TextStyle(
                                         fontSize: 14,
                                         color: Colors.grey,
                                       ),
@@ -954,7 +953,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                 Expanded(
                                                   child: Text(
                                                     friendEmail,
-                                                    style: GoogleFonts.poppins(
+                                                    style: TextStyle(
                                                       fontSize: 14,
                                                       fontWeight:
                                                           FontWeight.w500,
@@ -1045,7 +1044,7 @@ class _FriendsPageState extends State<FriendsPage> {
                             // Friend Groups Section
                             Text(
                               'Friend Groups',
-                              style: GoogleFonts.poppins(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -1073,7 +1072,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                     alignment: Alignment.center,
                                     child: Text(
                                       'No friend groups yet',
-                                      style: GoogleFonts.poppins(
+                                      style: TextStyle(
                                         fontSize: 14,
                                         color: Colors.grey,
                                       ),
@@ -1132,7 +1131,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                 children: [
                                                   Text(
                                                     groupName,
-                                                    style: GoogleFonts.poppins(
+                                                    style: TextStyle(
                                                       fontSize: 14,
                                                       fontWeight:
                                                           FontWeight.w600,
@@ -1140,7 +1139,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                   ),
                                                   Text(
                                                     '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
-                                                    style: GoogleFonts.poppins(
+                                                    style: TextStyle(
                                                       fontSize: 12,
                                                       color:
                                                           Colors.grey.shade600,

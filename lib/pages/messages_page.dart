@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class MessagesPage extends StatelessWidget {
@@ -43,7 +42,7 @@ class MessagesPage extends StatelessWidget {
                   const SizedBox(height: 16),
                   Text(
                     'Error loading conversations',
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 16,
                       color: Colors.grey.shade600,
                     ),
@@ -51,7 +50,7 @@ class MessagesPage extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     'Please check your connection',
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey.shade500,
                     ),
@@ -71,7 +70,7 @@ class MessagesPage extends StatelessWidget {
                   const SizedBox(height: 16),
                   Text(
                     'No conversations yet',
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 16,
                       color: Colors.grey.shade600,
                     ),
@@ -79,7 +78,7 @@ class MessagesPage extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     'Start a chat from Friends or Groups',
-                    style: GoogleFonts.poppins(
+                    style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey.shade500,
                     ),
@@ -196,7 +195,7 @@ class MessagesPage extends StatelessWidget {
           Expanded(
             child: Text(
               conversationName,
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.w500,
               ),
             ),
@@ -204,7 +203,7 @@ class MessagesPage extends StatelessWidget {
           if (lastMessageTime != null)
             Text(
               timeago.format(lastMessageTime.toDate()),
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey.shade600,
               ),
@@ -291,7 +290,7 @@ class MessagesPage extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   'Start New Chat',
-                  style: GoogleFonts.poppins(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -349,7 +348,7 @@ class MessagesPage extends StatelessWidget {
           return Center(
             child: Text(
               'No friends yet',
-              style: GoogleFonts.poppins(color: Colors.grey),
+              style: TextStyle(color: Colors.grey),
             ),
           );
         }
@@ -377,7 +376,7 @@ class MessagesPage extends StatelessWidget {
                   ),
                   title: Text(
                     friendName,
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+                    style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                   onTap: () async {
                     Navigator.pop(context);
@@ -408,7 +407,7 @@ class MessagesPage extends StatelessWidget {
           return Center(
             child: Text(
               'No groups yet',
-              style: GoogleFonts.poppins(color: Colors.grey),
+              style: TextStyle(color: Colors.grey),
             ),
           );
         }
@@ -429,11 +428,11 @@ class MessagesPage extends StatelessWidget {
               ),
               title: Text(
                 groupName,
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+                style: TextStyle(fontWeight: FontWeight.w500),
               ),
               subtitle: Text(
                 '${memberIds.length} members',
-                style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               onTap: () async {
                 Navigator.pop(context);
@@ -763,7 +762,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                       return Center(
                         child: Text(
                           'No messages yet. Say hi! 👋',
-                          style: GoogleFonts.poppins(
+                          style: TextStyle(
                             color: Colors.grey.shade600,
                           ),
                         ),
@@ -815,7 +814,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                                 if (widget.isGroup && !isMe)
                                   Text(
                                     senderName,
-                                    style: GoogleFonts.poppins(
+                                    style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
                                       color: isMe
@@ -825,7 +824,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                                   ),
                                 Text(
                                   messageText,
-                                  style: GoogleFonts.poppins(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     color: isMe ? Colors.white : Colors.black87,
                                   ),
@@ -836,7 +835,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                                     if (timestamp != null)
                                       Text(
                                         timeago.format(timestamp.toDate()),
-                                        style: GoogleFonts.poppins(
+                                        style: TextStyle(
                                           fontSize: 10,
                                           color: isMe
                                               ? Colors.white70
