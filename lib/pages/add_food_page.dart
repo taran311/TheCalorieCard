@@ -6,6 +6,8 @@ import 'package:namer_app/pages/fat_secret_api.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/services/achievement_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class AddFoodPage extends StatefulWidget {
   AddFoodPage({
@@ -27,6 +29,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
   bool hideCard = true;
   bool _isTextFieldTapped = false;
   bool _isLoading = false;
+  bool _isAiLoading = false;
   bool isEmpty = true;
 
   // Portion editing state
@@ -250,6 +253,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
             'protein': protein,
             'carbs': carbs,
             'fat': fat,
+            'isAiEstimate': false,
           });
 
           foodIndex++;
@@ -266,6 +270,116 @@ class _AddFoodPageState extends State<AddFoodPage> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _onAiEstimate() async {
+    if (!mounted) return;
+    FocusScope.of(context).unfocus();
+    foodListData.clear();
+    _originalPortions.clear();
+    _foodMacros.clear();
+    _editingFoodIndex = null;
+
+    setState(() {
+      _isTextFieldTapped = true;
+      _isAiLoading = true;
+    });
+
+    final query = foodController.text;
+
+    if (query.isNotEmpty) {
+      try {
+        final Uri requestUri =
+            Uri.parse('https://fatsecret-proxy.onrender.com/estimate');
+
+        final response = await http.post(
+          requestUri,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: json.encode({'food': query}),
+        );
+
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> jsonResponse = json.decode(response.body);
+
+          if (!mounted) return;
+
+          setState(() {
+            final foodIndex = 0;
+            final foodName = jsonResponse['name'] ?? query;
+
+            // Get the serving size info
+            final mode = jsonResponse['mode'] ?? 'grams';
+            final servingGrams = mode == 'serving'
+                ? (jsonResponse['estimated_serving_grams'] ?? 100)
+                : (jsonResponse['grams'] ?? 100);
+            final servingDescription = jsonResponse['serving_description'];
+
+            // Total values for the actual portion
+            final totalCalories = (jsonResponse['calories'] ?? 0).toInt();
+            final totalProtein = (jsonResponse['protein'] ?? 0).toDouble();
+            final totalCarbs = (jsonResponse['carbs'] ?? 0).toDouble();
+            final totalFat = (jsonResponse['fat'] ?? 0).toDouble();
+
+            final portion = '${servingGrams}g';
+
+            // Create display name with serving info
+            String displayName;
+            if (servingDescription != null && servingDescription.isNotEmpty) {
+              displayName = servingDescription;
+            } else {
+              displayName =
+                  '$foodName (estimated serving size ${servingGrams}g)';
+            }
+
+            _originalPortions[foodIndex] = portion;
+            _foodMacros[foodIndex] = {
+              'calories': totalCalories.toDouble(),
+              'protein': totalProtein,
+              'carbs': totalCarbs,
+              'fat': totalFat,
+            };
+
+            foodListData.add({
+              'foodIndex': foodIndex,
+              'foodName': displayName,
+              'portion': portion,
+              'calories': totalCalories,
+              'protein': totalProtein,
+              'carbs': totalCarbs,
+              'fat': totalFat,
+              'isAiEstimate': true,
+            });
+          });
+
+          if (mounted) {
+            setState(() {
+              isEmpty = false;
+              _isAiLoading = false;
+            });
+          }
+        } else {
+          throw Exception('Failed to get AI estimate: ${response.statusCode}');
+        }
+      } catch (e) {
+        print('Error with AI estimate: $e');
+        if (mounted) {
+          setState(() {
+            _isAiLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to get AI estimate')),
+          );
+        }
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _isAiLoading = false;
         });
       }
     }
@@ -298,6 +412,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
     required double protein,
     required double carbs,
     required double fat,
+    bool isAiEstimate = false,
   }) {
     final isEditing = _editingFoodIndex == foodIndex;
     final isOtherItemEditing =
@@ -349,7 +464,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '(per $portion)',
+                      isAiEstimate
+                          ? '(estimated weight: $portion)'
+                          : '(per $portion)',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.8),
                         fontSize: 12,
@@ -652,6 +769,33 @@ class _AddFoodPageState extends State<AddFoodPage> {
                                 icon: const Icon(Icons.search),
                                 color: const Color(0xFF6366F1),
                               ),
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Color(0xFF6366F1),
+                                      Color(0xFF4F46E5),
+                                    ],
+                                  ),
+                                ),
+                                child: IconButton(
+                                  onPressed: () async {
+                                    await _onAiEstimate();
+                                  },
+                                  icon: const Text(
+                                    'AI',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  tooltip: 'AI Estimate',
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -746,6 +890,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
                                   protein: foodData['protein'],
                                   carbs: foodData['carbs'],
                                   fat: foodData['fat'],
+                                  isAiEstimate:
+                                      foodData['isAiEstimate'] ?? false,
                                 );
                               }).toList(),
                             ),
@@ -756,9 +902,28 @@ class _AddFoodPageState extends State<AddFoodPage> {
                 ),
               ),
             ),
-            if (_isLoading)
-              const Center(
-                child: CircularProgressIndicator(),
+            if (_isLoading || _isAiLoading)
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        _isAiLoading ? Colors.purple.shade400 : Colors.blue,
+                      ),
+                    ),
+                    if (_isAiLoading) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'AI is estimating...',
+                        style: TextStyle(
+                          color: Colors.purple.shade600,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
           ],
         ),

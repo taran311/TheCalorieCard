@@ -34,8 +34,23 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _SelectExistingRecipePage extends StatelessWidget {
+class _SelectExistingRecipePage extends StatefulWidget {
   const _SelectExistingRecipePage();
+
+  @override
+  State<_SelectExistingRecipePage> createState() =>
+      _SelectExistingRecipePageState();
+}
+
+class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
+  int? _editingRecipeIndex;
+  final TextEditingController _portionController = TextEditingController();
+
+  @override
+  void dispose() {
+    _portionController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,14 +83,315 @@ class _SelectExistingRecipePage extends StatelessWidget {
             itemBuilder: (context, index) {
               final recipe = recipes[index];
               final calories = recipe['total_calories'] as num? ?? 0;
-              return ListTile(
-                title: Text(recipe['name'] ?? 'Recipe'),
-                subtitle: Text('${calories.toStringAsFixed(0)} kcal'),
-                trailing: const Icon(Icons.add_circle_outline,
-                    color: Color(0xFF6366F1)),
-                onTap: () {
-                  Navigator.pop(context, recipe.id);
-                },
+              final protein =
+                  (recipe['total_protein'] as num?)?.toDouble() ?? 0;
+              final carbs = (recipe['total_carbs'] as num?)?.toDouble() ?? 0;
+              final fat = (recipe['total_fat'] as num?)?.toDouble() ?? 0;
+              final servingSize =
+                  recipe['serving_size'] as String? ?? 'Per 1 Serving';
+              final isEditing = _editingRecipeIndex == index;
+
+              // Parse serving size to determine unit and value
+              final isGrams = servingSize.contains('g') &&
+                  !servingSize.toLowerCase().contains('serving');
+              final servingMatch =
+                  RegExp(r'(\d+(?:\.\d+)?)').firstMatch(servingSize);
+              final originalServingValue = servingMatch != null
+                  ? double.parse(servingMatch.group(1)!)
+                  : 1.0;
+              final unit = isGrams
+                  ? 'g'
+                  : 'Serving${originalServingValue != 1 ? 's' : ''}';
+
+              return Column(
+                children: [
+                  ListTile(
+                    title: Text(recipe['name'] ?? 'Recipe'),
+                    subtitle: Text(
+                        '${calories.toStringAsFixed(0)} kcal ($servingSize)'),
+                    trailing: const Icon(Icons.add_circle_outline,
+                        color: Color(0xFF6366F1)),
+                    onTap: () {
+                      setState(() {
+                        _editingRecipeIndex = index;
+                        _portionController.text = originalServingValue
+                            .toStringAsFixed(isGrams ? 0 : 1);
+                      });
+                    },
+                  ),
+                  if (isEditing)
+                    Container(
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.indigo.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: Colors.indigo.shade300, width: 1.5),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'per ',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              SizedBox(
+                                width: 70,
+                                child: TextField(
+                                  controller: _portionController,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  decoration: InputDecoration(
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 8),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                  ),
+                                  onSubmitted: (_) => setState(() {}),
+                                  onTapOutside: (_) {
+                                    FocusScope.of(context).unfocus();
+                                    setState(() {});
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                unit,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Builder(
+                            builder: (context) {
+                              final newPortion =
+                                  double.tryParse(_portionController.text) ??
+                                      originalServingValue;
+                              final ratio = newPortion / originalServingValue;
+                              final adjustedCalories =
+                                  (calories * ratio).toInt();
+                              final adjustedProtein = protein * ratio;
+                              final adjustedCarbs = carbs * ratio;
+                              final adjustedFat = fat * ratio;
+
+                              return Column(
+                                children: [
+                                  // Calories - Prominent display
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.orange.shade400,
+                                          Colors.orange.shade600,
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(10),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.orange.withOpacity(0.3),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(
+                                          Icons.local_fire_department,
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '$adjustedCalories',
+                                          style: const TextStyle(
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          'kcal',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  // Macros - Grid layout
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 10, horizontal: 8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade100,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: Colors.blue.shade300,
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              Text(
+                                                'Protein',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.blue.shade800,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${adjustedProtein.toStringAsFixed(1)}g',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.blue.shade900,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 10, horizontal: 8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.shade100,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: Colors.green.shade300,
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              Text(
+                                                'Carbs',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.green.shade800,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${adjustedCarbs.toStringAsFixed(1)}g',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.green.shade900,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 10, horizontal: 8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.purple.shade100,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: Colors.purple.shade300,
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              Text(
+                                                'Fat',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.purple.shade800,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${adjustedFat.toStringAsFixed(1)}g',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.purple.shade900,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _editingRecipeIndex = null;
+                                          });
+                                        },
+                                        child: const Text('Cancel'),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          final multiplier = ratio;
+                                          Navigator.pop(context, {
+                                            'recipeId': recipe.id,
+                                            'multiplier': multiplier,
+                                          });
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              const Color(0xFF6366F1),
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        child: const Text('Add'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               );
             },
           );
@@ -128,6 +444,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   double _dragEndDx = 0;
   bool _isResettingCard = false;
   bool _pendingSwipePrompt = false;
+  bool _isDeletingItem = false;
 
   String _roundMacro(dynamic value) {
     final numVal =
@@ -785,6 +1102,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Future<void> _deleteFoodItem(String docId) async {
+    if (_isDeletingItem) return; // Prevent multiple deletions
+
+    setState(() {
+      _isDeletingItem = true;
+    });
+
     try {
       final firestore = FirebaseFirestore.instance;
       final userId = FirebaseAuth.instance.currentUser!.uid;
@@ -888,6 +1211,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _creditCardRefreshKey++;
+          _isDeletingItem = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Food item removed')),
@@ -895,6 +1219,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isDeletingItem = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error deleting food item: $e')),
         );
@@ -961,14 +1288,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 title: const Text('Add Existing Recipe'),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  final recipeId = await Navigator.push(
+                  final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => const _SelectExistingRecipePage(),
                     ),
                   );
-                  if (recipeId != null) {
-                    await _addRecipeToHome(recipeId, currentCategory);
+                  if (result != null && result is Map<String, dynamic>) {
+                    final recipeId = result['recipeId'] as String;
+                    final multiplier = result['multiplier'] as double;
+                    await _addRecipeToHome(recipeId, currentCategory,
+                        multiplier: multiplier);
                     await populateFoodItems();
                     if (_isSelectedDateToday) {
                       await _upsertDailyLogForDate(_selectedLogDate);
@@ -985,7 +1315,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> _addRecipeToHome(String recipeId, String category) async {
+  Future<void> _addRecipeToHome(String recipeId, String category,
+      {double multiplier = 1.0}) async {
     final firestore = FirebaseFirestore.instance;
     final userId = FirebaseAuth.instance.currentUser!.uid;
     final recipeDoc = await firestore.collection('recipes').doc(recipeId).get();
@@ -995,14 +1326,36 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     // Get serving size from recipe, default to "1 Serving" if not present
     final servingSize = data['serving_size'] as String? ?? 'Per 1 Serving';
 
+    // Apply multiplier to calculate adjusted values
+    final baseCalories = (data['total_calories'] as num?)?.toDouble() ?? 0;
+    final baseProtein = (data['total_protein'] as num?)?.toDouble() ?? 0;
+    final baseCarbs = (data['total_carbs'] as num?)?.toDouble() ?? 0;
+    final baseFat = (data['total_fat'] as num?)?.toDouble() ?? 0;
+
+    final adjustedCalories = baseCalories * multiplier;
+    final adjustedProtein = baseProtein * multiplier;
+    final adjustedCarbs = baseCarbs * multiplier;
+    final adjustedFat = baseFat * multiplier;
+
+    // Calculate adjusted portion display
+    final servingMatch = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(servingSize);
+    final originalValue =
+        servingMatch != null ? double.parse(servingMatch.group(1)!) : 1.0;
+    final newValue = originalValue * multiplier;
+    final isGrams = servingSize.contains('g') &&
+        !servingSize.toLowerCase().contains('serving');
+    final adjustedPortion = isGrams
+        ? '${newValue.toStringAsFixed(0)} g'
+        : 'Per ${newValue.toStringAsFixed(1)} Serving${newValue != 1 ? 's' : ''}';
+
     await firestore.collection('user_food').add({
       'user_id': userId,
       'food_description': 'Recipe: ${data['name'] ?? ''}',
-      'food_calories': data['total_calories'] ?? 0,
-      'food_protein': (data['total_protein'] as num?)?.toDouble() ?? 0,
-      'food_carbs': (data['total_carbs'] as num?)?.toDouble() ?? 0,
-      'food_fat': (data['total_fat'] as num?)?.toDouble() ?? 0,
-      'food_portion': servingSize,
+      'food_calories': adjustedCalories,
+      'food_protein': adjustedProtein,
+      'food_carbs': adjustedCarbs,
+      'food_fat': adjustedFat,
+      'food_portion': adjustedPortion,
       'foodCategory': category,
       'recipe_id': recipeId,
       'is_recipe': true,
@@ -1010,17 +1363,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       'created_at': FieldValue.serverTimestamp(),
     });
 
-    final recipeCalories = (data['total_calories'] as num?)?.toDouble() ?? 0;
-    final recipeProtein = (data['total_protein'] as num?)?.toDouble() ?? 0;
-    final recipeCarbs = (data['total_carbs'] as num?)?.toDouble() ?? 0;
-    final recipeFat = (data['total_fat'] as num?)?.toDouble() ?? 0;
-
     // Apply to user balances (subtract when adding)
     await _applyRecipeToUserBalances(
-      calories: recipeCalories,
-      protein: recipeProtein,
-      carbs: recipeCarbs,
-      fat: recipeFat,
+      calories: adjustedCalories,
+      protein: adjustedProtein,
+      carbs: adjustedCarbs,
+      fat: adjustedFat,
     );
 
     // Update category totals
@@ -1031,18 +1379,19 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     if (docSnapshot.exists) {
       await docRef.update({
         'total_calories':
-            (docSnapshot['total_calories'] as num? ?? 0) + recipeCalories,
+            (docSnapshot['total_calories'] as num? ?? 0) + adjustedCalories,
         'total_protein':
-            (docSnapshot['total_protein'] as num? ?? 0) + recipeProtein,
-        'total_carbs': (docSnapshot['total_carbs'] as num? ?? 0) + recipeCarbs,
-        'total_fat': (docSnapshot['total_fat'] as num? ?? 0) + recipeFat,
+            (docSnapshot['total_protein'] as num? ?? 0) + adjustedProtein,
+        'total_carbs':
+            (docSnapshot['total_carbs'] as num? ?? 0) + adjustedCarbs,
+        'total_fat': (docSnapshot['total_fat'] as num? ?? 0) + adjustedFat,
       });
     } else {
       await docRef.set({
-        'total_calories': recipeCalories,
-        'total_protein': recipeProtein,
-        'total_carbs': recipeCarbs,
-        'total_fat': recipeFat,
+        'total_calories': adjustedCalories,
+        'total_protein': adjustedProtein,
+        'total_carbs': adjustedCarbs,
+        'total_fat': adjustedFat,
       });
     }
 
@@ -1675,129 +2024,138 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                 ),
                               ),
                               Expanded(
-                                child: ListView.builder(
-                                  itemCount: _foodDocs.length,
-                                  itemBuilder: (context, index) {
-                                    final doc = _foodDocs[index];
-                                    return Container(
-                                      margin: const EdgeInsets.symmetric(
-                                          vertical: 6),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(12),
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            Colors.white.withOpacity(0.95),
-                                            Colors.blue.shade50
-                                                .withOpacity(0.9),
-                                          ],
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color:
-                                                Colors.black.withOpacity(0.1),
-                                            blurRadius: 4,
-                                            offset: const Offset(0, 2),
+                                child: Stack(
+                                  children: [
+                                    ListView.builder(
+                                      itemCount: _foodDocs.length,
+                                      itemBuilder: (context, index) {
+                                        final doc = _foodDocs[index];
+                                        return Container(
+                                          margin: const EdgeInsets.symmetric(
+                                              vertical: 6),
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                              colors: [
+                                                Colors.white.withOpacity(0.95),
+                                                Colors.blue.shade50
+                                                    .withOpacity(0.9),
+                                              ],
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withOpacity(0.1),
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
                                           ),
-                                        ],
-                                      ),
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          _handleFoodItemTap(doc.id);
-                                        },
-                                        child: Column(
-                                          children: [
-                                            ListTile(
-                                              contentPadding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 16,
-                                                vertical: 8,
-                                              ),
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                              title: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Text(
-                                                    doc["food_description"],
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      color: Colors.black87,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                    ),
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              _handleFoodItemTap(doc.id);
+                                            },
+                                            child: Column(
+                                              children: [
+                                                ListTile(
+                                                  contentPadding:
+                                                      const EdgeInsets
+                                                          .symmetric(
+                                                    horizontal: 16,
+                                                    vertical: 8,
                                                   ),
-                                                  if (doc["food_portion"] !=
-                                                          null &&
-                                                      (doc["food_portion"]
-                                                              as String)
-                                                          .isNotEmpty)
-                                                    Text(
-                                                      '(${doc["food_portion"]})',
-                                                      style: TextStyle(
-                                                        color: Colors
-                                                            .grey.shade600,
-                                                        fontSize: 12,
-                                                        fontWeight:
-                                                            FontWeight.w400,
+                                                  visualDensity:
+                                                      VisualDensity.compact,
+                                                  title: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Text(
+                                                        doc["food_description"],
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: const TextStyle(
+                                                          color: Colors.black87,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
                                                       ),
-                                                    ),
-                                                ],
-                                              ),
-                                              trailing: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.center,
-                                                children: [
-                                                  if (_deleteMode &&
-                                                      !_isDayFinished)
-                                                    GestureDetector(
-                                                      onTap: () async {
-                                                        await _deleteFoodItem(
-                                                            doc.id);
-                                                      },
-                                                      child: Icon(
-                                                        Icons.delete_outline,
-                                                        color:
-                                                            Colors.red.shade400,
-                                                        size: 24,
-                                                      ),
-                                                    )
-                                                  else
-                                                    Container(
-                                                      padding:
-                                                          EdgeInsets.symmetric(
-                                                        horizontal: 12,
-                                                        vertical:
-                                                            (_foodMacrosVisibility[
+                                                      if (doc["food_portion"] !=
+                                                              null &&
+                                                          (doc["food_portion"]
+                                                                  as String)
+                                                              .isNotEmpty)
+                                                        Text(
+                                                          '(${doc["food_portion"]})',
+                                                          style: TextStyle(
+                                                            color: Colors
+                                                                .grey.shade600,
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight.w400,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                  trailing: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      if (_deleteMode &&
+                                                          !_isDayFinished)
+                                                        GestureDetector(
+                                                          onTap: () async {
+                                                            await _deleteFoodItem(
+                                                                doc.id);
+                                                          },
+                                                          child: Icon(
+                                                            Icons
+                                                                .delete_outline,
+                                                            color: Colors
+                                                                .red.shade400,
+                                                            size: 24,
+                                                          ),
+                                                        )
+                                                      else
+                                                        Container(
+                                                          padding: EdgeInsets
+                                                              .symmetric(
+                                                            horizontal: 12,
+                                                            vertical: (_foodMacrosVisibility[
                                                                         doc.id] ??
-                                                                    false)
+                                                                    _showMacrosTotal)
                                                                 ? 1
                                                                 : 4,
-                                                      ),
-                                                      decoration: BoxDecoration(
-                                                        gradient:
-                                                            LinearGradient(
-                                                          colors: [
-                                                            Colors.orange
-                                                                .shade400,
-                                                            Colors.orange
-                                                                .shade600,
-                                                          ],
-                                                        ),
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(12),
-                                                      ),
-                                                      child:
-                                                          (_foodMacrosVisibility[
+                                                          ),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            gradient:
+                                                                LinearGradient(
+                                                              colors: [
+                                                                Colors.orange
+                                                                    .shade400,
+                                                                Colors.orange
+                                                                    .shade600,
+                                                              ],
+                                                            ),
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12),
+                                                          ),
+                                                          child: (_foodMacrosVisibility[
                                                                       doc.id] ??
-                                                                  false)
+                                                                  _showMacrosTotal)
                                                               ? Column(
                                                                   mainAxisAlignment:
                                                                       MainAxisAlignment
@@ -1851,7 +2209,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                                   ],
                                                                 )
                                                               : Text(
-                                                                  '${doc["food_calories"]} kcal',
+                                                                  '${_roundMacro(doc["food_calories"])} kcal',
                                                                   style:
                                                                       const TextStyle(
                                                                     color: Colors
@@ -1863,180 +2221,216 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                                         12,
                                                                   ),
                                                                 ),
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                            // Show emoji picker when in readOnly mode
-                                            if (widget.readOnly &&
-                                                (_showEmojiPicker[doc.id] ??
-                                                    false))
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.all(12),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.grey.shade100,
-                                                  borderRadius:
-                                                      const BorderRadius.only(
-                                                    bottomLeft:
-                                                        Radius.circular(12),
-                                                    bottomRight:
-                                                        Radius.circular(12),
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment
-                                                          .spaceEvenly,
-                                                  children: [
-                                                    GestureDetector(
-                                                      onTap: () => _addReaction(
-                                                          doc.id, '🔥'),
-                                                      child: const Text('🔥',
-                                                          style: TextStyle(
-                                                              fontSize: 32)),
-                                                    ),
-                                                    GestureDetector(
-                                                      onTap: () => _addReaction(
-                                                          doc.id, '😈'),
-                                                      child: const Text('😈',
-                                                          style: TextStyle(
-                                                              fontSize: 32)),
-                                                    ),
-                                                    GestureDetector(
-                                                      onTap: () => _addReaction(
-                                                          doc.id, '💪'),
-                                                      child: const Text('💪',
-                                                          style: TextStyle(
-                                                              fontSize: 32)),
-                                                    ),
-                                                    GestureDetector(
-                                                      onTap: () => _addReaction(
-                                                          doc.id, '❤️'),
-                                                      child: const Text('❤️',
-                                                          style: TextStyle(
-                                                              fontSize: 32)),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            // Show reaction confirmation when in readOnly mode after adding emoji
-                                            if (widget.readOnly &&
-                                                _reactionConfirmationFoodId ==
-                                                    doc.id &&
-                                                _reactionFadeAnimation != null)
-                                              FadeTransition(
-                                                opacity:
-                                                    _reactionFadeAnimation!,
-                                                child: Container(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                    horizontal: 16,
-                                                    vertical: 8,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.green.shade50,
-                                                    borderRadius:
-                                                        const BorderRadius.only(
-                                                      bottomLeft:
-                                                          Radius.circular(12),
-                                                      bottomRight:
-                                                          Radius.circular(12),
-                                                    ),
-                                                  ),
-                                                  child: Row(
-                                                    children: [
-                                                      Expanded(
-                                                        child: Text(
-                                                          _reactionConfirmationUsername ??
-                                                              '',
-                                                          style: TextStyle(
-                                                            color: Colors
-                                                                .grey.shade700,
-                                                            fontWeight:
-                                                                FontWeight.w500,
-                                                          ),
                                                         ),
-                                                      ),
-                                                      Text(
-                                                        _reactionConfirmationEmoji ??
-                                                            '',
-                                                        style: const TextStyle(
-                                                            fontSize: 24),
-                                                      ),
                                                     ],
                                                   ),
                                                 ),
-                                              ),
-                                            // Show reactions when owner taps food item
-                                            if (!widget.readOnly &&
-                                                (_showReactions[doc.id] ??
-                                                    false) &&
-                                                _foodReactions[doc.id] !=
-                                                    null &&
-                                                _foodReactions[doc.id]!
-                                                    .isNotEmpty)
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                  horizontal: 16,
-                                                  vertical: 8,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.blue.shade50,
-                                                  borderRadius:
-                                                      const BorderRadius.only(
-                                                    bottomLeft:
-                                                        Radius.circular(12),
-                                                    bottomRight:
-                                                        Radius.circular(12),
+                                                // Show emoji picker when in readOnly mode
+                                                if (widget.readOnly &&
+                                                    (_showEmojiPicker[doc.id] ??
+                                                        false))
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                            12),
+                                                    decoration: BoxDecoration(
+                                                      color:
+                                                          Colors.grey.shade100,
+                                                      borderRadius:
+                                                          const BorderRadius
+                                                              .only(
+                                                        bottomLeft:
+                                                            Radius.circular(12),
+                                                        bottomRight:
+                                                            Radius.circular(12),
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .spaceEvenly,
+                                                      children: [
+                                                        GestureDetector(
+                                                          onTap: () =>
+                                                              _addReaction(
+                                                                  doc.id, '🔥'),
+                                                          child: const Text(
+                                                              '🔥',
+                                                              style: TextStyle(
+                                                                  fontSize:
+                                                                      32)),
+                                                        ),
+                                                        GestureDetector(
+                                                          onTap: () =>
+                                                              _addReaction(
+                                                                  doc.id, '😈'),
+                                                          child: const Text(
+                                                              '😈',
+                                                              style: TextStyle(
+                                                                  fontSize:
+                                                                      32)),
+                                                        ),
+                                                        GestureDetector(
+                                                          onTap: () =>
+                                                              _addReaction(
+                                                                  doc.id, '💪'),
+                                                          child: const Text(
+                                                              '💪',
+                                                              style: TextStyle(
+                                                                  fontSize:
+                                                                      32)),
+                                                        ),
+                                                        GestureDetector(
+                                                          onTap: () =>
+                                                              _addReaction(
+                                                                  doc.id, '❤️'),
+                                                          child: const Text(
+                                                              '❤️',
+                                                              style: TextStyle(
+                                                                  fontSize:
+                                                                      32)),
+                                                        ),
+                                                      ],
+                                                    ),
                                                   ),
-                                                ),
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children:
-                                                      _foodReactions[doc.id]!
-                                                          .map(
-                                                              (reaction) =>
-                                                                  Padding(
-                                                                    padding:
-                                                                        const EdgeInsets
-                                                                            .symmetric(
-                                                                      vertical:
-                                                                          2,
-                                                                    ),
-                                                                    child: Row(
-                                                                      children: [
-                                                                        Expanded(
-                                                                          child:
-                                                                              Text(
-                                                                            reaction['username'] ??
-                                                                                'Unknown',
-                                                                            style:
-                                                                                TextStyle(
-                                                                              color: Colors.grey.shade700,
-                                                                              fontWeight: FontWeight.w500,
+                                                // Show reaction confirmation when in readOnly mode after adding emoji
+                                                if (widget.readOnly &&
+                                                    _reactionConfirmationFoodId ==
+                                                        doc.id &&
+                                                    _reactionFadeAnimation !=
+                                                        null)
+                                                  FadeTransition(
+                                                    opacity:
+                                                        _reactionFadeAnimation!,
+                                                    child: Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 16,
+                                                        vertical: 8,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors
+                                                            .green.shade50,
+                                                        borderRadius:
+                                                            const BorderRadius
+                                                                .only(
+                                                          bottomLeft:
+                                                              Radius.circular(
+                                                                  12),
+                                                          bottomRight:
+                                                              Radius.circular(
+                                                                  12),
+                                                        ),
+                                                      ),
+                                                      child: Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: Text(
+                                                              _reactionConfirmationUsername ??
+                                                                  '',
+                                                              style: TextStyle(
+                                                                color: Colors
+                                                                    .grey
+                                                                    .shade700,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          Text(
+                                                            _reactionConfirmationEmoji ??
+                                                                '',
+                                                            style:
+                                                                const TextStyle(
+                                                                    fontSize:
+                                                                        24),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                // Show reactions when owner taps food item
+                                                if (!widget.readOnly &&
+                                                    (_showReactions[doc.id] ??
+                                                        false) &&
+                                                    _foodReactions[doc.id] !=
+                                                        null &&
+                                                    _foodReactions[doc.id]!
+                                                        .isNotEmpty)
+                                                  Container(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 8,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color:
+                                                          Colors.blue.shade50,
+                                                      borderRadius:
+                                                          const BorderRadius
+                                                              .only(
+                                                        bottomLeft:
+                                                            Radius.circular(12),
+                                                        bottomRight:
+                                                            Radius.circular(12),
+                                                      ),
+                                                    ),
+                                                    child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children:
+                                                          _foodReactions[
+                                                                  doc.id]!
+                                                              .map(
+                                                                  (reaction) =>
+                                                                      Padding(
+                                                                        padding:
+                                                                            const EdgeInsets.symmetric(
+                                                                          vertical:
+                                                                              2,
+                                                                        ),
+                                                                        child:
+                                                                            Row(
+                                                                          children: [
+                                                                            Expanded(
+                                                                              child: Text(
+                                                                                reaction['username'] ?? 'Unknown',
+                                                                                style: TextStyle(
+                                                                                  color: Colors.grey.shade700,
+                                                                                  fontWeight: FontWeight.w500,
+                                                                                ),
+                                                                              ),
                                                                             ),
-                                                                          ),
+                                                                            Text(
+                                                                              reaction['emoji'] ?? '',
+                                                                              style: const TextStyle(fontSize: 20),
+                                                                            ),
+                                                                          ],
                                                                         ),
-                                                                        Text(
-                                                                          reaction['emoji'] ??
-                                                                              '',
-                                                                          style:
-                                                                              const TextStyle(fontSize: 20),
-                                                                        ),
-                                                                      ],
-                                                                    ),
-                                                                  ))
-                                                          .toList(),
-                                                ),
-                                              ),
-                                          ],
+                                                                      ))
+                                                              .toList(),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    if (_isDeletingItem)
+                                      Container(
+                                        color: Colors.black.withOpacity(0.3),
+                                        child: const Center(
+                                          child: CircularProgressIndicator(
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                    Colors.white),
+                                          ),
                                         ),
                                       ),
-                                    );
-                                  },
+                                  ],
                                 ),
                               ),
                               const SizedBox(height: 16),

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/pages/fat_secret_api.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class AddRecipePage extends StatefulWidget {
   final bool addToHome;
@@ -39,6 +41,15 @@ class _AddRecipePageState extends State<AddRecipePage> {
   late TextEditingController _ingredientPortionController;
   late TextEditingController _searchPortionController;
 
+  // Mode selection
+  String _inputMode = 'Free Text'; // 'Manual Input' or 'Free Text'
+
+  // Free text mode
+  final TextEditingController _freeTextController = TextEditingController();
+  final List<String> _freeTextIngredients = [];
+  bool _calculatingAi = false;
+  bool _isAiLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +64,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
   void dispose() {
     _ingredientPortionController.dispose();
     _searchPortionController.dispose();
+    _freeTextController.dispose();
     super.dispose();
   }
 
@@ -147,14 +159,41 @@ class _AddRecipePageState extends State<AddRecipePage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Ingredients',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Ingredients',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 16),
+                      ),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment<String>(
+                            value: 'Free Text',
+                            label: Text('Free Text'),
+                          ),
+                          ButtonSegment<String>(
+                            value: 'Manual Input',
+                            label: Text('Manual Input'),
+                          ),
+                        ],
+                        selected: {_inputMode},
+                        onSelectionChanged: (Set<String> newSelection) {
+                          setState(() {
+                            _inputMode = newSelection.first;
+                          });
+                        },
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   _buildSelectedIngredients(),
                   const SizedBox(height: 8),
-                  _buildSearch(),
+                  if (_inputMode == 'Manual Input')
+                    _buildSearch()
+                  else
+                    _buildFreeTextInput(),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
@@ -395,9 +434,39 @@ class _AddRecipePageState extends State<AddRecipePage> {
             labelText: 'Search ingredient (FatSecret)',
             border: const OutlineInputBorder(),
             suffixIcon: _searchController.text.isEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.search),
-                    onPressed: _searching ? null : _performSearch,
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: _searching ? null : _performSearch,
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFF6366F1),
+                              Color(0xFF4F46E5),
+                            ],
+                          ),
+                        ),
+                        child: IconButton(
+                          onPressed: _isAiLoading ? null : _performAiSearch,
+                          icon: const Text(
+                            'AI',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          tooltip: 'AI Estimate',
+                        ),
+                      ),
+                    ],
                   )
                 : Row(
                     mainAxisSize: MainAxisSize.min,
@@ -405,6 +474,31 @@ class _AddRecipePageState extends State<AddRecipePage> {
                       IconButton(
                         icon: const Icon(Icons.search),
                         onPressed: _searching ? null : _performSearch,
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFF6366F1),
+                              Color(0xFF4F46E5),
+                            ],
+                          ),
+                        ),
+                        child: IconButton(
+                          onPressed: _isAiLoading ? null : _performAiSearch,
+                          icon: const Text(
+                            'AI',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          tooltip: 'AI Estimate',
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close),
@@ -423,6 +517,21 @@ class _AddRecipePageState extends State<AddRecipePage> {
         ),
         const SizedBox(height: 8),
         if (_searching) const LinearProgressIndicator(minHeight: 2),
+        if (_isAiLoading)
+          Column(
+            children: [
+              const LinearProgressIndicator(minHeight: 2),
+              const SizedBox(height: 8),
+              Text(
+                'AI is estimating...',
+                style: TextStyle(
+                  color: Colors.purple.shade600,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
         if (_results != null)
           Column(
             children: _results!.food.asMap().entries.map((entry) {
@@ -915,6 +1024,248 @@ class _AddRecipePageState extends State<AddRecipePage> {
     final regex = RegExp(r'^(\d+(?:\.\d+)?)');
     final match = regex.firstMatch(portion);
     return match != null ? double.parse(match.group(1)!) : 1.0;
+  }
+
+  // AI Search for standard mode
+  Future<void> _performAiSearch() async {
+    final q = _searchController.text.trim();
+    if (q.isEmpty) return;
+
+    setState(() {
+      _isAiLoading = true;
+      _results = null;
+    });
+
+    try {
+      final Uri requestUri =
+          Uri.parse('https://fatsecret-proxy.onrender.com/estimate');
+
+      final response = await http.post(
+        requestUri,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({'food': q}),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = json.decode(response.body);
+
+        if (!mounted) return;
+
+        final foodName = jsonResponse['name'] ?? q;
+        final mode = jsonResponse['mode'] ?? 'grams';
+        final servingGrams = mode == 'serving'
+            ? (jsonResponse['estimated_serving_grams'] ?? 100)
+            : (jsonResponse['grams'] ?? 100);
+        final servingDescription = jsonResponse['serving_description'];
+
+        final totalCalories = (jsonResponse['calories'] ?? 0).toDouble();
+        final totalProtein = (jsonResponse['protein'] ?? 0).toDouble();
+        final totalCarbs = (jsonResponse['carbs'] ?? 0).toDouble();
+        final totalFat = (jsonResponse['fat'] ?? 0).toDouble();
+
+        final portion = '${servingGrams}g';
+
+        String displayName;
+        if (servingDescription != null && servingDescription.isNotEmpty) {
+          displayName = servingDescription;
+        } else {
+          displayName = '$foodName (estimated serving size ${servingGrams}g)';
+        }
+
+        setState(() {
+          _ingredients.add(_IngredientEntry(
+            name: displayName,
+            calories: totalCalories,
+            protein: totalProtein,
+            carbs: totalCarbs,
+            fat: totalFat,
+            portion: portion,
+          ));
+          _searchController.clear();
+          _isAiLoading = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    '$displayName added with ${totalCalories.toStringAsFixed(0)} kcal')),
+          );
+        }
+      } else {
+        throw Exception('Failed to get AI estimate: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isAiLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to get AI estimate: $e')),
+        );
+      }
+    }
+  }
+
+  // Free text input widget
+  Widget _buildFreeTextInput() {
+    return Column(
+      children: [
+        TextField(
+          controller: _freeTextController,
+          decoration: InputDecoration(
+            labelText: 'Enter ingredients (comma-separated)',
+            hintText: 'e.g. 100g banana, 200g cinnamon, 1 apple',
+            border: const OutlineInputBorder(),
+            helperText: 'Type ingredients and press comma to add',
+          ),
+          onChanged: (value) {
+            if (value.endsWith(',')) {
+              final ingredient = value.substring(0, value.length - 1).trim();
+              if (ingredient.isNotEmpty) {
+                setState(() {
+                  _freeTextIngredients.add(ingredient);
+                  _freeTextController.clear();
+                });
+              }
+            }
+          },
+        ),
+        const SizedBox(height: 12),
+        if (_freeTextIngredients.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _freeTextIngredients.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final ingredient = entry.value;
+              return Chip(
+                label: Text(ingredient),
+                deleteIcon: const Icon(Icons.close, size: 18),
+                onDeleted: () {
+                  setState(() {
+                    _freeTextIngredients.removeAt(idx);
+                  });
+                },
+                backgroundColor: Colors.blue.shade100,
+              );
+            }).toList(),
+          ),
+        if (_freeTextIngredients.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _calculatingAi ? null : _calculateAllWithAi,
+              icon: _calculatingAi
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.auto_awesome),
+              label:
+                  Text(_calculatingAi ? 'Calculating...' : 'Calculate with AI'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // Calculate all free text ingredients with AI
+  Future<void> _calculateAllWithAi() async {
+    if (_freeTextIngredients.isEmpty) return;
+
+    setState(() {
+      _calculatingAi = true;
+    });
+
+    final results = <_IngredientEntry>[];
+    int successCount = 0;
+    int failCount = 0;
+
+    for (final ingredient in _freeTextIngredients) {
+      try {
+        final Uri requestUri =
+            Uri.parse('https://fatsecret-proxy.onrender.com/estimate');
+
+        final response = await http.post(
+          requestUri,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: json.encode({'food': ingredient}),
+        );
+
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> jsonResponse = json.decode(response.body);
+
+          final foodName = jsonResponse['name'] ?? ingredient;
+          final mode = jsonResponse['mode'] ?? 'grams';
+          final servingGrams = mode == 'serving'
+              ? (jsonResponse['estimated_serving_grams'] ?? 100)
+              : (jsonResponse['grams'] ?? 100);
+          final servingDescription = jsonResponse['serving_description'];
+
+          final totalCalories = (jsonResponse['calories'] ?? 0).toDouble();
+          final totalProtein = (jsonResponse['protein'] ?? 0).toDouble();
+          final totalCarbs = (jsonResponse['carbs'] ?? 0).toDouble();
+          final totalFat = (jsonResponse['fat'] ?? 0).toDouble();
+
+          final portion = '${servingGrams}g';
+
+          String displayName;
+          if (servingDescription != null && servingDescription.isNotEmpty) {
+            displayName = servingDescription;
+          } else {
+            displayName = '$foodName (estimated serving size ${servingGrams}g)';
+          }
+
+          results.add(_IngredientEntry(
+            name: displayName,
+            calories: totalCalories,
+            protein: totalProtein,
+            carbs: totalCarbs,
+            fat: totalFat,
+            portion: portion,
+          ));
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (e) {
+        failCount++;
+      }
+
+      // Small delay between requests to avoid overwhelming the API
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    if (mounted) {
+      setState(() {
+        _ingredients.addAll(results);
+        _freeTextIngredients.clear();
+        _calculatingAi = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Added $successCount ingredients${failCount > 0 ? ', $failCount failed' : ''}'),
+        ),
+      );
+    }
   }
 }
 
