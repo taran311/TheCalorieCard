@@ -685,12 +685,15 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                           });
                                         },
                                       ),
-                                      Center(
-                                        child: Text(
-                                          _exerciseText,
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w500,
+                                      Transform.translate(
+                                        offset: const Offset(0, -6),
+                                        child: Center(
+                                          child: Text(
+                                            _exerciseText,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -723,70 +726,72 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                 Padding(
                                   padding:
                                       const EdgeInsets.symmetric(horizontal: 0),
-                                  child: IntrinsicWidth(
-                                    child: ToggleButtons(
-                                      isSelected: calorieSelections,
-                                      selectedColor: Colors.white,
-                                      fillColor: const Color(0xFF6366F1),
-                                      borderColor: const Color(0xFF6366F1),
-                                      selectedBorderColor:
-                                          const Color(0xFF6366F1),
-                                      onPressed: (int index) {
-                                        setState(() {
-                                          for (int i = 0;
-                                              i < calorieSelections.length;
-                                              i++) {
-                                            calorieSelections[i] = i == index;
+                                  child: Center(
+                                    child: IntrinsicWidth(
+                                      child: ToggleButtons(
+                                        isSelected: calorieSelections,
+                                        selectedColor: Colors.white,
+                                        fillColor: const Color(0xFF6366F1),
+                                        borderColor: const Color(0xFF6366F1),
+                                        selectedBorderColor:
+                                            const Color(0xFF6366F1),
+                                        onPressed: (int index) {
+                                          setState(() {
+                                            for (int i = 0;
+                                                i < calorieSelections.length;
+                                                i++) {
+                                              calorieSelections[i] = i == index;
+                                            }
+                                          });
+                                          if (calorieSelections.first) {
+                                            calorieMode = 'lose';
+                                          } else if (calorieSelections[1]) {
+                                            calorieMode = 'maintain';
+                                          } else if (calorieSelections[2]) {
+                                            calorieMode = 'gain';
                                           }
-                                        });
-                                        if (calorieSelections.first) {
-                                          calorieMode = 'lose';
-                                        } else if (calorieSelections[1]) {
-                                          calorieMode = 'maintain';
-                                        } else if (calorieSelections[2]) {
-                                          calorieMode = 'gain';
-                                        }
-                                        updateCardActiveCalories();
-                                      },
-                                      constraints: const BoxConstraints(
-                                        minWidth: 90,
-                                        minHeight: 40,
+                                          updateCardActiveCalories();
+                                        },
+                                        constraints: const BoxConstraints(
+                                          minWidth: 90,
+                                          minHeight: 40,
+                                        ),
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8.0,
+                                            ),
+                                            child: Text(
+                                              'Lose\n${calorieDeficit ?? 0}',
+                                              textAlign: TextAlign.center,
+                                              style:
+                                                  const TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8.0,
+                                            ),
+                                            child: Text(
+                                              'Maintain\n${calorieMaintenance ?? 0}',
+                                              textAlign: TextAlign.center,
+                                              style:
+                                                  const TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8.0,
+                                            ),
+                                            child: Text(
+                                              'Gain\n${calorieSurplus ?? 0}',
+                                              textAlign: TextAlign.center,
+                                              style:
+                                                  const TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      children: [
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8.0,
-                                          ),
-                                          child: Text(
-                                            'Lose\n${calorieDeficit ?? 0}',
-                                            textAlign: TextAlign.center,
-                                            style:
-                                                const TextStyle(fontSize: 12),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8.0,
-                                          ),
-                                          child: Text(
-                                            'Maintain\n${calorieMaintenance ?? 0}',
-                                            textAlign: TextAlign.center,
-                                            style:
-                                                const TextStyle(fontSize: 12),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8.0,
-                                          ),
-                                          child: Text(
-                                            'Gain\n${calorieSurplus ?? 0}',
-                                            textAlign: TextAlign.center,
-                                            style:
-                                                const TextStyle(fontSize: 12),
-                                          ),
-                                        ),
-                                      ],
                                     ),
                                   ),
                                 ),
