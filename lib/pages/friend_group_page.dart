@@ -20,47 +20,12 @@ class FriendGroupPage extends StatefulWidget {
 }
 
 class _FriendGroupPageState extends State<FriendGroupPage> {
-  String? _selectedChallengeType;
-
-  final List<String> _challengeTypes = [
-    'Lowest Calories Consumed',
-    'Lowest Protein Consumed',
-    'Lowest Carbs Consumed',
-    'Lowest Fat Consumed',
-    'Highest Calories Consumed',
-    'Highest Protein Consumed',
-    'Highest Carbs Consumed',
-    'Highest Fat Consumed',
-    'Log Streak',
-  ];
-
   String _truncateName(String email) {
     final username = email.split('@').first;
     if (username.length <= 15) {
       return username;
     }
     return '${username.substring(0, 15)}...';
-  }
-
-  Future<void> _updateChallengeType(String? newType) async {
-    if (newType == null) return;
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('friend_groups')
-          .doc(widget.groupId)
-          .update({'challenge_type': newType});
-
-      setState(() {
-        _selectedChallengeType = newType;
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating challenge type: $e')),
-        );
-      }
-    }
   }
 
   Future<void> _startGroupChat(List<String> memberIds) async {
@@ -277,19 +242,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                   final memberIds =
                       (groupData['members'] as List?)?.cast<String>() ?? [];
 
-                  // Sync challenge type from group data if it changed
-                  final groupChallengeType =
-                      groupData['challenge_type'] as String?;
-                  if (groupChallengeType != _selectedChallengeType) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        setState(() {
-                          _selectedChallengeType = groupChallengeType;
-                        });
-                      }
-                    });
-                  }
-
                   if (memberIds.isEmpty) {
                     return const Center(
                         child: Text('No members in this group'));
@@ -297,84 +249,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
 
                   return Column(
                     children: [
-                      // Challenge Type Dropdown
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Card(
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Challenge Type',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                DropdownButtonFormField<String>(
-                                  value: _selectedChallengeType,
-                                  hint: Text(
-                                    'Select a challenge',
-                                    style: TextStyle(fontSize: 14),
-                                  ),
-                                  decoration: InputDecoration(
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(
-                                        color: Colors.grey.shade300,
-                                      ),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(
-                                        color: Colors.grey.shade300,
-                                      ),
-                                    ),
-                                  ),
-                                  items: _challengeTypes.map((type) {
-                                    return DropdownMenuItem(
-                                      value: type,
-                                      child: Text(
-                                        type,
-                                        style: TextStyle(fontSize: 14),
-                                      ),
-                                    );
-                                  }).toList(),
-                                  onChanged: _updateChallengeType,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Rankings Header
-                      if (_selectedChallengeType != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            'Rankings',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF6366F1),
-                            ),
-                          ),
-                        ),
-                      if (_selectedChallengeType != null)
-                        const SizedBox(height: 8),
                       Expanded(
                         child: StreamBuilder<List<Map<String, dynamic>>>(
                           stream: _getMemberConsumptionStream(memberIds),
@@ -385,16 +259,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                             }
 
                             var members = consumptionSnapshot.data!;
-
-                            // Sort members based on challenge type
-                            List<int> ranks = [];
-                            if (_selectedChallengeType != null) {
-                              members = _sortMembersByChallenge(
-                                  members, _selectedChallengeType!);
-                              // Calculate ranks with ties
-                              ranks = _calculateRanksWithTies(
-                                  members, _selectedChallengeType!);
-                            }
 
                             return ListView.builder(
                               padding:
@@ -413,124 +277,201 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                     memberData['consumed_carbs'] as double;
                                 final fats =
                                     memberData['consumed_fats'] as double;
-                                final logStreak =
-                                    memberData['log_streak'] as int? ?? 0;
-                                final rank =
-                                    ranks.isNotEmpty ? ranks[index] : index + 1;
 
                                 return Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  padding: const EdgeInsets.all(12),
+                                  margin: const EdgeInsets.only(bottom: 16),
                                   decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      // Ranking Medal
-                                      if (_selectedChallengeType != null)
-                                        _buildRankingMedal(rank),
-                                      if (_selectedChallengeType != null)
-                                        const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              _truncateName(memberEmail),
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                            if (_selectedChallengeType != null)
-                                              const SizedBox(height: 6),
-                                            if (_selectedChallengeType != null)
-                                              _selectedChallengeType ==
-                                                      'Log Streak'
-                                                  ? _buildNutritionChip(
-                                                      '$logStreak Days',
-                                                      const Color(0xFF6366F1),
-                                                    )
-                                                  : Wrap(
-                                                      spacing: 8,
-                                                      runSpacing: 4,
-                                                      children: [
-                                                        _buildNutritionChip(
-                                                          '${calories.toStringAsFixed(0)} cal',
-                                                          Colors
-                                                              .orange.shade600,
-                                                        ),
-                                                        _buildNutritionChip(
-                                                          '${protein.toStringAsFixed(0)}g protein',
-                                                          Colors.red.shade600,
-                                                        ),
-                                                        _buildNutritionChip(
-                                                          '${carbs.toStringAsFixed(0)}g carbs',
-                                                          Colors.blue.shade600,
-                                                        ),
-                                                        _buildNutritionChip(
-                                                          '${fats.toStringAsFixed(0)}g fat',
-                                                          Colors.green.shade600,
-                                                        ),
-                                                      ],
-                                                    ),
-                                          ],
-                                        ),
-                                      ),
-                                      IconButton(
-                                        onPressed: () {
-                                          _startChatWithMember(
-                                              memberId, memberEmail);
-                                        },
-                                        icon: const Icon(
-                                          Icons.chat_bubble_outline,
-                                          color: Color(0xFF6366F1),
-                                        ),
-                                        tooltip: 'Chat',
-                                      ),
-                                      IconButton(
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => HomePage(
-                                                readOnly: true,
-                                                hideNav: true,
-                                                userIdOverride: memberId,
-                                                showBanner: true,
-                                                bannerTitle: memberEmail,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        icon: const Icon(
-                                          Icons.credit_card,
-                                          color: Color(0xFF6366F1),
-                                        ),
-                                        tooltip: 'View card',
-                                      ),
-                                      IconButton(
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => AchievementsPage(
-                                                userIdOverride: memberId,
-                                                titleOverride:
-                                                    '$memberEmail\'s Achievements',
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        icon: const Icon(
-                                          Icons.emoji_events,
-                                          color: Color(0xFFF59E0B),
-                                        ),
-                                        tooltip: 'View achievements',
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.08),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
                                       ),
                                     ],
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            // Avatar
+                                            Container(
+                                              width: 48,
+                                              height: 48,
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                  colors: [
+                                                    const Color(0xFF6366F1),
+                                                    const Color(0xFF8B5CF6),
+                                                  ],
+                                                ),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Center(
+                                                child: Text(
+                                                  memberEmail
+                                                      .substring(0, 1)
+                                                      .toUpperCase(),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 20,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    _truncateName(memberEmail),
+                                                    style: const TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Color(0xFF1F2937),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    'Today\'s Consumption',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color:
+                                                          Colors.grey.shade600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 16),
+                                        // Nutrition Info
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey.shade50,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color: Colors.grey.shade200,
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: [
+                                              _buildNutritionChip(
+                                                '${calories.toStringAsFixed(0)} cal',
+                                                Colors.orange.shade600,
+                                              ),
+                                              _buildNutritionChip(
+                                                '${protein.toStringAsFixed(0)}g protein',
+                                                Colors.red.shade600,
+                                              ),
+                                              _buildNutritionChip(
+                                                '${carbs.toStringAsFixed(0)}g carbs',
+                                                Colors.blue.shade600,
+                                              ),
+                                              _buildNutritionChip(
+                                                '${fats.toStringAsFixed(0)}g fat',
+                                                Colors.green.shade600,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        // Action Icons Row (horizontal like bottom nav)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 8),
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              top: BorderSide(
+                                                color: Colors.grey.shade200,
+                                                width: 1,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceEvenly,
+                                            children: [
+                                              IconButton(
+                                                onPressed: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) => HomePage(
+                                                        readOnly: true,
+                                                        hideNav: true,
+                                                        userIdOverride:
+                                                            memberId,
+                                                        showBanner: true,
+                                                        bannerTitle:
+                                                            memberEmail,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                icon: const Icon(
+                                                  Icons.credit_card,
+                                                  color: Color(0xFF6366F1),
+                                                  size: 24,
+                                                ),
+                                                tooltip: 'View Card',
+                                              ),
+                                              IconButton(
+                                                onPressed: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          AchievementsPage(
+                                                        userIdOverride:
+                                                            memberId,
+                                                        titleOverride:
+                                                            '$memberEmail\'s Achievements',
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                icon: const Icon(
+                                                  Icons.emoji_events,
+                                                  color: Color(0xFFF59E0B),
+                                                  size: 24,
+                                                ),
+                                                tooltip: 'Achievements',
+                                              ),
+                                              IconButton(
+                                                onPressed: () {
+                                                  _startChatWithMember(
+                                                      memberId, memberEmail);
+                                                },
+                                                icon: const Icon(
+                                                  Icons.chat_bubble_outline,
+                                                  color: Color(0xFF10B981),
+                                                  size: 24,
+                                                ),
+                                                tooltip: 'Chat',
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 );
                               },
@@ -625,9 +566,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
             consumedFats += (data['food_fat'] as num?)?.toDouble() ?? 0;
           }
 
-          // Calculate log streak
-          final logStreak = await _calculateLogStreak(memberId);
-
           memberData.add({
             'userId': memberId,
             'email': email,
@@ -635,7 +573,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
             'consumed_protein': consumedProtein,
             'consumed_carbs': consumedCarbs,
             'consumed_fats': consumedFats,
-            'log_streak': logStreak,
           });
         } catch (e) {
           // Error fetching member data
@@ -646,208 +583,23 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
     });
   }
 
-  List<Map<String, dynamic>> _sortMembersByChallenge(
-      List<Map<String, dynamic>> members, String challengeType) {
-    final sorted = List<Map<String, dynamic>>.from(members);
-
-    switch (challengeType) {
-      case 'Lowest Calories Consumed':
-        sorted.sort((a, b) => (a['consumed_calories'] as double)
-            .compareTo(b['consumed_calories'] as double));
-        break;
-      case 'Lowest Protein Consumed':
-        sorted.sort((a, b) => (a['consumed_protein'] as double)
-            .compareTo(b['consumed_protein'] as double));
-        break;
-      case 'Lowest Carbs Consumed':
-        sorted.sort((a, b) => (a['consumed_carbs'] as double)
-            .compareTo(b['consumed_carbs'] as double));
-        break;
-      case 'Lowest Fat Consumed':
-        sorted.sort((a, b) => (a['consumed_fats'] as double)
-            .compareTo(b['consumed_fats'] as double));
-        break;
-      case 'Highest Calories Consumed':
-        sorted.sort((a, b) => (b['consumed_calories'] as double)
-            .compareTo(a['consumed_calories'] as double));
-        break;
-      case 'Highest Protein Consumed':
-        sorted.sort((a, b) => (b['consumed_protein'] as double)
-            .compareTo(a['consumed_protein'] as double));
-        break;
-      case 'Highest Carbs Consumed':
-        sorted.sort((a, b) => (b['consumed_carbs'] as double)
-            .compareTo(a['consumed_carbs'] as double));
-        break;
-      case 'Highest Fat Consumed':
-        sorted.sort((a, b) => (b['consumed_fats'] as double)
-            .compareTo(a['consumed_fats'] as double));
-        break;
-      case 'Log Streak':
-        // Sort by log streak descending (highest first)
-        sorted.sort((a, b) =>
-            (b['log_streak'] as int).compareTo(a['log_streak'] as int));
-        break;
-    }
-
-    return sorted;
-  }
-
-  List<int> _calculateRanksWithTies(
-      List<Map<String, dynamic>> sortedMembers, String challengeType) {
-    if (sortedMembers.isEmpty) return [];
-
-    List<int> ranks = [];
-    int currentRank = 1;
-
-    // Get the value to compare for the challenge type
-    num _getChallengeValue(Map<String, dynamic> member) {
-      switch (challengeType) {
-        case 'Lowest Calories Consumed':
-        case 'Highest Calories Consumed':
-          return member['consumed_calories'] as double;
-        case 'Lowest Protein Consumed':
-        case 'Highest Protein Consumed':
-          return member['consumed_protein'] as double;
-        case 'Lowest Carbs Consumed':
-        case 'Highest Carbs Consumed':
-          return member['consumed_carbs'] as double;
-        case 'Lowest Fat Consumed':
-        case 'Highest Fat Consumed':
-          return member['consumed_fats'] as double;
-        case 'Log Streak':
-          return member['log_streak'] as int;
-        default:
-          return 0;
-      }
-    }
-
-    num? previousValue;
-
-    for (int i = 0; i < sortedMembers.length; i++) {
-      final currentValue = _getChallengeValue(sortedMembers[i]);
-
-      if (previousValue != null && currentValue != previousValue) {
-        // Value changed, increment rank by 1 (dense ranking)
-        currentRank++;
-      }
-
-      ranks.add(currentRank);
-      previousValue = currentValue;
-    }
-
-    return ranks;
-  }
-
-  String _dateKey(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-  }
-
-  Future<int> _calculateLogStreak(String userId) async {
-    try {
-      int streak = 0;
-      final today = DateTime.now();
-      DateTime checkDate = DateTime(today.year, today.month, today.day);
-
-      // Check consecutive days backwards from today
-      while (true) {
-        final key = _dateKey(checkDate);
-        final docSnapshot = await FirebaseFirestore.instance
-            .collection('daily_logs')
-            .doc('${userId}_$key')
-            .get();
-
-        if (!docSnapshot.exists) {
-          // No log for this day, streak ends
-          break;
-        }
-
-        final data = docSnapshot.data();
-        final finished = data?['finished'] as bool? ?? false;
-
-        if (!finished) {
-          // Day not finished, streak ends
-          break;
-        }
-
-        // Day is finished, increment streak
-        streak++;
-
-        // Move to previous day
-        checkDate = checkDate.subtract(const Duration(days: 1));
-
-        // Prevent infinite loop - max 365 days
-        if (streak >= 365) break;
-      }
-
-      return streak;
-    } catch (e) {
-      return 0;
-    }
-  }
-
-  Widget _buildRankingMedal(int rank) {
-    Color medalColor;
-
-    switch (rank) {
-      case 1:
-        medalColor = const Color(0xFFFFD700); // Gold
-        break;
-      case 2:
-        medalColor = const Color(0xFFC0C0C0); // Silver
-        break;
-      case 3:
-        medalColor = const Color(0xFFCD7F32); // Bronze
-        break;
-      default:
-        medalColor = const Color(0xFF6366F1); // Blue
-        break;
-    }
-
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        color: medalColor,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          rank.toString(),
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildNutritionChip(String text, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: color.withOpacity(0.3),
+          color: color.withOpacity(0.25),
           width: 1,
         ),
       ),
       child: Text(
         text,
         style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w500,
-          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color.withOpacity(0.9),
         ),
       ),
     );

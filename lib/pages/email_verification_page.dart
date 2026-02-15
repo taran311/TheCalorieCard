@@ -320,6 +320,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                                 backgroundColor: _canResendEmail
                                     ? const Color(0xFF6366F1)
                                     : Colors.grey[300],
+                                foregroundColor: Colors.white,
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(

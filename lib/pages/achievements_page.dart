@@ -118,8 +118,7 @@ class AchievementsPage extends StatelessWidget {
                             _AchievementItem(
                               id: 'fast_1',
                               title: '2Fast',
-                              description:
-                                  'Log 1 day of eating 0 calories.',
+                              description: 'Log 1 day of eating 0 calories.',
                               icon: Icons.bolt,
                             ),
                             _AchievementItem(
@@ -159,83 +158,218 @@ class AchievementsPage extends StatelessWidget {
                             ),
                           ];
 
+                          final unlockedCount = achievements
+                              .where((a) => (data[a.id] as bool?) ?? false)
+                              .length;
+
                           return SingleChildScrollView(
                             padding: const EdgeInsets.all(16),
-                            child: GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                mainAxisSpacing: 12,
-                                crossAxisSpacing: 12,
-                                childAspectRatio: 0.9,
-                              ),
-                              itemCount: achievements.length,
-                              itemBuilder: (context, index) {
-                                final achievement = achievements[index];
-                                final unlocked =
-                                    (data[achievement.id] as bool?) ?? false;
+                            child: Column(
+                              children: [
+                                // Stats Card
+                                Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        const Color(0xFF6366F1),
+                                        const Color(0xFF8B5CF6),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF6366F1)
+                                            .withOpacity(0.3),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: [
+                                      Column(
+                                        children: [
+                                          Text(
+                                            unlockedCount.toString(),
+                                            style: const TextStyle(
+                                              fontSize: 32,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const Text(
+                                            'Unlocked',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      Container(
+                                        width: 1,
+                                        height: 50,
+                                        color: Colors.white.withOpacity(0.3),
+                                      ),
+                                      Column(
+                                        children: [
+                                          Text(
+                                            achievements.length.toString(),
+                                            style: const TextStyle(
+                                              fontSize: 32,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const Text(
+                                            'Total',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
 
-                                final iconColor = unlocked
-                                    ? const Color(0xFF6366F1)
-                                    : Colors.grey.shade400;
-                                final titleColor = unlocked
-                                    ? Colors.grey.shade900
-                                    : Colors.grey.shade500;
+                                // Achievements Grid
+                                GridView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 3,
+                                    mainAxisSpacing: 16,
+                                    crossAxisSpacing: 16,
+                                    childAspectRatio: 0.85,
+                                  ),
+                                  itemCount: achievements.length,
+                                  itemBuilder: (context, index) {
+                                    final achievement = achievements[index];
+                                    final unlocked =
+                                        (data[achievement.id] as bool?) ??
+                                            false;
 
-                                return InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () {
-                                    _showAchievementDialog(
-                                      context,
-                                      achievement,
-                                      unlocked,
+                                    return InkWell(
+                                      borderRadius: BorderRadius.circular(16),
+                                      onTap: () {
+                                        _showAchievementDialog(
+                                          context,
+                                          achievement,
+                                          unlocked,
+                                        );
+                                      },
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: unlocked
+                                              ? LinearGradient(
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                  colors: [
+                                                    Colors.white,
+                                                    const Color(0xFF6366F1)
+                                                        .withOpacity(0.05),
+                                                  ],
+                                                )
+                                              : null,
+                                          color: unlocked
+                                              ? null
+                                              : Colors.white.withOpacity(0.6),
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: unlocked
+                                                ? const Color(0xFF6366F1)
+                                                    .withOpacity(0.5)
+                                                : Colors.grey.shade300,
+                                            width: unlocked ? 2 : 1,
+                                          ),
+                                          boxShadow: unlocked
+                                              ? [
+                                                  BoxShadow(
+                                                    color:
+                                                        const Color(0xFF6366F1)
+                                                            .withOpacity(0.2),
+                                                    blurRadius: 12,
+                                                    offset: const Offset(0, 4),
+                                                  ),
+                                                  BoxShadow(
+                                                    color:
+                                                        const Color(0xFF6366F1)
+                                                            .withOpacity(0.1),
+                                                    blurRadius: 20,
+                                                    spreadRadius: 2,
+                                                  ),
+                                                ]
+                                              : [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withOpacity(0.04),
+                                                    blurRadius: 6,
+                                                    offset: const Offset(0, 3),
+                                                  ),
+                                                ],
+                                        ),
+                                        padding: const EdgeInsets.all(12),
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: unlocked
+                                                    ? const Color(0xFF6366F1)
+                                                        .withOpacity(0.15)
+                                                    : Colors.grey.shade200,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Icon(
+                                                achievement.icon,
+                                                size: 32,
+                                                color: unlocked
+                                                    ? const Color(0xFF6366F1)
+                                                    : Colors.grey.shade400,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 10),
+                                            Text(
+                                              achievement.title,
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: unlocked
+                                                    ? FontWeight.w700
+                                                    : FontWeight.w500,
+                                                color: unlocked
+                                                    ? Colors.grey.shade900
+                                                    : Colors.grey.shade500,
+                                                height: 1.2,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            if (unlocked) ...[
+                                              const SizedBox(height: 4),
+                                              Icon(
+                                                Icons.check_circle,
+                                                size: 14,
+                                                color: const Color(0xFF10B981),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
                                     );
                                   },
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: unlocked
-                                            ? const Color(0xFF6366F1)
-                                                .withOpacity(0.4)
-                                            : Colors.grey.shade300,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.04),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    padding: const EdgeInsets.all(10),
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          achievement.icon,
-                                          size: 36,
-                                          color: iconColor,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          achievement.title,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: titleColor,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -256,26 +390,136 @@ class AchievementsPage extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Icon(
-                unlocked ? Icons.lock_open : Icons.lock,
-                color: unlocked ? Colors.green : Colors.grey,
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: Text(achievement.title)),
-            ],
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-          content: Text(
-            achievement.description,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: unlocked
+                  ? LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white,
+                        const Color(0xFF6366F1).withOpacity(0.05),
+                      ],
+                    )
+                  : null,
+              color: unlocked ? null : Colors.white,
+              borderRadius: BorderRadius.circular(20),
             ),
-          ],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: unlocked
+                        ? const Color(0xFF6366F1).withOpacity(0.15)
+                        : Colors.grey.shade200,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    achievement.icon,
+                    size: 48,
+                    color: unlocked ? const Color(0xFF6366F1) : Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      unlocked ? Icons.lock_open : Icons.lock,
+                      color: unlocked ? const Color(0xFF10B981) : Colors.grey,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        achievement.title,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: unlocked
+                              ? Colors.grey.shade900
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  achievement.description,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                    height: 1.5,
+                  ),
+                ),
+                if (unlocked) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(
+                          Icons.check_circle,
+                          color: Color(0xFF10B981),
+                          size: 16,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Unlocked',
+                          style: TextStyle(
+                            color: Color(0xFF10B981),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: unlocked
+                          ? const Color(0xFF6366F1)
+                          : Colors.grey.shade400,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Close',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );

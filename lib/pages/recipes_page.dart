@@ -41,168 +41,420 @@ class _RecipesPageState extends State<RecipesPage> {
     }
   }
 
+  Widget _buildMacroChip(String label, Color textColor, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+
     return Scaffold(
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('recipes')
-            .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No recipes yet.'));
-          }
-
-          final recipes = snapshot.data!.docs;
-          // Sort by created_at descending
-          recipes.sort((a, b) {
-            final timeA = a['created_at'] as Timestamp?;
-            final timeB = b['created_at'] as Timestamp?;
-            if (timeA == null || timeB == null) return 0;
-            return timeB.compareTo(timeA);
-          });
-
-          return Column(
-            children: [
-              Container(
-                color: Colors.grey.shade100,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Recipe Name',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    SizedBox(
-                      width: 80,
-                      child: Text(
-                        'Calories',
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 32),
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: EdgeInsets.fromLTRB(16, topPadding + 16, 16, 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.purple.shade400,
+                    Colors.purple.shade600,
                   ],
                 ),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(24),
+                  bottomRight: Radius.circular(24),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.purple.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: recipes.length,
-                  itemBuilder: (context, index) {
-                    final recipe = recipes[index];
-                    final totalCalories = recipe['total_calories'] as num? ?? 0;
-
-                    return GestureDetector(
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => AddRecipePage(recipeId: recipe.id),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                                color: Colors.grey.shade300, width: 1),
-                          ),
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: const Icon(
+                          Icons.restaurant_menu,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'My Recipes',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              'Create & manage your recipes',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('recipes')
+                    .where('user_id',
+                        isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.error_outline,
+                              size: 64, color: Colors.red.shade300),
+                          const SizedBox(height: 16),
+                          Text('Error: ${snapshot.error}',
+                              style: TextStyle(color: Colors.grey.shade600)),
+                        ],
+                      ),
+                    );
+                  }
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.restaurant,
+                              size: 80, color: Colors.grey.shade300),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No recipes yet',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Tap + to create your first recipe',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final recipes = snapshot.data!.docs;
+                  // Sort by created_at descending
+                  recipes.sort((a, b) {
+                    final timeA = a['created_at'] as Timestamp?;
+                    final timeB = b['created_at'] as Timestamp?;
+                    if (timeA == null || timeB == null) return 0;
+                    return timeB.compareTo(timeA);
+                  });
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: recipes.length,
+                    itemBuilder: (context, index) {
+                      final recipe = recipes[index];
+                      final totalCalories =
+                          recipe['total_calories'] as num? ?? 0;
+                      final protein = recipe['total_protein'] as num? ?? 0;
+                      final carbs = recipe['total_carbs'] as num? ?? 0;
+                      final fats = recipe['total_fats'] as num? ?? 0;
+                      final ingredients = recipe['ingredients'] as List? ?? [];
+
+                      // Generate gradient colors based on index
+                      final gradients = [
+                        [Colors.purple.shade400, Colors.purple.shade600],
+                        [Colors.blue.shade400, Colors.blue.shade600],
+                        [Colors.green.shade400, Colors.green.shade600],
+                        [Colors.orange.shade400, Colors.orange.shade600],
+                        [Colors.pink.shade400, Colors.pink.shade600],
+                      ];
+                      final gradient = gradients[index % gradients.length];
+
+                      return GestureDetector(
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  AddRecipePage(recipeId: recipe.id),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          recipe['name'] ?? 'Recipe',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                        if (recipe['serving_size'] != null &&
-                                            (recipe['serving_size'] as String)
-                                                .isNotEmpty)
-                                          Text(
-                                            '(${recipe['serving_size']})',
-                                            style: TextStyle(
-                                              color: Colors.grey.shade600,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w400,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
+                              // Gradient header with recipe name
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: gradient,
                                   ),
-                                  const SizedBox(width: 16),
-                                  SizedBox(
-                                    width: 80,
-                                    child: Text(
-                                      '${totalCalories.toStringAsFixed(0)} kcal',
-                                      textAlign: TextAlign.right,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF6366F1),
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(16),
+                                    topRight: Radius.circular(16),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  if (_deleteMode)
-                                    GestureDetector(
-                                      onTap: () async {
-                                        await _deleteRecipe(recipe.id);
-                                      },
-                                      child: Icon(
-                                        Icons.delete_outline,
-                                        color: Colors.red.shade400,
+                                      child: const Icon(
+                                        Icons.restaurant,
+                                        color: Colors.white,
                                         size: 24,
                                       ),
                                     ),
-                                  // Removed dropdown icon (no inline breakdown)
-                                ],
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            recipe['name'] ?? 'Recipe',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 18,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          if (recipe['serving_size'] != null &&
+                                              (recipe['serving_size'] as String)
+                                                  .isNotEmpty)
+                                            Text(
+                                              recipe['serving_size'],
+                                              style: TextStyle(
+                                                color: Colors.white
+                                                    .withOpacity(0.9),
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (_deleteMode)
+                                      IconButton(
+                                        onPressed: () async {
+                                          await _deleteRecipe(recipe.id);
+                                        },
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
-                              // No inline breakdown; tapping navigates to edit screen
+                              // Calorie and macros info
+                              Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Colors.orange.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: Colors.orange.shade200,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Column(
+                                              children: [
+                                                Icon(
+                                                  Icons.local_fire_department,
+                                                  color: Colors.orange.shade600,
+                                                  size: 24,
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '${totalCalories.toStringAsFixed(0)}',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 20,
+                                                    color:
+                                                        Colors.orange.shade700,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'kcal',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey.shade600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: Colors.grey.shade200,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Column(
+                                              children: [
+                                                Icon(
+                                                  Icons.fastfood,
+                                                  color: Colors.grey.shade600,
+                                                  size: 24,
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '${ingredients.length}',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 20,
+                                                    color: Colors.grey.shade700,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'items',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey.shade600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    // Macros row
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _buildMacroChip(
+                                            'P: ${protein.toStringAsFixed(0)}g',
+                                            Colors.blue.shade600,
+                                            Colors.blue.shade50,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: _buildMacroChip(
+                                            'C: ${carbs.toStringAsFixed(0)}g',
+                                            Colors.green.shade600,
+                                            Colors.green.shade50,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: _buildMacroChip(
+                                            'F: ${fats.toStringAsFixed(0)}g',
+                                            Colors.purple.shade600,
+                                            Colors.purple.shade50,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  );
+                },
               ),
-            ],
-          );
-        },
+            ),
+          ],
+        ),
       ),
-      floatingActionButton: Column(
+      floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           FloatingActionButton(
@@ -216,7 +468,7 @@ class _RecipesPageState extends State<RecipesPage> {
             backgroundColor: Colors.green.shade400,
             child: const Icon(Icons.add),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(width: 12),
           FloatingActionButton(
             heroTag: 'recipes-delete',
             onPressed: () {

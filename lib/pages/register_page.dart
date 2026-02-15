@@ -133,28 +133,42 @@ class _RegisterPageState extends State<RegisterPage> {
                             color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Row(
+                          child: Column(
                             mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                Icons.credit_card,
-                                size: 60,
-                                color: Colors.white,
-                              ),
-                              const SizedBox(width: 12),
-                              Flexible(
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: const Text(
-                                    'TheCalorieCard',
-                                    style: TextStyle(
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                      letterSpacing: 1.2,
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.credit_card,
+                                    size: 60,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Flexible(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: const Text(
+                                        'TheCalorieCard',
+                                        style: TextStyle(
+                                          fontSize: 32,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
                                     ),
                                   ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Powered by AI',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white70,
+                                  letterSpacing: 0.5,
                                 ),
                               ),
                             ],

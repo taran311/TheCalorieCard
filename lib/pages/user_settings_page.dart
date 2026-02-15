@@ -69,11 +69,11 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     _proteinController.dispose();
     _carbsController.dispose();
     _fatsController.dispose();
+    _manualCalorieController.dispose();
     super.dispose();
   }
 
   double _exerciseLevel = 0;
-  String _exerciseText = 'No Activity';
   int? _selectedAge;
   final TextEditingController _ageController = TextEditingController();
   late FocusNode _ageFocusNode;
@@ -115,6 +115,12 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   bool _canEstimateWithAI = false;
   bool _macrosFromAI = false;
   Map<String, dynamic>? _lastAIData;
+
+  // Tab state
+  int _selectedTabIndex = 0; // 0 = AI Calculated, 1 = Manual Input
+  final TextEditingController _manualCalorieController =
+      TextEditingController();
+  int? _manualCalorieGoal;
 
   Future<Map<String, double>> _getCurrentIntakeTotals() async {
     final userId = FirebaseAuth.instance.currentUser!.uid;
@@ -251,6 +257,12 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         final int carbsGoal = _carbsGoal ?? 0;
         final int fatsGoal = _fatsGoal ?? 0;
 
+        // Use manual calorie goal if set, otherwise use AI calculated
+        final double baseCalorieGoal =
+            _selectedTabIndex == 1 && _manualCalorieGoal != null
+                ? _manualCalorieGoal!.toDouble()
+                : selectedCalories;
+
         // Update the document
         await docRef.update({
           'age': _selectedAge,
@@ -259,7 +271,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           'exercise_level': _exerciseLevel,
           'gender': genderSelections.first ? 'male' : 'female',
           'calorie_mode': calorieMode,
-          'calories': selectedCalories - (totals['calories'] ?? 0),
+          'calorie_goal': baseCalorieGoal, // Store base calorie goal
+          'calories': baseCalorieGoal - (totals['calories'] ?? 0),
           'protein_goal': proteinGoal,
           'carbs_goal': carbsGoal,
           'fats_goal': fatsGoal,
@@ -304,17 +317,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               _selectedWeight != null ? '${_selectedWeight}kg' : '';
           _exerciseLevel = (userData['exercise_level'] as num?)?.toDouble() ??
               0.0; // Handle null and convert to double
-          if (_exerciseLevel == 0) {
-            _exerciseText = 'No Activity';
-          } else if (_exerciseLevel == 1) {
-            _exerciseText = 'Little Activity (1-3 hrs)';
-          } else if (_exerciseLevel == 2) {
-            _exerciseText = 'Some Activity (4-6 hrs)';
-          } else if (_exerciseLevel == 3) {
-            _exerciseText = 'A lot of activity (7-9 hrs)';
-          } else if (_exerciseLevel == 4) {
-            _exerciseText = 'A ton of activity (10+ hrs)';
-          }
 
           // Gender selection
           if (userData['gender'] == 'male') {
@@ -348,6 +350,13 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           _proteinController.text = _proteinGoal?.toString() ?? '';
           _carbsController.text = _carbsGoal?.toString() ?? '';
           _fatsController.text = _fatsGoal?.toString() ?? '';
+
+          // Load calorie_goal for manual input
+          final calorieGoal = (userData['calorie_goal'] as num?)?.toInt();
+          if (calorieGoal != null) {
+            _manualCalorieGoal = calorieGoal;
+            _manualCalorieController.text = calorieGoal.toString();
+          }
 
           updateCalories();
           updateCardActiveCalories();
@@ -428,74 +437,149 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       _isEstimatingWithAI = true;
     });
 
-    try {
-      final response = await http.post(
-        Uri.parse('https://fatsecret-proxy.onrender.com/macro-targets'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'age': _selectedAge,
-          'gender': genderSelections.first ? 'male' : 'female',
-          'height_cm': _selectedHeight,
-          'weight_kg': _selectedWeight,
-          'exercise_level': _getExerciseLevelText(),
-        }),
-      );
+    int maxRetries = 2;
+    int attempt = 0;
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final targets =
-            data['ai']?['final']?['targets'] ?? data['baseline']?['targets'];
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
 
-        if (targets != null) {
-          setState(() {
-            calorieDeficit = targets['lose']?['calories'];
-            calorieMaintenance = targets['maintain']?['calories'];
-            calorieSurplus = targets['gain']?['calories'];
-
-            // Set macros based on selected goal
-            final selectedTarget = calorieSelections[0]
-                ? targets['lose']
-                : calorieSelections[1]
-                    ? targets['maintain']
-                    : targets['gain'];
-
-            _proteinGoal = selectedTarget?['protein_g'];
-            _carbsGoal = selectedTarget?['carbs_g'];
-            _fatsGoal = selectedTarget?['fat_g'];
-
-            _proteinController.text = _proteinGoal?.toString() ?? '0';
-            _carbsController.text = _carbsGoal?.toString() ?? '0';
-            _fatsController.text = _fatsGoal?.toString() ?? '0';
-
-            updateCardActiveCalories();
-
-            _macrosFromAI = true;
-            _canEstimateWithAI = false;
-            _lastAIData = {
-              'age': _selectedAge,
-              'gender': genderSelections.first,
-              'height': _selectedHeight,
-              'weight': _selectedWeight,
-              'exercise': _exerciseLevel,
-            };
-          });
+        if (attempt > 1 && mounted) {
+          // Show retry attempt to user
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Retrying... (Attempt $attempt of $maxRetries)'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
         }
-      } else {
-        throw Exception('Failed to estimate macros');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error estimating with AI: $e')),
+
+        final response = await http
+            .post(
+          Uri.parse('https://fatsecret-proxy.onrender.com/macro-targets'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'age': _selectedAge,
+            'gender': genderSelections.first ? 'male' : 'female',
+            'height_cm': _selectedHeight,
+            'weight_kg': _selectedWeight,
+            'exercise_level': _getExerciseLevelText(),
+          }),
+        )
+            .timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw Exception(
+                'Request timed out. The server may be waking up from sleep. Please try again in a moment.');
+          },
         );
+
+        print('API Status Code: ${response.statusCode}');
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          print('API Response: $data');
+          final targets =
+              data['ai']?['final']?['targets'] ?? data['baseline']?['targets'];
+
+          if (targets != null) {
+            setState(() {
+              calorieDeficit = targets['lose']?['calories'];
+              calorieMaintenance = targets['maintain']?['calories'];
+              calorieSurplus = targets['gain']?['calories'];
+
+              // Set macros based on selected goal
+              final selectedTarget = calorieSelections[0]
+                  ? targets['lose']
+                  : calorieSelections[1]
+                      ? targets['maintain']
+                      : targets['gain'];
+
+              _proteinGoal = selectedTarget?['protein_g'];
+              _carbsGoal = selectedTarget?['carbs_g'];
+              _fatsGoal = selectedTarget?['fat_g'];
+
+              _proteinController.text = _proteinGoal?.toString() ?? '0';
+              _carbsController.text = _carbsGoal?.toString() ?? '0';
+              _fatsController.text = _fatsGoal?.toString() ?? '0';
+
+              updateCardActiveCalories();
+
+              _macrosFromAI = true;
+              _canEstimateWithAI = false;
+              _lastAIData = {
+                'age': _selectedAge,
+                'gender': genderSelections.first,
+                'height': _selectedHeight,
+                'weight': _selectedWeight,
+                'exercise': _exerciseLevel,
+              };
+
+              // Reset mini game and estimation state on success
+              _isEstimatingWithAI = false;
+              _showMiniGame = false;
+            });
+
+            // Success - exit retry loop
+            return;
+          } else {
+            throw Exception('Targets data not found in response');
+          }
+        } else if (response.statusCode == 503 && attempt < maxRetries) {
+          // Server is cold starting, wait and retry
+          print('Server cold starting, will retry...');
+          await Future.delayed(Duration(seconds: 5 * attempt));
+          continue;
+        } else {
+          // Log detailed error information
+          print('API Error - Status: ${response.statusCode}');
+          print('API Error - Body: ${response.body}');
+
+          String errorMessage = 'Server error';
+          if (response.statusCode == 503) {
+            errorMessage =
+                'Server is starting up. Please wait 30 seconds and try again.';
+          } else if (response.statusCode == 500) {
+            errorMessage = 'Server error. Please try again or contact support.';
+          } else if (response.statusCode == 400) {
+            errorMessage =
+                'Invalid request data. Please check your profile information.';
+          } else {
+            errorMessage =
+                'Error ${response.statusCode}: ${response.body.length > 100 ? response.body.substring(0, 100) + "..." : response.body}';
+          }
+
+          throw Exception(errorMessage);
+        }
+      } catch (e) {
+        print('AI Estimation Error (attempt $attempt): $e');
+
+        // If this is the last attempt or not a retryable error, show error to user
+        if (attempt >= maxRetries || !e.toString().contains('timed out')) {
+          if (mounted) {
+            String userMessage = e.toString().replaceFirst('Exception: ', '');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(userMessage),
+                duration: const Duration(seconds: 5),
+                backgroundColor: Colors.red.shade700,
+              ),
+            );
+          }
+          break;
+        }
+
+        // Wait before retry
+        await Future.delayed(Duration(seconds: 3 * attempt));
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isEstimatingWithAI = false;
-          _showMiniGame = false;
-        });
-      }
+    }
+
+    // Cleanup
+    if (mounted) {
+      setState(() {
+        _isEstimatingWithAI = false;
+        _showMiniGame = false;
+      });
     }
   }
 
@@ -543,6 +627,635 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     onSuccess.call();
   }
 
+  Widget _buildAICalculatedTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Always show input fields
+        Row(
+          children: [
+            MeasurementInputField(
+              label: 'Age',
+              controller: _ageController,
+              focusNode: _ageFocusNode,
+              hintText: 'E.g. 30',
+              suffix: ' Years Old',
+              onChanged: (value) {
+                setState(() {
+                  _selectedAge = value;
+                  if (_selectedAge != null &&
+                      _selectedAge! >= 18 &&
+                      _selectedAge! <= 117) {
+                    updateCalories();
+                  }
+                });
+              },
+            ),
+            Expanded(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                title: const Text(
+                  'Gender',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: ToggleButtons(
+                  isSelected: genderSelections,
+                  selectedColor: const Color(0xFF6366F1),
+                  fillColor: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                  borderColor: const Color(0xFF6366F1),
+                  selectedBorderColor: const Color(0xFF6366F1),
+                  onPressed: (int index) {
+                    setState(() {
+                      for (int i = 0; i < genderSelections.length; i++) {
+                        genderSelections[i] = i == index;
+                      }
+                      updateCalories();
+                    });
+                  },
+                  children: const [
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Icon(Icons.man),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Icon(Icons.woman),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            MeasurementInputField(
+              label: 'Height',
+              controller: _heightController,
+              focusNode: _heightFocusNode,
+              hintText: 'E.g. 180cm',
+              suffix: 'cm',
+              onChanged: (value) {
+                setState(() {
+                  _selectedHeight = value;
+                  if (_selectedHeight != null &&
+                      _selectedHeight! >= 120 &&
+                      _selectedHeight! <= 250) {
+                    updateCalories();
+                  }
+                });
+              },
+            ),
+            MeasurementInputField(
+              label: 'Weight',
+              controller: _weightController,
+              focusNode: _weightFocusNode,
+              hintText: 'E.g. 80kg',
+              suffix: 'kg',
+              onChanged: (value) {
+                setState(() {
+                  _selectedWeight = value;
+                  if (_selectedWeight != null &&
+                      _selectedWeight! >= 30 &&
+                      _selectedWeight! <= 300) {
+                    updateCalories();
+                  }
+                });
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Exercise Level',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+        ),
+        const SizedBox(height: 8),
+        Slider(
+          value: _exerciseLevel,
+          min: 0,
+          max: 4,
+          divisions: 4,
+          label: _getExerciseLevelText(),
+          activeColor: const Color(0xFF6366F1),
+          inactiveColor: Colors.grey.shade300,
+          onChanged: (double value) {
+            setState(() {
+              _exerciseLevel = value;
+              updateCalories();
+            });
+          },
+        ),
+        Text(
+          _getExerciseLevelText(),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 14, color: Colors.grey),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: _canEstimateWithAI || !_macrosFromAI
+                ? () async {
+                    _markFieldsChanged();
+                    await _estimateWithAI();
+                  }
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(_macrosFromAI && !_canEstimateWithAI
+                ? 'Estimated!'
+                : 'Estimate Via AI'),
+          ),
+        ),
+        // Show results after estimation
+        if (_macrosFromAI) ...[
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 0),
+            child: Center(
+              child: IntrinsicWidth(
+                child: ToggleButtons(
+                  isSelected: calorieSelections,
+                  selectedColor: Colors.white,
+                  fillColor: const Color(0xFF6366F1),
+                  borderColor: const Color(0xFF6366F1),
+                  selectedBorderColor: const Color(0xFF6366F1),
+                  onPressed: (int index) {
+                    setState(() {
+                      for (int i = 0; i < calorieSelections.length; i++) {
+                        calorieSelections[i] = i == index;
+                      }
+                    });
+                    if (calorieSelections.first) {
+                      calorieMode = 'lose';
+                    } else if (calorieSelections[1]) {
+                      calorieMode = 'maintain';
+                    } else if (calorieSelections[2]) {
+                      calorieMode = 'gain';
+                    }
+                    updateCardActiveCalories();
+                  },
+                  constraints: const BoxConstraints(
+                    minWidth: 90,
+                    minHeight: 40,
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text(
+                        'Lose\n${calorieDeficit ?? 0}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text(
+                        'Maintain\n${calorieMaintenance ?? 0}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text(
+                        'Gain\n${calorieSurplus ?? 0}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Macros',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildReadOnlyMacroField('Protein', _proteinGoal ?? 0),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildReadOnlyMacroField('Carbs', _carbsGoal ?? 0),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildReadOnlyMacroField('Fats', _fatsGoal ?? 0),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 0),
+            child: AnimatedBuilder(
+              animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
+              builder: (context, child) {
+                return Transform.rotate(
+                  angle: _jiggleAnimation?.value ?? 0.0,
+                  child: child,
+                );
+              },
+              child: CreditCard(
+                key: ValueKey(
+                    '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
+                initialCalories: cardActiveCalories ?? 0,
+                caloriesOverride: cardActiveCalories ?? 0,
+                proteinOverride: (_proteinGoal ?? 0).toDouble(),
+                carbsOverride: (_carbsGoal ?? 0).toDouble(),
+                fatsOverride: (_fatsGoal ?? 0).toDouble(),
+                skipFetch: true,
+                onToggleMacros: (showMacros) {
+                  _jiggleAnimationController?.forward(from: 0);
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Clear Today\'s Food'),
+                    content: const Text(
+                        'This will delete all food items logged for today. This action cannot be undone. Continue?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Clear All'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await _clearAllTodaysFoodItems();
+                }
+              },
+              icon: const Icon(Icons.delete_sweep),
+              label: const Text('Clear Today\'s Food'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isSaving
+                  ? null
+                  : () async {
+                      setState(() {
+                        _isSaving = true;
+                      });
+                      await saveData();
+                      if (!mounted) return;
+                      setState(() {
+                        _isSaving = false;
+                      });
+                      await Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const MainShell(initialIndex: 1),
+                        ),
+                        (route) => false,
+                      );
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 4,
+              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text(
+                      'Save',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildReadOnlyMacroField(String label, int value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${value}g',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildManualInputTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Calorie Balance',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _manualCalorieController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Calories',
+            hintText: 'E.g. 2000',
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
+          ),
+          onChanged: (value) {
+            setState(() {
+              _manualCalorieGoal = int.tryParse(value);
+              cardActiveCalories = _manualCalorieGoal;
+            });
+          },
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Macros',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _proteinController,
+                focusNode: _proteinFocusNode,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Protein (g)',
+                  hintText: 'Protein',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _proteinGoal = int.tryParse(value);
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _carbsController,
+                focusNode: _carbsFocusNode,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Carbs (g)',
+                  hintText: 'Carbs',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _carbsGoal = int.tryParse(value);
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _fatsController,
+                focusNode: _fatsFocusNode,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Fats (g)',
+                  hintText: 'Fats',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _fatsGoal = int.tryParse(value);
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 0),
+          child: AnimatedBuilder(
+            animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
+            builder: (context, child) {
+              return Transform.rotate(
+                angle: _jiggleAnimation?.value ?? 0.0,
+                child: child,
+              );
+            },
+            child: CreditCard(
+              key: ValueKey(
+                  '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
+              initialCalories: cardActiveCalories ?? 0,
+              caloriesOverride: cardActiveCalories ?? 0,
+              proteinOverride: (_proteinGoal ?? 0).toDouble(),
+              carbsOverride: (_carbsGoal ?? 0).toDouble(),
+              fatsOverride: (_fatsGoal ?? 0).toDouble(),
+              skipFetch: true,
+              onToggleMacros: (showMacros) {
+                _jiggleAnimationController?.forward(from: 0);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Clear Today\'s Food'),
+                  content: const Text(
+                      'This will delete all food items logged for today. This action cannot be undone. Continue?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Clear All'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                await _clearAllTodaysFoodItems();
+              }
+            },
+            icon: const Icon(Icons.delete_sweep),
+            label: const Text('Clear Today\'s Food'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+              side: const BorderSide(color: Colors.red),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: _isSaving
+                ? null
+                : () async {
+                    setState(() {
+                      _isSaving = true;
+                    });
+                    await saveData();
+                    if (!mounted) return;
+                    setState(() {
+                      _isSaving = false;
+                    });
+                    await Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MainShell(initialIndex: 1),
+                      ),
+                      (route) => false,
+                    );
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 4,
+            ),
+            child: _isSaving
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Text(
+                    'Save',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
@@ -580,7 +1293,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.08),
+                                  color: Colors.black.withValues(alpha: 0.08),
                                   blurRadius: 10,
                                   offset: const Offset(0, 4),
                                 ),
@@ -619,165 +1332,72 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Row(
-                                  children: [
-                                    MeasurementInputField(
-                                      label: 'Age',
-                                      controller: _ageController,
-                                      focusNode: _ageFocusNode,
-                                      hintText: 'E.g. 30',
-                                      suffix: ' Years Old',
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _selectedAge = value;
-                                          if (_selectedAge != null &&
-                                              _selectedAge! >= 18 &&
-                                              _selectedAge! <= 117) {
-                                            updateCalories();
-                                          }
-                                        });
-                                      },
-                                    ),
-                                    Expanded(
-                                      child: ListTile(
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 8,
-                                        ),
-                                        title: const Text(
-                                          'Gender',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        subtitle: ToggleButtons(
-                                          isSelected: genderSelections,
-                                          selectedColor:
-                                              const Color(0xFF6366F1),
-                                          fillColor: const Color(0xFF6366F1)
-                                              .withOpacity(0.2),
-                                          borderColor: const Color(0xFF6366F1),
-                                          selectedBorderColor:
-                                              const Color(0xFF6366F1),
-                                          onPressed: (int index) {
+                                // Tabs
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border:
+                                        Border.all(color: Colors.grey.shade200),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
                                             setState(() {
-                                              for (int i = 0;
-                                                  i < genderSelections.length;
-                                                  i++) {
-                                                genderSelections[i] =
-                                                    i == index;
-                                              }
-                                              updateCalories();
+                                              _selectedTabIndex = 0;
                                             });
                                           },
-                                          children: const [
-                                            Padding(
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: 8.0,
-                                              ),
-                                              child: Icon(Icons.man),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 12),
+                                            decoration: BoxDecoration(
+                                              color: _selectedTabIndex == 0
+                                                  ? const Color(0xFF6366F1)
+                                                  : Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
-                                            Padding(
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: 8.0,
+                                            child: Text(
+                                              'AI Calculated',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                color: _selectedTabIndex == 0
+                                                    ? Colors.white
+                                                    : Colors.grey.shade700,
+                                                fontWeight: FontWeight.w600,
                                               ),
-                                              child: Icon(Icons.woman),
                                             ),
-                                          ],
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                Row(
-                                  children: [
-                                    MeasurementInputField(
-                                      label: 'Height',
-                                      controller: _heightController,
-                                      focusNode: _heightFocusNode,
-                                      hintText: 'E.g. 180cm',
-                                      suffix: 'cm',
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _selectedHeight = value;
-                                          if (_selectedHeight != null &&
-                                              _selectedHeight! >= 100 &&
-                                              _selectedHeight! <= 250) {
-                                            updateCalories();
-                                          }
-                                        });
-                                      },
-                                    ),
-                                    MeasurementInputField(
-                                      label: 'Weight',
-                                      controller: _weightController,
-                                      focusNode: _weightFocusNode,
-                                      hintText: 'E.g. 80kg',
-                                      suffix: 'kg',
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _selectedWeight = value;
-                                          if (_selectedWeight != null &&
-                                              _selectedWeight! >= 30 &&
-                                              _selectedWeight! <= 200) {
-                                            updateCalories();
-                                          }
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 0),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Text(
-                                        'Exercise Level',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.w600),
-                                      ),
-                                      Slider(
-                                        value: _exerciseLevel,
-                                        min: 0,
-                                        max: 4,
-                                        divisions: 4,
-                                        activeColor: const Color(0xFF6366F1),
-                                        onChanged: (double value) {
-                                          setState(() {
-                                            _exerciseLevel = value;
-                                            if (_exerciseLevel == 0) {
-                                              _exerciseText = 'No Activity';
-                                            } else if (_exerciseLevel == 1) {
-                                              _exerciseText =
-                                                  'Little Activity (1-3 hrs)';
-                                            } else if (_exerciseLevel == 2) {
-                                              _exerciseText =
-                                                  'Some Activity (4-6 hrs)';
-                                            } else if (_exerciseLevel == 3) {
-                                              _exerciseText =
-                                                  'A lot of activity (7-9 hrs)';
-                                            } else if (_exerciseLevel == 4) {
-                                              _exerciseText =
-                                                  'A ton of activity (10+ hrs)';
-                                            }
-                                            updateCalories();
-                                          });
-                                        },
-                                      ),
-                                      Transform.translate(
-                                        offset: const Offset(0, -6),
-                                        child: Center(
-                                          child: Text(
-                                            _exerciseText,
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w500,
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            setState(() {
+                                              _selectedTabIndex = 1;
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 12),
+                                            decoration: BoxDecoration(
+                                              color: _selectedTabIndex == 1
+                                                  ? const Color(0xFF6366F1)
+                                                  : Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              'Manual Input',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                color: _selectedTabIndex == 1
+                                                    ? Colors.white
+                                                    : Colors.grey.shade700,
+                                                fontWeight: FontWeight.w600,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -785,330 +1405,12 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                     ],
                                   ),
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 0, vertical: 8),
-                                  child: ElevatedButton.icon(
-                                    onPressed: (_canEstimateWithAI ||
-                                                _lastAIData == null) &&
-                                            !_isEstimatingWithAI
-                                        ? _estimateWithAI
-                                        : null,
-                                    icon: const Icon(Icons.auto_awesome),
-                                    label: const Text('Estimate Via AI'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF6366F1),
-                                      foregroundColor: Colors.white,
-                                      minimumSize:
-                                          const Size(double.infinity, 48),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 0),
-                                  child: Center(
-                                    child: IntrinsicWidth(
-                                      child: ToggleButtons(
-                                        isSelected: calorieSelections,
-                                        selectedColor: Colors.white,
-                                        fillColor: const Color(0xFF6366F1),
-                                        borderColor: const Color(0xFF6366F1),
-                                        selectedBorderColor:
-                                            const Color(0xFF6366F1),
-                                        onPressed: (int index) {
-                                          setState(() {
-                                            for (int i = 0;
-                                                i < calorieSelections.length;
-                                                i++) {
-                                              calorieSelections[i] = i == index;
-                                            }
-                                          });
-                                          if (calorieSelections.first) {
-                                            calorieMode = 'lose';
-                                          } else if (calorieSelections[1]) {
-                                            calorieMode = 'maintain';
-                                          } else if (calorieSelections[2]) {
-                                            calorieMode = 'gain';
-                                          }
-                                          updateCardActiveCalories();
-                                        },
-                                        constraints: const BoxConstraints(
-                                          minWidth: 90,
-                                          minHeight: 40,
-                                        ),
-                                        children: [
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8.0,
-                                            ),
-                                            child: Text(
-                                              'Lose\n${calorieDeficit ?? 0}',
-                                              textAlign: TextAlign.center,
-                                              style:
-                                                  const TextStyle(fontSize: 12),
-                                            ),
-                                          ),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8.0,
-                                            ),
-                                            child: Text(
-                                              'Maintain\n${calorieMaintenance ?? 0}',
-                                              textAlign: TextAlign.center,
-                                              style:
-                                                  const TextStyle(fontSize: 12),
-                                            ),
-                                          ),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8.0,
-                                            ),
-                                            child: Text(
-                                              'Gain\n${calorieSurplus ?? 0}',
-                                              textAlign: TextAlign.center,
-                                              style:
-                                                  const TextStyle(fontSize: 12),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                const Text(
-                                  'Macros',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 16),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _proteinController,
-                                        focusNode: _proteinFocusNode,
-                                        keyboardType: TextInputType.number,
-                                        enabled: !_macrosFromAI,
-                                        decoration: InputDecoration(
-                                          labelText: 'Protein (g)',
-                                          hintText: 'Protein',
-                                          floatingLabelBehavior:
-                                              FloatingLabelBehavior.always,
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 12,
-                                          ),
-                                        ),
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _proteinGoal = int.tryParse(value);
-                                          });
-                                          updateCardActiveCalories();
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _carbsController,
-                                        focusNode: _carbsFocusNode,
-                                        keyboardType: TextInputType.number,
-                                        enabled: !_macrosFromAI,
-                                        decoration: InputDecoration(
-                                          labelText: 'Carbs (g)',
-                                          hintText: 'Carbs',
-                                          floatingLabelBehavior:
-                                              FloatingLabelBehavior.always,
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 12,
-                                          ),
-                                        ),
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _carbsGoal = int.tryParse(value);
-                                          });
-                                          updateCardActiveCalories();
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _fatsController,
-                                        focusNode: _fatsFocusNode,
-                                        keyboardType: TextInputType.number,
-                                        enabled: !_macrosFromAI,
-                                        decoration: InputDecoration(
-                                          labelText: 'Fats (g)',
-                                          hintText: 'Fats',
-                                          floatingLabelBehavior:
-                                              FloatingLabelBehavior.always,
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 12,
-                                          ),
-                                        ),
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _fatsGoal = int.tryParse(value);
-                                          });
-                                          updateCardActiveCalories();
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 0),
-                                  child: AnimatedBuilder(
-                                    animation: _jiggleAnimation ??
-                                        const AlwaysStoppedAnimation(0.0),
-                                    builder: (context, child) {
-                                      return Transform.rotate(
-                                        angle: _jiggleAnimation?.value ?? 0.0,
-                                        child: child,
-                                      );
-                                    },
-                                    child: CreditCard(
-                                      key: ValueKey(
-                                          '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_${_fatsGoal}'),
-                                      initialCalories: cardActiveCalories ?? 0,
-                                      caloriesOverride: cardActiveCalories ?? 0,
-                                      proteinOverride:
-                                          (_proteinGoal ?? 0).toDouble(),
-                                      carbsOverride:
-                                          (_carbsGoal ?? 0).toDouble(),
-                                      fatsOverride: (_fatsGoal ?? 0).toDouble(),
-                                      skipFetch: true,
-                                      onToggleMacros: (showMacros) {
-                                        _jiggleAnimationController?.forward(
-                                            from: 0);
-                                      },
-                                    ),
-                                  ),
-                                ),
                                 const SizedBox(height: 24),
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 50,
-                                  child: OutlinedButton.icon(
-                                    onPressed: () async {
-                                      final confirm = await showDialog<bool>(
-                                        context: context,
-                                        builder: (context) => AlertDialog(
-                                          title:
-                                              const Text('Clear Today\'s Food'),
-                                          content: const Text(
-                                              'This will delete all food items logged for today. This action cannot be undone. Continue?'),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(context, false),
-                                              child: const Text('Cancel'),
-                                            ),
-                                            ElevatedButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(context, true),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.red,
-                                              ),
-                                              child: const Text('Clear All'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                      if (confirm == true) {
-                                        await _clearAllTodaysFoodItems();
-                                      }
-                                    },
-                                    icon: const Icon(Icons.delete_sweep),
-                                    label: const Text('Clear Today\'s Food'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.red,
-                                      side: const BorderSide(color: Colors.red),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 50,
-                                  child: ElevatedButton(
-                                    onPressed: _isSaving
-                                        ? null
-                                        : () async {
-                                            setState(() {
-                                              _isSaving = true;
-                                            });
-                                            await saveData();
-                                            if (!mounted) return;
-                                            setState(() {
-                                              _isSaving = false;
-                                            });
-                                            // Navigate to home and clear all previous routes
-                                            await Navigator.pushAndRemoveUntil(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    const MainShell(
-                                                        initialIndex: 1),
-                                              ),
-                                              (route) => false,
-                                            );
-                                          },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF10B981),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      elevation: 4,
-                                    ),
-                                    child: _isSaving
-                                        ? const SizedBox(
-                                            height: 20,
-                                            width: 20,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2.2,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                      Colors.white),
-                                            ),
-                                          )
-                                        : const Text(
-                                            'Save',
-                                            style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16),
-                                          ),
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
+                                // Tab content
+                                if (_selectedTabIndex == 0)
+                                  _buildAICalculatedTab()
+                                else
+                                  _buildManualInputTab(),
                               ],
                             ),
                           ),
@@ -1120,7 +1422,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           if (_isEstimatingWithAI && _showMiniGame) const PingPongGame(),
           if (_isEstimatingWithAI && !_showMiniGame)
             Container(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               child: Center(
                 child: Card(
                   elevation: 8,

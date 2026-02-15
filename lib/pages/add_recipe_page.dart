@@ -42,9 +42,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
   late TextEditingController _ingredientPortionController;
   late TextEditingController _searchPortionController;
 
-  // Mode selection
-  String _inputMode = 'Free Text'; // 'Manual Input' or 'Free Text'
-
   // Free text mode
   final TextEditingController _freeTextController = TextEditingController();
   final List<String> _freeTextIngredients = [];
@@ -161,41 +158,14 @@ class _AddRecipePageState extends State<AddRecipePage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Ingredients',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 16),
-                      ),
-                      SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment<String>(
-                            value: 'Free Text',
-                            label: Text('Free Text'),
-                          ),
-                          ButtonSegment<String>(
-                            value: 'Manual Input',
-                            label: Text('Manual Input'),
-                          ),
-                        ],
-                        selected: {_inputMode},
-                        onSelectionChanged: (Set<String> newSelection) {
-                          setState(() {
-                            _inputMode = newSelection.first;
-                          });
-                        },
-                      ),
-                    ],
+                  const Text(
+                    'Ingredients',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
                   _buildSelectedIngredients(),
                   const SizedBox(height: 8),
-                  if (_inputMode == 'Manual Input')
-                    _buildSearch()
-                  else
-                    _buildFreeTextInput(),
+                  _buildFreeTextInput(),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
@@ -209,6 +179,9 @@ class _AddRecipePageState extends State<AddRecipePage> {
                       label: Text(widget.recipeId != null
                           ? 'Save Changes'
                           : 'Save Recipe'),
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                      ),
                     ),
                   ),
                 ],
@@ -1058,7 +1031,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
     try {
       final Uri requestUri =
-          Uri.parse('https://fatsecret-proxy.onrender.com/estimate');
+          Uri.parse('https://fatsecret-proxy.onrender.com/food/resolve');
 
       final response = await http.post(
         requestUri,
@@ -1087,12 +1060,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
         final portion = '${servingGrams}g';
 
-        String displayName;
-        if (servingDescription != null && servingDescription.isNotEmpty) {
-          displayName = servingDescription;
-        } else {
-          displayName = '$foodName (estimated serving size ${servingGrams}g)';
-        }
+        // Use the user's original input string
+        final displayName = q;
 
         setState(() {
           _ingredients.add(_IngredientEntry(
@@ -1236,7 +1205,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
     for (final ingredient in _freeTextIngredients) {
       try {
         final Uri requestUri =
-            Uri.parse('https://fatsecret-proxy.onrender.com/estimate');
+            Uri.parse('https://fatsecret-proxy.onrender.com/food/resolve');
 
         final response = await http.post(
           requestUri,
@@ -1263,12 +1232,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
           final portion = '${servingGrams}g';
 
-          String displayName;
-          if (servingDescription != null && servingDescription.isNotEmpty) {
-            displayName = servingDescription;
-          } else {
-            displayName = '$foodName (estimated serving size ${servingGrams}g)';
-          }
+          // Use the user's original input string
+          final displayName = ingredient;
 
           results.add(_IngredientEntry(
             name: displayName,
