@@ -115,6 +115,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   bool _canEstimateWithAI = false;
   bool _macrosFromAI = false;
   Map<String, dynamic>? _lastAIData;
+  bool _showAIResults = false; // Toggle between inputs and results in AI tab
 
   // Tab state
   int _selectedTabIndex = 0; // 0 = AI Calculated, 1 = Manual Input
@@ -506,6 +507,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               updateCardActiveCalories();
 
               _macrosFromAI = true;
+              _showAIResults = true; // Show results view after estimation
               _canEstimateWithAI = false;
               _lastAIData = {
                 'age': _selectedAge,
@@ -628,6 +630,310 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   }
 
   Widget _buildAICalculatedTab() {
+    // Show Results View
+    if (_showAIResults) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Back Button
+          OutlinedButton.icon(
+            onPressed: () {
+              setState(() {
+                _showAIResults = false;
+              });
+            },
+            icon: const Icon(Icons.arrow_back, size: 18),
+            label: const Text(
+              'Back to Inputs',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF6366F1),
+              side: const BorderSide(color: Color(0xFF6366F1)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Goal Selection
+          const Text(
+            'Select Your Goal',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1F2937),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: IntrinsicWidth(
+              child: ToggleButtons(
+                isSelected: calorieSelections,
+                selectedColor: Colors.white,
+                fillColor: const Color(0xFF6366F1),
+                borderColor: const Color(0xFF6366F1),
+                selectedBorderColor: const Color(0xFF6366F1),
+                borderRadius: BorderRadius.circular(10),
+                onPressed: (int index) {
+                  setState(() {
+                    for (int i = 0; i < calorieSelections.length; i++) {
+                      calorieSelections[i] = i == index;
+                    }
+                  });
+                  if (calorieSelections.first) {
+                    calorieMode = 'lose';
+                  } else if (calorieSelections[1]) {
+                    calorieMode = 'maintain';
+                  } else if (calorieSelections[2]) {
+                    calorieMode = 'gain';
+                  }
+                  updateCardActiveCalories();
+                },
+                constraints: const BoxConstraints(
+                  minWidth: 90,
+                  minHeight: 52,
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.trending_down, size: 18),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Lose',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          '${calorieDeficit ?? 0}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.horizontal_rule, size: 18),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Maintain',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          '${calorieMaintenance ?? 0}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.trending_up, size: 18),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Gain',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          '${calorieSurplus ?? 0}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Macros Section
+          const Text(
+            'Macros',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildReadOnlyMacroField('Protein', _proteinGoal ?? 0),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildReadOnlyMacroField('Carbs', _carbsGoal ?? 0),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildReadOnlyMacroField('Fats', _fatsGoal ?? 0),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          // Credit Card Preview
+          AnimatedBuilder(
+            animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
+            builder: (context, child) {
+              return Transform.rotate(
+                angle: _jiggleAnimation?.value ?? 0.0,
+                child: child,
+              );
+            },
+            child: CreditCard(
+              key: ValueKey(
+                  '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
+              initialCalories: cardActiveCalories ?? 0,
+              caloriesOverride: cardActiveCalories ?? 0,
+              proteinOverride: (_proteinGoal ?? 0).toDouble(),
+              carbsOverride: (_carbsGoal ?? 0).toDouble(),
+              fatsOverride: (_fatsGoal ?? 0).toDouble(),
+              skipFetch: true,
+              onToggleMacros: (showMacros) {
+                _jiggleAnimationController?.forward(from: 0);
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Clear Today\'s Food'),
+                    content: const Text(
+                        'This will delete all food items logged for today. This action cannot be undone. Continue?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Clear All'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await _clearAllTodaysFoodItems();
+                }
+              },
+              icon: const Icon(Icons.delete_sweep),
+              label: const Text('Clear Today\'s Food'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            height: 54,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF10B981).withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ElevatedButton(
+              onPressed: _isSaving
+                  ? null
+                  : () async {
+                      setState(() {
+                        _isSaving = true;
+                      });
+                      await saveData();
+                      if (!mounted) return;
+                      setState(() {
+                        _isSaving = false;
+                      });
+                      await Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const MainShell(initialIndex: 1),
+                        ),
+                        (route) => false,
+                      );
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                elevation: 0,
+                disabledBackgroundColor: const Color(0xFF10B981).withOpacity(0.6),
+              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.check_circle_rounded, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Save Changes',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Show Inputs View
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -760,229 +1066,69 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         SizedBox(
           width: double.infinity,
           height: 50,
-          child: ElevatedButton(
+          child: ElevatedButton.icon(
             onPressed: _canEstimateWithAI || !_macrosFromAI
                 ? () async {
                     _markFieldsChanged();
                     await _estimateWithAI();
                   }
                 : null,
+            icon: const Icon(Icons.auto_awesome, size: 20),
+            label: Text(_macrosFromAI && !_canEstimateWithAI
+                ? 'Estimated!'
+                : 'Estimate Via AI'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF6366F1),
               foregroundColor: Colors.white,
               minimumSize: const Size(double.infinity, 48),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: Text(_macrosFromAI && !_canEstimateWithAI
-                ? 'Estimated!'
-                : 'Estimate Via AI'),
           ),
         ),
-        // Show results after estimation
-        if (_macrosFromAI) ...[
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 0),
-            child: Center(
-              child: IntrinsicWidth(
-                child: ToggleButtons(
-                  isSelected: calorieSelections,
-                  selectedColor: Colors.white,
-                  fillColor: const Color(0xFF6366F1),
-                  borderColor: const Color(0xFF6366F1),
-                  selectedBorderColor: const Color(0xFF6366F1),
-                  onPressed: (int index) {
-                    setState(() {
-                      for (int i = 0; i < calorieSelections.length; i++) {
-                        calorieSelections[i] = i == index;
-                      }
-                    });
-                    if (calorieSelections.first) {
-                      calorieMode = 'lose';
-                    } else if (calorieSelections[1]) {
-                      calorieMode = 'maintain';
-                    } else if (calorieSelections[2]) {
-                      calorieMode = 'gain';
-                    }
-                    updateCardActiveCalories();
-                  },
-                  constraints: const BoxConstraints(
-                    minWidth: 90,
-                    minHeight: 40,
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text(
-                        'Lose\n${calorieDeficit ?? 0}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text(
-                        'Maintain\n${calorieMaintenance ?? 0}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text(
-                        'Gain\n${calorieSurplus ?? 0}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Macros',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _buildReadOnlyMacroField('Protein', _proteinGoal ?? 0),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildReadOnlyMacroField('Carbs', _carbsGoal ?? 0),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildReadOnlyMacroField('Fats', _fatsGoal ?? 0),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 0),
-            child: AnimatedBuilder(
-              animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
-              builder: (context, child) {
-                return Transform.rotate(
-                  angle: _jiggleAnimation?.value ?? 0.0,
-                  child: child,
-                );
-              },
-              child: CreditCard(
-                key: ValueKey(
-                    '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
-                initialCalories: cardActiveCalories ?? 0,
-                caloriesOverride: cardActiveCalories ?? 0,
-                proteinOverride: (_proteinGoal ?? 0).toDouble(),
-                carbsOverride: (_carbsGoal ?? 0).toDouble(),
-                fatsOverride: (_fatsGoal ?? 0).toDouble(),
-                skipFetch: true,
-                onToggleMacros: (showMacros) {
-                  _jiggleAnimationController?.forward(from: 0);
-                },
-              ),
-            ),
-          ),
+        // Empty state when no estimation yet
+        if (!_macrosFromAI) ...[
           const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Clear Today\'s Food'),
-                    content: const Text(
-                        'This will delete all food items logged for today. This action cannot be undone. Continue?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text('Cancel'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('Clear All'),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirm == true) {
-                  await _clearAllTodaysFoodItems();
-                }
-              },
-              icon: const Icon(Icons.delete_sweep),
-              label: const Text('Clear Today\'s Food'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red,
-                side: const BorderSide(color: Colors.red),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.grey.shade200,
+                width: 1,
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: _isSaving
-                  ? null
-                  : () async {
-                      setState(() {
-                        _isSaving = true;
-                      });
-                      await saveData();
-                      if (!mounted) return;
-                      setState(() {
-                        _isSaving = false;
-                      });
-                      await Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const MainShell(initialIndex: 1),
-                        ),
-                        (route) => false,
-                      );
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.auto_awesome,
+                  size: 48,
+                  color: Color(0xFF6366F1).withOpacity(0.3),
                 ),
-                elevation: 4,
-              ),
-              child: _isSaving
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : const Text(
-                      'Save',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
+                const SizedBox(height: 12),
+                Text(
+                  'No AI Estimation Yet',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Tap "Estimate Via AI" to calculate\nyour personalized targets',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
-        const SizedBox(height: 24),
       ],
     );
   }
@@ -1268,150 +1414,242 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Colors.indigo.shade50,
-                  Colors.blue.shade50,
+                  const Color(0xFF6366F1),
+                  const Color(0xFF8B5CF6),
                 ],
               ),
             ),
             child: SafeArea(
               top: false,
               child: isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ))
                   : SingleChildScrollView(
                       padding: EdgeInsets.zero,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          // Enhanced Header
                           Container(
                             padding:
-                                EdgeInsets.fromLTRB(8, topPadding + 8, 8, 8),
+                                EdgeInsets.fromLTRB(12, topPadding + 12, 12, 16),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1),
-                              borderRadius: const BorderRadius.only(
-                                bottomLeft: Radius.circular(16),
-                                bottomRight: Radius.circular(16),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.white.withOpacity(0.15),
+                                  Colors.white.withOpacity(0.05),
+                                ],
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(24),
+                                bottomRight: Radius.circular(24),
+                              ),
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: Colors.white.withOpacity(0.2),
+                                  width: 1,
                                 ),
-                              ],
+                              ),
                             ),
                             child: Row(
                               children: [
-                                IconButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                  },
-                                  icon: const Icon(Icons.arrow_back),
-                                  color: Colors.white,
-                                  splashRadius: 20,
-                                  tooltip: 'Back',
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: IconButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                    },
+                                    icon: const Icon(Icons.arrow_back_rounded),
+                                    color: Colors.white,
+                                    splashRadius: 20,
+                                    tooltip: 'Back',
+                                  ),
                                 ),
-                                const Expanded(
-                                  child: Center(
-                                    child: Text(
-                                      'Edit Profile',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
+                                Expanded(
+                                  child: Column(
+                                    children: [
+                                      const Text(
+                                        'Edit Profile',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          letterSpacing: 0.5,
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Update your information',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.white.withOpacity(0.85),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(width: 48),
                               ],
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                // Tabs
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border:
-                                        Border.all(color: Colors.grey.shade200),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            setState(() {
-                                              _selectedTabIndex = 0;
-                                            });
-                                          },
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                vertical: 12),
-                                            decoration: BoxDecoration(
-                                              color: _selectedTabIndex == 0
-                                                  ? const Color(0xFF6366F1)
-                                                  : Colors.transparent,
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              'AI Calculated',
-                                              textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                color: _selectedTabIndex == 0
-                                                    ? Colors.white
-                                                    : Colors.grey.shade700,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            setState(() {
-                                              _selectedTabIndex = 1;
-                                            });
-                                          },
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                vertical: 12),
-                                            decoration: BoxDecoration(
-                                              color: _selectedTabIndex == 1
-                                                  ? const Color(0xFF6366F1)
-                                                  : Colors.transparent,
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              'Manual Input',
-                                              textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                color: _selectedTabIndex == 1
-                                                    ? Colors.white
-                                                    : Colors.grey.shade700,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                          // Main Content
+                          Container(
+                            margin: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(24),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 4),
                                 ),
-                                const SizedBox(height: 24),
-                                // Tab content
-                                if (_selectedTabIndex == 0)
-                                  _buildAICalculatedTab()
-                                else
-                                  _buildManualInputTab(),
                               ],
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // Modern Tabs
+                                  Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade200,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _selectedTabIndex = 0;
+                                              });
+                                            },
+                                            child: AnimatedContainer(
+                                              duration: const Duration(milliseconds: 200),
+                                              padding: const EdgeInsets.symmetric(
+                                                  vertical: 14),
+                                              decoration: BoxDecoration(
+                                                color: _selectedTabIndex == 0
+                                                    ? const Color(0xFF6366F1)
+                                                    : Colors.transparent,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                boxShadow: _selectedTabIndex == 0
+                                                    ? [
+                                                        BoxShadow(
+                                                          color: Color(0xFF6366F1)
+                                                              .withOpacity(0.3),
+                                                          blurRadius: 8,
+                                                          offset: const Offset(0, 2),
+                                                        ),
+                                                      ]
+                                                    : [],
+                                              ),
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.auto_awesome,
+                                                    size: 18,
+                                                    color: _selectedTabIndex == 0
+                                                        ? Colors.white
+                                                        : Colors.grey.shade600,
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    'AI Calculated',
+                                                    textAlign: TextAlign.center,
+                                                    style: TextStyle(
+                                                      color: _selectedTabIndex == 0
+                                                          ? Colors.white
+                                                          : Colors.grey.shade700,
+                                                      fontWeight: FontWeight.w700,
+                                                      fontSize: 15,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _selectedTabIndex = 1;
+                                              });
+                                            },
+                                            child: AnimatedContainer(
+                                              duration: const Duration(milliseconds: 200),
+                                              padding: const EdgeInsets.symmetric(
+                                                  vertical: 14),
+                                              decoration: BoxDecoration(
+                                                color: _selectedTabIndex == 1
+                                                    ? const Color(0xFF6366F1)
+                                                    : Colors.transparent,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                boxShadow: _selectedTabIndex == 1
+                                                    ? [
+                                                        BoxShadow(
+                                                          color: Color(0xFF6366F1)
+                                                              .withOpacity(0.3),
+                                                          blurRadius: 8,
+                                                          offset: const Offset(0, 2),
+                                                        ),
+                                                      ]
+                                                    : [],
+                                              ),
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.edit_note,
+                                                    size: 18,
+                                                    color: _selectedTabIndex == 1
+                                                        ? Colors.white
+                                                        : Colors.grey.shade600,
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    'Manual Input',
+                                                    textAlign: TextAlign.center,
+                                                    style: TextStyle(
+                                                      color: _selectedTabIndex == 1
+                                                          ? Colors.white
+                                                          : Colors.grey.shade700,
+                                                      fontWeight: FontWeight.w700,
+                                                      fontSize: 15,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  // Tab content
+                                  if (_selectedTabIndex == 0)
+                                    _buildAICalculatedTab()
+                                  else
+                                    _buildManualInputTab(),
+                                ],
+                              ),
                             ),
                           ),
                         ],

@@ -62,6 +62,13 @@ class _GetStartedPageState extends State<GetStartedPage> {
   bool _canEstimateWithAI = false;
   bool _macrosFromAI = false;
   Map<String, dynamic>? _lastAIData;
+  bool _showAIResults = false; // Toggle between inputs and results in AI tab
+
+  // Tab state for AI vs Manual input
+  int _selectedTabIndex = 0; // 0 = AI Calculated, 1 = Manual Input
+  final TextEditingController _manualCalorieController =
+      TextEditingController();
+  int? _manualCalorieGoal;
 
   @override
   void initState() {
@@ -88,6 +95,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
     _proteinController.dispose();
     _carbsController.dispose();
     _fatsController.dispose();
+    _manualCalorieController.dispose();
     super.dispose();
   }
 
@@ -96,6 +104,11 @@ class _GetStartedPageState extends State<GetStartedPage> {
   void saveData() async {
     final userId = FirebaseAuth.instance.currentUser!.uid;
 
+    // Use manual calorie goal if manual input is selected
+    final finalCalories = _selectedTabIndex == 1 && _manualCalorieGoal != null
+        ? _manualCalorieGoal
+        : cardActiveCalories;
+
     await FirebaseFirestore.instance.collection('user_data').add({
       'user_id': userId,
       'age': _selectedAge,
@@ -103,7 +116,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
       'height': _selectedHeight,
       'weight': _selectedWeight,
       'exercise_level': _exerciseLevel,
-      'calories': cardActiveCalories,
+      'calories': finalCalories,
       'calorie_mode': calorieMode,
       'protein_goal': _proteinGoal ?? 0,
       'carbs_goal': _carbsGoal ?? 0,
@@ -231,6 +244,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
             updateCardActiveCalories();
 
             _macrosFromAI = true;
+            _showAIResults = true; // Show results view after estimation
             _canEstimateWithAI = false;
             _lastAIData = {
               'age': _selectedAge,
@@ -373,31 +387,55 @@ class _GetStartedPageState extends State<GetStartedPage> {
                 children: [
                   // Header
                   Padding(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
                     child: Column(
                       children: [
-                        const Icon(
-                          Icons.fitness_center,
-                          size: 48,
-                          color: Colors.white,
+                        // Icon Badge
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.fitness_center,
+                            size: 48,
+                            color: Colors.white,
+                          ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 20),
                         const Text(
                           'Welcome to TheCalorieCard!',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 26,
+                            fontSize: 28,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
+                            letterSpacing: 0.5,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Let\'s set up your profile to get started',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.white.withOpacity(0.9),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            'Let\'s set up your profile to get started',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.white.withOpacity(0.95),
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                       ],
@@ -675,145 +713,523 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                 _buildSectionHeader(
                                   icon: Icons.track_changes,
                                   title: 'Your Goal',
-                                  subtitle: 'Select your calorie target',
+                                  subtitle: 'Choose calculation method',
                                 ),
                                 const SizedBox(height: 16),
-                                // Goal Selection
+                                // Tabs for AI vs Manual
                                 Container(
-                                  padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.04),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
+                                    borderRadius: BorderRadius.circular(8),
+                                    border:
+                                        Border.all(color: Colors.grey.shade200),
                                   ),
-                                  child: Column(
+                                  child: Row(
                                     children: [
-                                      ToggleButtons(
-                                        isSelected: calorieSelections,
-                                        selectedColor: Colors.white,
-                                        fillColor: Color(0xFF6366F1),
-                                        borderColor: Color(0xFF6366F1),
-                                        selectedBorderColor: Color(0xFF6366F1),
-                                        borderRadius: BorderRadius.circular(10),
-                                        onPressed: (int index) {
-                                          setState(() {
-                                            for (int i = 0;
-                                                i < calorieSelections.length;
-                                                i++) {
-                                              calorieSelections[i] = i == index;
-                                            }
-                                          });
-                                          if (calorieSelections.first) {
-                                            calorieMode = 'lose';
-                                          } else if (calorieSelections[1]) {
-                                            calorieMode = 'maintain';
-                                          } else if (calorieSelections[2]) {
-                                            calorieMode = 'gain';
-                                          }
-
-                                          updateCardActiveCalories();
-                                        },
-                                        constraints: const BoxConstraints(
-                                          minWidth: 100,
-                                          minHeight: 52,
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            setState(() {
+                                              _selectedTabIndex = 0;
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 12),
+                                            decoration: BoxDecoration(
+                                              color: _selectedTabIndex == 0
+                                                  ? const Color(0xFF6366F1)
+                                                  : Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              'AI Calculated',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                color: _selectedTabIndex == 0
+                                                    ? Colors.white
+                                                    : Colors.grey.shade700,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                        children: [
-                                          Padding(
+                                      ),
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            setState(() {
+                                              _selectedTabIndex = 1;
+                                            });
+                                          },
+                                          child: Container(
                                             padding: const EdgeInsets.symmetric(
-                                              horizontal: 12.0,
+                                                vertical: 12),
+                                            decoration: BoxDecoration(
+                                              color: _selectedTabIndex == 1
+                                                  ? const Color(0xFF6366F1)
+                                                  : Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
-                                            child: Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                const Icon(Icons.trending_down,
-                                                    size: 18),
-                                                const SizedBox(height: 4),
-                                                const Text(
-                                                  'Lose',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${calorieDeficit ?? 0}',
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ],
+                                            child: Text(
+                                              'Manual Input',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                color: _selectedTabIndex == 1
+                                                    ? Colors.white
+                                                    : Colors.grey.shade700,
+                                                fontWeight: FontWeight.w600,
+                                              ),
                                             ),
                                           ),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12.0,
-                                            ),
-                                            child: Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                const Icon(
-                                                    Icons.horizontal_rule,
-                                                    size: 18),
-                                                const SizedBox(height: 4),
-                                                const Text(
-                                                  'Maintain',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${calorieMaintenance ?? 0}',
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12.0,
-                                            ),
-                                            child: Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                const Icon(Icons.trending_up,
-                                                    size: 18),
-                                                const SizedBox(height: 4),
-                                                const Text(
-                                                  'Gain',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${calorieSurplus ?? 0}',
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
+                                const SizedBox(height: 16),
+                                // Tab Content
+                                if (_selectedTabIndex == 0)
+                                  // AI Calculated Tab
+                                  _showAIResults
+                                      ? // Show Results View
+                                      Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            // Back Button
+                                            Container(
+                                              margin: const EdgeInsets.only(
+                                                  bottom: 16),
+                                              child: OutlinedButton.icon(
+                                                onPressed: () {
+                                                  setState(() {
+                                                    _showAIResults = false;
+                                                  });
+                                                },
+                                                icon: const Icon(
+                                                    Icons.arrow_back,
+                                                    size: 18),
+                                                label: const Text(
+                                                  'Back to Inputs',
+                                                  style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w600),
+                                                ),
+                                                style: OutlinedButton.styleFrom(
+                                                  foregroundColor:
+                                                      const Color(0xFF6366F1),
+                                                  side: const BorderSide(
+                                                      color:
+                                                          Color(0xFF6366F1)),
+                                                  padding: const EdgeInsets
+                                                      .symmetric(vertical: 12),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            12),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            // Results Container
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.all(20),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withOpacity(0.05),
+                                                    blurRadius: 15,
+                                                    offset:
+                                                        const Offset(0, 3),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Column(
+                                                children: [
+                                                  // Goal Selection
+                                                  const Text(
+                                                    'Select Your Goal',
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Color(0xFF1F2937),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 16),
+                                                  ToggleButtons(
+                                                    isSelected:
+                                                        calorieSelections,
+                                                    selectedColor:
+                                                        Colors.white,
+                                                    fillColor:
+                                                        Color(0xFF6366F1),
+                                                    borderColor:
+                                                        Color(0xFF6366F1),
+                                                    selectedBorderColor:
+                                                        Color(0xFF6366F1),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            10),
+                                                    onPressed: (int index) {
+                                                      setState(() {
+                                                        for (int i = 0;
+                                                            i <
+                                                                calorieSelections
+                                                                    .length;
+                                                            i++) {
+                                                          calorieSelections[
+                                                              i] = i == index;
+                                                        }
+                                                      });
+                                                      if (calorieSelections
+                                                          .first) {
+                                                        calorieMode = 'lose';
+                                                      } else if (calorieSelections[
+                                                          1]) {
+                                                        calorieMode =
+                                                            'maintain';
+                                                      } else if (calorieSelections[
+                                                          2]) {
+                                                        calorieMode = 'gain';
+                                                      }
+
+                                                      updateCardActiveCalories();
+                                                    },
+                                                    constraints:
+                                                        const BoxConstraints(
+                                                      minWidth: 90,
+                                                      minHeight: 52,
+                                                    ),
+                                                    children: [
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                          horizontal: 8.0,
+                                                        ),
+                                                        child: Column(
+                                                          mainAxisAlignment:
+                                                              MainAxisAlignment
+                                                                  .center,
+                                                          children: [
+                                                            const Icon(
+                                                                Icons
+                                                                    .trending_down,
+                                                                size: 18),
+                                                            const SizedBox(
+                                                                height: 4),
+                                                            const Text(
+                                                              'Lose',
+                                                              style: TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                fontSize: 13,
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              '${calorieDeficit ?? 0}',
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontSize: 11,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                          horizontal: 8.0,
+                                                        ),
+                                                        child: Column(
+                                                          mainAxisAlignment:
+                                                              MainAxisAlignment
+                                                                  .center,
+                                                          children: [
+                                                            const Icon(
+                                                                Icons
+                                                                    .horizontal_rule,
+                                                                size: 18),
+                                                            const SizedBox(
+                                                                height: 4),
+                                                            const Text(
+                                                              'Maintain',
+                                                              style: TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                fontSize: 13,
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              '${calorieMaintenance ?? 0}',
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontSize: 11,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                          horizontal: 8.0,
+                                                        ),
+                                                        child: Column(
+                                                          mainAxisAlignment:
+                                                              MainAxisAlignment
+                                                                  .center,
+                                                          children: [
+                                                            const Icon(
+                                                                Icons
+                                                                    .trending_up,
+                                                                size: 18),
+                                                            const SizedBox(
+                                                                height: 4),
+                                                            const Text(
+                                                              'Gain',
+                                                              style: TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                fontSize: 13,
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              '${calorieSurplus ?? 0}',
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontSize: 11,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 24),
+                                                  // Macros Section
+                                                  _buildSectionHeader(
+                                                    icon: Icons.restaurant,
+                                                    title: 'Macros',
+                                                    subtitle:
+                                                        'Your daily targets',
+                                                  ),
+                                                  const SizedBox(height: 16),
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child:
+                                                            MeasurementInputField(
+                                                          label: 'Protein',
+                                                          controller:
+                                                              _proteinController,
+                                                          focusNode:
+                                                              _proteinFocusNode,
+                                                          hintText: 'E.g. 150',
+                                                          suffix: 'g',
+                                                          onChanged: (value) {
+                                                            setState(() {
+                                                              _proteinGoal =
+                                                                  value;
+                                                            });
+                                                          },
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        child:
+                                                            MeasurementInputField(
+                                                          label: 'Carbs',
+                                                          controller:
+                                                              _carbsController,
+                                                          focusNode:
+                                                              _carbsFocusNode,
+                                                          hintText: 'E.g. 200',
+                                                          suffix: 'g',
+                                                          onChanged: (value) {
+                                                            setState(() {
+                                                              _carbsGoal = value;
+                                                            });
+                                                          },
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child:
+                                                            MeasurementInputField(
+                                                          label: 'Fats',
+                                                          controller:
+                                                              _fatsController,
+                                                          focusNode:
+                                                              _fatsFocusNode,
+                                                          hintText: 'E.g. 65',
+                                                          suffix: 'g',
+                                                          onChanged: (value) {
+                                                            setState(() {
+                                                              _fatsGoal = value;
+                                                            });
+                                                          },
+                                                        ),
+                                                      ),
+                                                      const Expanded(
+                                                          child: SizedBox()),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 24),
+                                                  // Credit Card Preview
+                                                  CreditCard(
+                                                    key: ValueKey(
+                                                        '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_${_fatsGoal}'),
+                                                    initialCalories:
+                                                        cardActiveCalories ?? 0,
+                                                    caloriesOverride:
+                                                        cardActiveCalories ?? 0,
+                                                    proteinOverride:
+                                                        (_proteinGoal ?? 0)
+                                                            .toDouble(),
+                                                    carbsOverride:
+                                                        (_carbsGoal ?? 0)
+                                                            .toDouble(),
+                                                    fatsOverride:
+                                                        (_fatsGoal ?? 0)
+                                                            .toDouble(),
+                                                    skipFetch: true,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                      : // Show Inputs View
+                                      Container(
+                                          padding: const EdgeInsets.all(16),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withOpacity(0.04),
+                                                blurRadius: 10,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.auto_awesome,
+                                                size: 48,
+                                                color: Color(0xFF6366F1)
+                                                    .withOpacity(0.3),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Text(
+                                                'No AI Estimation Yet',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.grey.shade800,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                'Enter your details above and tap\n"Estimate Via AI" to get started',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.grey.shade600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                else
+                                  // Manual Input Tab
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.04),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Enter Your Calorie Goal',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        TextField(
+                                          controller: _manualCalorieController,
+                                          keyboardType: TextInputType.number,
+                                          decoration: InputDecoration(
+                                            labelText: 'Calories',
+                                            hintText: 'E.g. 2000',
+                                            floatingLabelBehavior:
+                                                FloatingLabelBehavior.always,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 12,
+                                            ),
+                                          ),
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _manualCalorieGoal =
+                                                  int.tryParse(value);
+                                              cardActiveCalories =
+                                                  _manualCalorieGoal;
+                                              _prefillMacrosFromCalories();
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 const SizedBox(height: 24),
                                 _buildSectionHeader(
                                   icon: Icons.restaurant_menu,
@@ -942,9 +1358,19 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                 ),
                                 const SizedBox(height: 24),
                                 // Save Button
-                                SizedBox(
+                                Container(
                                   width: double.infinity,
                                   height: 56,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Color(0xFF10B981).withOpacity(0.3),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
                                   child: ElevatedButton(
                                     onPressed: () async {
                                       saveData();
@@ -963,7 +1389,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(16),
                                       ),
-                                      elevation: 2,
+                                      elevation: 0,
                                     ),
                                     child: Row(
                                       mainAxisAlignment:
@@ -973,13 +1399,14 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                           "Let's get started!",
                                           style: TextStyle(
                                             color: Colors.white,
-                                            fontSize: 17,
+                                            fontSize: 18,
                                             fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
                                           ),
                                         ),
-                                        const SizedBox(width: 8),
-                                        const Icon(Icons.arrow_forward,
-                                            size: 20),
+                                        const SizedBox(width: 12),
+                                        const Icon(Icons.arrow_forward_rounded,
+                                            size: 22),
                                       ],
                                     ),
                                   ),

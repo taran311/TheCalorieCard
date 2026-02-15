@@ -726,7 +726,7 @@ class _QuickAddFoodPageState extends State<QuickAddFoodPage> {
                         Row(
                           children: [
                             Expanded(
-                              flex: 3,
+                              flex: 2,
                               child: ElevatedButton.icon(
                                 onPressed: (_ingredients.isEmpty ||
                                         _calculating ||
@@ -750,7 +750,7 @@ class _QuickAddFoodPageState extends State<QuickAddFoodPage> {
                                 label: Text(
                                   _calculating
                                       ? 'Calculating...'
-                                      : 'Calculate Via AI',
+                                      : 'Calculate with AI',
                                   style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
@@ -764,53 +764,22 @@ class _QuickAddFoodPageState extends State<QuickAddFoodPage> {
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
-                                  elevation: 0,
+                                  elevation: 2,
                                 ),
                               ),
                             ),
                             const SizedBox(width: 12),
-                            Container(
-                              height: 52,
-                              width: 52,
-                              decoration: BoxDecoration(
-                                color: (!_calculated ||
-                                        _saving ||
-                                        _calculatedItems.isEmpty)
-                                    ? Colors.grey.shade300
-                                    : const Color(0xFF10B981),
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: (!_calculated ||
-                                        _saving ||
-                                        _calculatedItems.isEmpty)
-                                    ? []
-                                    : [
-                                        BoxShadow(
-                                          color: const Color(0xFF10B981)
-                                              .withOpacity(0.3),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                              ),
-                              child: ElevatedButton(
+                            Expanded(
+                              child: ElevatedButton.icon(
                                 onPressed: (!_calculated ||
                                         _saving ||
                                         _calculatedItems.isEmpty)
                                     ? null
                                     : _saveItems,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.transparent,
-                                  foregroundColor: Colors.white,
-                                  shadowColor: Colors.transparent,
-                                  padding: const EdgeInsets.all(12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: _saving
+                                icon: _saving
                                     ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
+                                        width: 18,
+                                        height: 18,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
                                           valueColor:
@@ -818,7 +787,32 @@ class _QuickAddFoodPageState extends State<QuickAddFoodPage> {
                                                   Colors.white),
                                         ),
                                       )
-                                    : const Icon(Icons.check, size: 24),
+                                    : const Icon(Icons.check_circle, size: 20),
+                                label: Text(
+                                  _saving ? 'Saving...' : 'Save',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
+                                  backgroundColor: (!_calculated ||
+                                          _saving ||
+                                          _calculatedItems.isEmpty)
+                                      ? Colors.grey.shade300
+                                      : const Color(0xFF10B981),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: (!_calculated ||
+                                          _saving ||
+                                          _calculatedItems.isEmpty)
+                                      ? 0
+                                      : 2,
+                                ),
                               ),
                             ),
                           ],

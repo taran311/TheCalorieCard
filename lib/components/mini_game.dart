@@ -149,14 +149,6 @@ class _PingPongGameState extends State<PingPongGame> {
                           ),
                         ),
                       ),
-                      // Center line
-                      Center(
-                        child: Container(
-                          width: 2,
-                          height: double.infinity,
-                          color: Colors.white24,
-                        ),
-                      ),
                     ],
                   ),
                 ),

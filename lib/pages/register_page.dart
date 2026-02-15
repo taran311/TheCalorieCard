@@ -109,129 +109,209 @@ class _RegisterPageState extends State<RegisterPage> {
             end: Alignment.bottomRight,
             colors: [
               Color(0xFF6366F1),
-              Color(0xFF4F46E5),
+              Color(0xFF8B5CF6),
             ],
           ),
         ),
         child: SafeArea(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: ScrollConfiguration(
                 behavior:
                     ScrollConfiguration.of(context).copyWith(scrollbars: false),
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 520),
+                    constraints: const BoxConstraints(maxWidth: 440),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        // Logo Section
                         Container(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 20,
+                          ),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                              width: 1,
+                            ),
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.credit_card,
-                                    size: 60,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Flexible(
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: const Text(
-                                        'TheCalorieCard',
-                                        style: TextStyle(
-                                          fontSize: 32,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                          letterSpacing: 1.2,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Icon(
+                                  Icons.credit_card,
+                                  size: 48,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'TheCalorieCard',
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 1.2,
+                                ),
                               ),
                               const SizedBox(height: 4),
-                              const Text(
-                                'Powered by AI',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.white70,
-                                  letterSpacing: 0.5,
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.auto_awesome,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Text(
+                                      'Powered by AI',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 32),
-                        const Text(
-                          'Let\'s create an account for you!',
-                          style: TextStyle(
+                        const SizedBox(height: 48),
+
+                        // Register Card
+                        Container(
+                          padding: const EdgeInsets.all(28),
+                          decoration: BoxDecoration(
                             color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Welcome Section
+                              Column(
+                                children: [
+                                  Text(
+                                    'Create Account',
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1F2937),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Join us and start tracking today!',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 32),
+                              MyTextField(
+                                controller: emailController,
+                                hintText: 'Email',
+                                obscureText: false,
+                              ),
+                              const SizedBox(height: 8),
+                              MyTextField(
+                                controller: passwordController,
+                                hintText: 'Password',
+                                obscureText: true,
+                              ),
+                              const SizedBox(height: 8),
+                              MyTextField(
+                                controller: confirmPasswordController,
+                                hintText: 'Confirm Password',
+                                obscureText: true,
+                              ),
+                              const SizedBox(height: 28),
+                              isLoading
+                                  ? Center(
+                                      child: CircularProgressIndicator(
+                                        color: Color(0xFF6366F1),
+                                      ),
+                                    )
+                                  : MyButton(
+                                      onTap: () async {
+                                        await signUserUp();
+                                      },
+                                      text: 'Sign Up',
+                                    ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 32),
-                        MyTextField(
-                          controller: emailController,
-                          hintText: 'Email',
-                          obscureText: false,
-                        ),
-                        const SizedBox(height: 16),
-                        MyTextField(
-                          controller: passwordController,
-                          hintText: 'Password',
-                          obscureText: true,
-                        ),
-                        const SizedBox(height: 16),
-                        MyTextField(
-                          controller: confirmPasswordController,
-                          hintText: 'Confirm Password',
-                          obscureText: true,
-                        ),
                         const SizedBox(height: 28),
-                        isLoading
-                            ? CircularProgressIndicator(color: Colors.white)
-                            : MyButton(
-                                onTap: () async {
-                                  await signUserUp();
-                                },
-                                text: 'Sign Up',
-                              ),
-                        const SizedBox(height: 32),
+
+                        // Login link
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text(
+                            Text(
                               'Already have an account?',
                               style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
+                                color: Colors.white.withOpacity(0.9),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                             const SizedBox(width: 8),
                             GestureDetector(
                               onTap: widget.onTap,
-                              child: const Text(
-                                'Login now',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  decoration: TextDecoration.underline,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.4),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Login now',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
                                 ),
                               ),
                             ),

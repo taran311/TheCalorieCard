@@ -256,7 +256,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     labelText: 'Enter foods (comma-separated)',
                     hintText: 'e.g. 100g banana, 200g chicken, 1 apple',
                     border: const OutlineInputBorder(),
-                    helperText: 'Type foods and press comma to add',
+                    helperText: 'Add each item with a comma',
                   ),
                   onChanged: (value) {
                     if (value.endsWith(',')) {
@@ -392,65 +392,83 @@ class _AddFoodPageState extends State<AddFoodPage> {
                 Row(
                   children: [
                     Expanded(
-                      flex: 3,
+                      flex: 2,
                       child: ElevatedButton.icon(
                         onPressed: (_ingredients.isEmpty || _calculating)
                             ? null
                             : _calculateWithAI,
                         icon: _calculating
                             ? const SizedBox(
-                                width: 20,
-                                height: 20,
+                                width: 18,
+                                height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                       Colors.white),
                                 ),
                               )
-                            : const Icon(Icons.auto_awesome),
-                        label: Text(_calculating
-                            ? 'Calculating...'
-                            : 'Calculate Via AI'),
+                            : const Icon(Icons.auto_awesome, size: 20),
+                        label: Text(
+                          _calculating ? 'Calculating...' : 'Calculate with AI',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                           backgroundColor: const Color(0xFF6366F1),
                           foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
-                    SizedBox(
-                      height: 48,
-                      width: 56,
-                      child: ElevatedButton(
+                    Expanded(
+                      child: ElevatedButton.icon(
                         onPressed: (!_calculated ||
                                 _saving ||
                                 _calculatedItems.isEmpty)
                             ? null
                             : _saveItems,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.check_circle, size: 20),
+                        label: Text(
+                          _saving ? 'Saving...' : 'Save',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                           backgroundColor: (!_calculated ||
                                   _saving ||
                                   _calculatedItems.isEmpty)
                               ? Colors.grey.shade300
                               : const Color(0xFF10B981),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.all(12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
+                          elevation: (!_calculated ||
+                                  _saving ||
+                                  _calculatedItems.isEmpty)
+                              ? 0
+                              : 2,
                         ),
-                        child: _saving
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white),
-                                ),
-                              )
-                            : const Icon(Icons.save, size: 24),
                       ),
                     ),
                   ],

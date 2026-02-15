@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/pages/home_page.dart';
-import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/friend_group_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
@@ -16,13 +15,12 @@ class FriendsPage extends StatefulWidget {
 
 class _FriendsPageState extends State<FriendsPage> {
   final TextEditingController _emailController = TextEditingController();
-  bool _showAddFriendForm = false;
-  bool _isSubmitting = false;
-  bool _isDeleteMode = false;
+  final ValueNotifier<bool> _showAddFriendForm = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isSubmitting = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isDeleteMode = ValueNotifier<bool>(false);
   String? _errorMessage;
 
   // Friend group creation
-  bool _showAddGroupModal = false;
   final TextEditingController _groupNameController = TextEditingController();
   Set<String> _selectedFriendIds = {};
   bool _isCreatingGroup = false;
@@ -31,6 +29,16 @@ class _FriendsPageState extends State<FriendsPage> {
   void initState() {
     super.initState();
     _initializeUserDocument();
+  }
+
+  @override
+  void dispose() {
+    _showAddFriendForm.dispose();
+    _isSubmitting.dispose();
+    _isDeleteMode.dispose();
+    _emailController.dispose();
+    _groupNameController.dispose();
+    super.dispose();
   }
 
   Future<void> _initializeUserDocument() async {
@@ -62,16 +70,12 @@ class _FriendsPageState extends State<FriendsPage> {
     final email = _emailController.text.trim();
 
     if (email.isEmpty) {
-      setState(() {
-        _errorMessage = 'Please enter an email address';
-      });
+      _errorMessage = 'Please enter an email address';
       return;
     }
 
-    setState(() {
-      _isSubmitting = true;
-      _errorMessage = null;
-    });
+    _isSubmitting.value = true;
+    _errorMessage = null;
 
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
@@ -85,10 +89,8 @@ class _FriendsPageState extends State<FriendsPage> {
           .get();
 
       if (userQuery.docs.isEmpty) {
-        setState(() {
-          _errorMessage = 'User not found';
-          _isSubmitting = false;
-        });
+        _errorMessage = 'User not found';
+        _isSubmitting.value = false;
         return;
       }
 
@@ -96,10 +98,8 @@ class _FriendsPageState extends State<FriendsPage> {
 
       // Prevent self-requests
       if (targetUserId == currentUser.uid) {
-        setState(() {
-          _errorMessage = 'You cannot add yourself';
-          _isSubmitting = false;
-        });
+        _errorMessage = 'You cannot add yourself';
+        _isSubmitting.value = false;
         return;
       }
 
@@ -112,10 +112,8 @@ class _FriendsPageState extends State<FriendsPage> {
       final friends =
           (currentUserDoc.data()?['friends'] as List?)?.cast<String>() ?? [];
       if (friends.contains(targetUserId)) {
-        setState(() {
-          _errorMessage = 'Already friends with this user';
-          _isSubmitting = false;
-        });
+        _errorMessage = 'Already friends with this user';
+        _isSubmitting.value = false;
         return;
       }
 
@@ -129,10 +127,8 @@ class _FriendsPageState extends State<FriendsPage> {
           .get();
 
       if (existingRequest.docs.isNotEmpty) {
-        setState(() {
-          _errorMessage = 'Friend request already sent';
-          _isSubmitting = false;
-        });
+        _errorMessage = 'Friend request already sent';
+        _isSubmitting.value = false;
         return;
       }
 
@@ -147,10 +143,8 @@ class _FriendsPageState extends State<FriendsPage> {
       });
 
       _emailController.clear();
-      setState(() {
-        _showAddFriendForm = false;
-        _isSubmitting = false;
-      });
+      _showAddFriendForm.value = false;
+      _isSubmitting.value = false;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -158,10 +152,29 @@ class _FriendsPageState extends State<FriendsPage> {
         );
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Error: ${e.toString()}';
-        _isSubmitting = false;
-      });
+      _errorMessage = 'Error: ${e.toString()}';
+      _isSubmitting.value = false;
+    }
+  }
+
+  Future<void> _cancelFriendRequest(String requestId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('friend_requests')
+          .doc(requestId)
+          .delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend request cancelled')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -257,9 +270,7 @@ class _FriendsPageState extends State<FriendsPage> {
         }
       });
 
-      setState(() {
-        _isDeleteMode = false;
-      });
+      _isDeleteMode.value = false;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -426,7 +437,6 @@ class _FriendsPageState extends State<FriendsPage> {
 
       _groupNameController.clear();
       setState(() {
-        _showAddGroupModal = false;
         _selectedFriendIds.clear();
         _isCreatingGroup = false;
       });
@@ -1037,7 +1047,281 @@ class _FriendsPageState extends State<FriendsPage> {
                             ),
                             const SizedBox(height: 24),
 
-                            // Friends List Section
+                            // Sent Friend Requests Section
+                            StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance
+                                  .collection('friend_requests')
+                                  .where('from_user_id',
+                                      isEqualTo: currentUser.uid)
+                                  .where('status', isEqualTo: 'pending')
+                                  .snapshots(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData ||
+                                    snapshot.data!.docs.isEmpty) {
+                                  return const SizedBox.shrink();
+                                }
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Sent Friend Requests',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    ListView.builder(
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemCount: snapshot.data!.docs.length,
+                                      itemBuilder: (context, index) {
+                                        final doc = snapshot.data!.docs[index];
+                                        final toEmail =
+                                            doc['to_email'] as String?;
+
+                                        return Container(
+                                          margin:
+                                              const EdgeInsets.only(bottom: 16),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withOpacity(0.08),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(16),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Container(
+                                                      width: 48,
+                                                      height: 48,
+                                                      decoration: BoxDecoration(
+                                                        gradient:
+                                                            LinearGradient(
+                                                          begin:
+                                                              Alignment.topLeft,
+                                                          end: Alignment
+                                                              .bottomRight,
+                                                          colors: [
+                                                            Colors
+                                                                .blue.shade400,
+                                                            Colors.indigo
+                                                                .shade600,
+                                                          ],
+                                                        ),
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                      child: Center(
+                                                        child: Text(
+                                                          (toEmail ?? 'U')
+                                                              .substring(0, 1)
+                                                              .toUpperCase(),
+                                                          style:
+                                                              const TextStyle(
+                                                            color: Colors.white,
+                                                            fontSize: 20,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          Text(
+                                                            (toEmail ??
+                                                                    'Unknown')
+                                                                .split('@')[0],
+                                                            style:
+                                                                const TextStyle(
+                                                              fontSize: 16,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color: Color(
+                                                                  0xFF1F2937),
+                                                            ),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                          const SizedBox(
+                                                              height: 2),
+                                                          Text(
+                                                            'Request pending',
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              color: Colors.grey
+                                                                  .shade600,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 16),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child:
+                                                          OutlinedButton.icon(
+                                                        onPressed: () {
+                                                          _cancelFriendRequest(
+                                                              doc.id);
+                                                        },
+                                                        style: OutlinedButton
+                                                            .styleFrom(
+                                                          foregroundColor:
+                                                              Colors.grey
+                                                                  .shade700,
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                                  vertical: 12),
+                                                          shape:
+                                                              RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12),
+                                                          ),
+                                                          side: BorderSide(
+                                                              color: Colors.grey
+                                                                  .shade300),
+                                                        ),
+                                                        icon: const Icon(
+                                                            Icons.close,
+                                                            size: 20),
+                                                        label: const Text(
+                                                            'Cancel'),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(height: 24),
+                                  ],
+                                );
+                              },
+                            ),
+
+                            // Add Friend Form Section
+                            ValueListenableBuilder<bool>(
+                              valueListenable: _showAddFriendForm,
+                              builder: (context, showForm, child) {
+                                if (!showForm) return const SizedBox.shrink();
+                                return Column(
+                                  children: [
+                                    const SizedBox(height: 12),
+                                    TextField(
+                                      controller: _emailController,
+                                      keyboardType: TextInputType.emailAddress,
+                                      decoration: InputDecoration(
+                                        labelText: "Friend's Email",
+                                        hintText: 'name@example.com',
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                    ),
+                                    if (_errorMessage != null) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        _errorMessage!,
+                                        style: const TextStyle(
+                                          color: Colors.red,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: ValueListenableBuilder<bool>(
+                                            valueListenable: _isSubmitting,
+                                            builder:
+                                                (context, isSubmitting, child) {
+                                              return ElevatedButton(
+                                                onPressed: isSubmitting
+                                                    ? null
+                                                    : _submitFriendRequest,
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      const Color(0xFF10B981),
+                                                  foregroundColor: Colors.white,
+                                                ),
+                                                child: isSubmitting
+                                                    ? const SizedBox(
+                                                        height: 16,
+                                                        width: 16,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          valueColor:
+                                                              AlwaysStoppedAnimation<
+                                                                      Color>(
+                                                                  Colors.white),
+                                                        ),
+                                                      )
+                                                    : const Text(
+                                                        'Send Request'),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: ElevatedButton(
+                                            onPressed: () {
+                                              _showAddFriendForm.value = false;
+                                              _errorMessage = null;
+                                              _emailController.clear();
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.red,
+                                              foregroundColor: Colors.white,
+                                            ),
+                                            child: const Text('Cancel'),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Your Friends Section
                             Text(
                               'Your Friends',
                               style: TextStyle(
@@ -1100,170 +1384,177 @@ class _FriendsPageState extends State<FriendsPage> {
                                           return const SizedBox.shrink();
                                         }
 
-                                        final friendEmail =
-                                            snapshot.data?.get('email') ??
-                                                'Unknown';
+                                        final friendEmail = snapshot.data!
+                                                .get('email') as String? ??
+                                            'Unknown';
 
-                                        return GestureDetector(
-                                          onTap: null,
-                                          child: Container(
-                                            margin: const EdgeInsets.only(
-                                                bottom: 16),
-                                            decoration: BoxDecoration(
-                                              color: _isDeleteMode
-                                                  ? Colors.red.shade50
-                                                  : Colors.white,
-                                              borderRadius:
-                                                  BorderRadius.circular(16),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: _isDeleteMode
-                                                      ? Colors.red
-                                                          .withOpacity(0.1)
-                                                      : Colors.black
-                                                          .withOpacity(0.08),
-                                                  blurRadius: 8,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
-                                            ),
-                                            child: Padding(
-                                              padding: const EdgeInsets.all(16),
-                                              child: Row(
-                                                children: [
-                                                  // Avatar
-                                                  Container(
-                                                    width: 48,
-                                                    height: 48,
-                                                    decoration: BoxDecoration(
-                                                      gradient: LinearGradient(
-                                                        begin:
-                                                            Alignment.topLeft,
-                                                        end: Alignment
-                                                            .bottomRight,
-                                                        colors: [
-                                                          const Color(
-                                                              0xFF6366F1),
-                                                          const Color(
-                                                              0xFF8B5CF6),
-                                                        ],
+                                        return ValueListenableBuilder<bool>(
+                                          valueListenable: _isDeleteMode,
+                                          builder:
+                                              (context, isDeleteMode, child) {
+                                            return Container(
+                                              margin: const EdgeInsets.only(
+                                                  bottom: 16),
+                                              decoration: BoxDecoration(
+                                                color: isDeleteMode
+                                                    ? Colors.red
+                                                        .withOpacity(0.1)
+                                                    : Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: isDeleteMode
+                                                        ? Colors.red
+                                                            .withOpacity(0.1)
+                                                        : Colors.black
+                                                            .withOpacity(0.08),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 2),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.all(16),
+                                                child: Row(
+                                                  children: [
+                                                    Container(
+                                                      width: 48,
+                                                      height: 48,
+                                                      decoration: BoxDecoration(
+                                                        gradient:
+                                                            LinearGradient(
+                                                          begin:
+                                                              Alignment.topLeft,
+                                                          end: Alignment
+                                                              .bottomRight,
+                                                          colors: [
+                                                            const Color(
+                                                                0xFF6366F1),
+                                                            const Color(
+                                                                0xFF8B5CF6),
+                                                          ],
+                                                        ),
+                                                        shape: BoxShape.circle,
                                                       ),
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                    child: Center(
-                                                      child: Text(
-                                                        friendEmail
-                                                            .substring(0, 1)
-                                                            .toUpperCase(),
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 20,
-                                                          fontWeight:
-                                                              FontWeight.bold,
+                                                      child: Center(
+                                                        child: Text(
+                                                          friendEmail
+                                                              .substring(0, 1)
+                                                              .toUpperCase(),
+                                                          style:
+                                                              const TextStyle(
+                                                            color: Colors.white,
+                                                            fontSize: 20,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
                                                         ),
                                                       ),
                                                     ),
-                                                  ),
-                                                  const SizedBox(width: 12),
-                                                  Expanded(
-                                                    child: Text(
-                                                      friendEmail.split('@')[0],
-                                                      style: const TextStyle(
-                                                        fontSize: 16,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color:
-                                                            Color(0xFF1F2937),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Text(
+                                                        friendEmail
+                                                            .split('@')[0],
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color:
+                                                              Color(0xFF1F2937),
+                                                        ),
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
                                                       ),
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
                                                     ),
-                                                  ),
-                                                  if (!_isDeleteMode) ...[
-                                                    IconButton(
-                                                      onPressed: () {
-                                                        _startChatWithFriend(
-                                                            friendId,
-                                                            friendEmail);
-                                                      },
-                                                      icon: const Icon(
-                                                        Icons
-                                                            .chat_bubble_outline,
-                                                        color:
-                                                            Color(0xFF6366F1),
-                                                        size: 22,
+                                                    if (!isDeleteMode) ...[
+                                                      IconButton(
+                                                        onPressed: () {
+                                                          _startChatWithFriend(
+                                                              friendId,
+                                                              friendEmail);
+                                                        },
+                                                        icon: const Icon(
+                                                          Icons
+                                                              .chat_bubble_outline,
+                                                          color:
+                                                              Color(0xFF6366F1),
+                                                          size: 22,
+                                                        ),
+                                                        tooltip: 'Chat',
                                                       ),
-                                                      tooltip: 'Chat',
-                                                    ),
-                                                    IconButton(
-                                                      onPressed: () {
-                                                        Navigator.push(
-                                                          context,
-                                                          MaterialPageRoute(
-                                                            builder: (_) =>
-                                                                HomePage(
-                                                              readOnly: true,
-                                                              hideNav: true,
-                                                              userIdOverride:
-                                                                  friendId,
-                                                              showBanner: true,
-                                                              bannerTitle:
-                                                                  friendEmail,
+                                                      IconButton(
+                                                        onPressed: () {
+                                                          Navigator.push(
+                                                            context,
+                                                            MaterialPageRoute(
+                                                              builder: (_) =>
+                                                                  HomePage(
+                                                                readOnly: true,
+                                                                hideNav: true,
+                                                                userIdOverride:
+                                                                    friendId,
+                                                                showBanner:
+                                                                    true,
+                                                                bannerTitle:
+                                                                    friendEmail,
+                                                              ),
                                                             ),
-                                                          ),
-                                                        );
-                                                      },
-                                                      icon: const Icon(
-                                                        Icons.credit_card,
-                                                        color:
-                                                            Color(0xFF6366F1),
-                                                        size: 22,
+                                                          );
+                                                        },
+                                                        icon: const Icon(
+                                                          Icons.credit_card,
+                                                          color:
+                                                              Color(0xFF6366F1),
+                                                          size: 22,
+                                                        ),
+                                                        tooltip: 'View card',
                                                       ),
-                                                      tooltip: 'View card',
-                                                    ),
-                                                    IconButton(
-                                                      onPressed: () {
-                                                        Navigator.push(
-                                                          context,
-                                                          MaterialPageRoute(
-                                                            builder: (_) =>
-                                                                AchievementsPage(
-                                                              userIdOverride:
-                                                                  friendId,
-                                                              titleOverride:
-                                                                  '$friendEmail\'s Achievements',
+                                                      IconButton(
+                                                        onPressed: () {
+                                                          Navigator.push(
+                                                            context,
+                                                            MaterialPageRoute(
+                                                              builder: (_) =>
+                                                                  const HiscoresPage(),
                                                             ),
-                                                          ),
-                                                        );
-                                                      },
-                                                      icon: const Icon(
-                                                        Icons.emoji_events,
-                                                        color:
-                                                            Color(0xFFF59E0B),
-                                                        size: 22,
+                                                          );
+                                                        },
+                                                        icon: const Icon(
+                                                          Icons.trending_up,
+                                                          color:
+                                                              Color(0xFF6366F1),
+                                                          size: 22,
+                                                        ),
+                                                        tooltip: 'View stats',
                                                       ),
-                                                      tooltip:
-                                                          'View achievements',
+                                                    ],
+                                                    if (isDeleteMode)
+                                                      IconButton(
+                                                        onPressed: () {
+                                                          _deleteFriends(
+                                                              [friendId]);
+                                                        },
+                                                        icon: Icon(
+                                                          Icons.delete_outline,
+                                                          color: Colors
+                                                              .red.shade600,
+                                                          size: 24,
+                                                        ),
+                                                        tooltip: 'Delete',
+                                                      ),
+                                                    const Icon(
+                                                      Icons.arrow_forward_ios,
+                                                      size: 16,
+                                                      color: Colors.grey,
                                                     ),
                                                   ],
-                                                  if (_isDeleteMode)
-                                                    IconButton(
-                                                      onPressed: () {
-                                                        _deleteFriends(
-                                                            [friendId]);
-                                                      },
-                                                      icon: Icon(
-                                                        Icons.delete_outline,
-                                                        color:
-                                                            Colors.red.shade600,
-                                                        size: 24,
-                                                      ),
-                                                      tooltip: 'Delete',
-                                                    ),
-                                                ],
+                                                ),
                                               ),
-                                            ),
-                                          ),
+                                            );
+                                          },
                                         );
                                       },
                                     );
@@ -1432,73 +1723,9 @@ class _FriendsPageState extends State<FriendsPage> {
                                 );
                               },
                             ),
-                            if (_showAddFriendForm) ...[
-                              const SizedBox(height: 12),
-                              TextField(
-                                controller: _emailController,
-                                keyboardType: TextInputType.emailAddress,
-                                decoration: InputDecoration(
-                                  labelText: 'Friend Email',
-                                  hintText: 'name@example.com',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                              ),
-                              if (_errorMessage != null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  _errorMessage!,
-                                  style: const TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: ElevatedButton(
-                                      onPressed: _isSubmitting
-                                          ? null
-                                          : _submitFriendRequest,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor:
-                                            const Color(0xFF10B981),
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      child: _isSubmitting
-                                          ? const SizedBox(
-                                              height: 16,
-                                              width: 16,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<
-                                                        Color>(Colors.white),
-                                              ),
-                                            )
-                                          : const Text('Send Request'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          _showAddFriendForm = false;
-                                          _errorMessage = null;
-                                          _emailController.clear();
-                                        });
-                                      },
-                                      child: const Text('Cancel'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                            const SizedBox(height: 200),
+
+                            // Bottom padding for FAB buttons
+                            const SizedBox(height: 100),
                           ],
                         ),
                       ),
@@ -1523,6 +1750,24 @@ class _FriendsPageState extends State<FriendsPage> {
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    ValueListenableBuilder<bool>(
+                      valueListenable: _showAddFriendForm,
+                      builder: (context, showForm, child) {
+                        return FloatingActionButton(
+                          heroTag: 'friends-add',
+                          onPressed: () {
+                            _showAddFriendForm.value =
+                                !_showAddFriendForm.value;
+                            _errorMessage = null;
+                          },
+                          backgroundColor: Colors.green.shade400,
+                          child: Icon(
+                            showForm ? Icons.close : Icons.person_add,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 12),
                     if (hasFriends) ...[
                       FloatingActionButton(
                         heroTag: 'friends-group',
@@ -1534,33 +1779,22 @@ class _FriendsPageState extends State<FriendsPage> {
                       ),
                       const SizedBox(width: 12),
                     ],
-                    FloatingActionButton(
-                      heroTag: 'friends-add',
-                      onPressed: () {
-                        setState(() {
-                          _showAddFriendForm = !_showAddFriendForm;
-                          _errorMessage = null;
-                        });
+                    ValueListenableBuilder<bool>(
+                      valueListenable: _isDeleteMode,
+                      builder: (context, deleteMode, child) {
+                        return FloatingActionButton(
+                          heroTag: 'friends-delete',
+                          onPressed: () {
+                            _isDeleteMode.value = !_isDeleteMode.value;
+                          },
+                          backgroundColor: deleteMode
+                              ? Colors.red.shade600
+                              : Colors.red.shade400,
+                          child: Icon(
+                            deleteMode ? Icons.close : Icons.delete_outline,
+                          ),
+                        );
                       },
-                      backgroundColor: Colors.green.shade400,
-                      child: Icon(
-                        _showAddFriendForm ? Icons.close : Icons.person_add,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    FloatingActionButton(
-                      heroTag: 'friends-delete',
-                      onPressed: () {
-                        setState(() {
-                          _isDeleteMode = !_isDeleteMode;
-                        });
-                      },
-                      backgroundColor: _isDeleteMode
-                          ? Colors.red.shade600
-                          : Colors.red.shade400,
-                      child: Icon(
-                        _isDeleteMode ? Icons.close : Icons.delete_outline,
-                      ),
                     ),
                   ],
                 );
