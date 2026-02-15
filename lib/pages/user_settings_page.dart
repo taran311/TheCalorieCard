@@ -900,7 +900,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                   borderRadius: BorderRadius.circular(14),
                 ),
                 elevation: 0,
-                disabledBackgroundColor: const Color(0xFF10B981).withOpacity(0.6),
+                disabledBackgroundColor:
+                    const Color(0xFF10B981).withOpacity(0.6),
               ),
               child: _isSaving
                   ? const SizedBox(
@@ -1422,7 +1423,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             child: SafeArea(
               top: false,
               child: isLoading
-                  ? const Center(child: CircularProgressIndicator(
+                  ? const Center(
+                      child: CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ))
                   : SingleChildScrollView(
@@ -1432,8 +1434,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                         children: [
                           // Enhanced Header
                           Container(
-                            padding:
-                                EdgeInsets.fromLTRB(12, topPadding + 12, 12, 16),
+                            padding: EdgeInsets.fromLTRB(
+                                12, topPadding + 12, 12, 16),
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 begin: Alignment.topLeft,
@@ -1537,33 +1539,40 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                               });
                                             },
                                             child: AnimatedContainer(
-                                              duration: const Duration(milliseconds: 200),
-                                              padding: const EdgeInsets.symmetric(
-                                                  vertical: 14),
+                                              duration: const Duration(
+                                                  milliseconds: 200),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      vertical: 14),
                                               decoration: BoxDecoration(
                                                 color: _selectedTabIndex == 0
                                                     ? const Color(0xFF6366F1)
                                                     : Colors.transparent,
                                                 borderRadius:
                                                     BorderRadius.circular(10),
-                                                boxShadow: _selectedTabIndex == 0
+                                                boxShadow: _selectedTabIndex ==
+                                                        0
                                                     ? [
                                                         BoxShadow(
-                                                          color: Color(0xFF6366F1)
+                                                          color: Color(
+                                                                  0xFF6366F1)
                                                               .withOpacity(0.3),
                                                           blurRadius: 8,
-                                                          offset: const Offset(0, 2),
+                                                          offset: const Offset(
+                                                              0, 2),
                                                         ),
                                                       ]
                                                     : [],
                                               ),
                                               child: Row(
-                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
                                                 children: [
                                                   Icon(
                                                     Icons.auto_awesome,
                                                     size: 18,
-                                                    color: _selectedTabIndex == 0
+                                                    color: _selectedTabIndex ==
+                                                            0
                                                         ? Colors.white
                                                         : Colors.grey.shade600,
                                                   ),
@@ -1572,10 +1581,13 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                     'AI Calculated',
                                                     textAlign: TextAlign.center,
                                                     style: TextStyle(
-                                                      color: _selectedTabIndex == 0
-                                                          ? Colors.white
-                                                          : Colors.grey.shade700,
-                                                      fontWeight: FontWeight.w700,
+                                                      color:
+                                                          _selectedTabIndex == 0
+                                                              ? Colors.white
+                                                              : Colors.grey
+                                                                  .shade700,
+                                                      fontWeight:
+                                                          FontWeight.w700,
                                                       fontSize: 15,
                                                     ),
                                                   ),
@@ -1592,33 +1604,40 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                               });
                                             },
                                             child: AnimatedContainer(
-                                              duration: const Duration(milliseconds: 200),
-                                              padding: const EdgeInsets.symmetric(
-                                                  vertical: 14),
+                                              duration: const Duration(
+                                                  milliseconds: 200),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      vertical: 14),
                                               decoration: BoxDecoration(
                                                 color: _selectedTabIndex == 1
                                                     ? const Color(0xFF6366F1)
                                                     : Colors.transparent,
                                                 borderRadius:
                                                     BorderRadius.circular(10),
-                                                boxShadow: _selectedTabIndex == 1
+                                                boxShadow: _selectedTabIndex ==
+                                                        1
                                                     ? [
                                                         BoxShadow(
-                                                          color: Color(0xFF6366F1)
+                                                          color: Color(
+                                                                  0xFF6366F1)
                                                               .withOpacity(0.3),
                                                           blurRadius: 8,
-                                                          offset: const Offset(0, 2),
+                                                          offset: const Offset(
+                                                              0, 2),
                                                         ),
                                                       ]
                                                     : [],
                                               ),
                                               child: Row(
-                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
                                                 children: [
                                                   Icon(
                                                     Icons.edit_note,
                                                     size: 18,
-                                                    color: _selectedTabIndex == 1
+                                                    color: _selectedTabIndex ==
+                                                            1
                                                         ? Colors.white
                                                         : Colors.grey.shade600,
                                                   ),
@@ -1627,10 +1646,13 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                     'Manual Input',
                                                     textAlign: TextAlign.center,
                                                     style: TextStyle(
-                                                      color: _selectedTabIndex == 1
-                                                          ? Colors.white
-                                                          : Colors.grey.shade700,
-                                                      fontWeight: FontWeight.w700,
+                                                      color:
+                                                          _selectedTabIndex == 1
+                                                              ? Colors.white
+                                                              : Colors.grey
+                                                                  .shade700,
+                                                      fontWeight:
+                                                          FontWeight.w700,
                                                       fontSize: 15,
                                                     ),
                                                   ),

@@ -822,8 +822,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                                   foregroundColor:
                                                       const Color(0xFF6366F1),
                                                   side: const BorderSide(
-                                                      color:
-                                                          Color(0xFF6366F1)),
+                                                      color: Color(0xFF6366F1)),
                                                   padding: const EdgeInsets
                                                       .symmetric(vertical: 12),
                                                   shape: RoundedRectangleBorder(
@@ -836,8 +835,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                             ),
                                             // Results Container
                                             Container(
-                                              padding:
-                                                  const EdgeInsets.all(20),
+                                              padding: const EdgeInsets.all(20),
                                               decoration: BoxDecoration(
                                                 color: Colors.white,
                                                 borderRadius:
@@ -847,8 +845,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                                     color: Colors.black
                                                         .withOpacity(0.05),
                                                     blurRadius: 15,
-                                                    offset:
-                                                        const Offset(0, 3),
+                                                    offset: const Offset(0, 3),
                                                   ),
                                                 ],
                                               ),
@@ -868,8 +865,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                                   ToggleButtons(
                                                     isSelected:
                                                         calorieSelections,
-                                                    selectedColor:
-                                                        Colors.white,
+                                                    selectedColor: Colors.white,
                                                     fillColor:
                                                         Color(0xFF6366F1),
                                                     borderColor:
@@ -886,8 +882,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                                                 calorieSelections
                                                                     .length;
                                                             i++) {
-                                                          calorieSelections[
-                                                              i] = i == index;
+                                                          calorieSelections[i] =
+                                                              i == index;
                                                         }
                                                       });
                                                       if (calorieSelections
@@ -1070,7 +1066,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                                           suffix: 'g',
                                                           onChanged: (value) {
                                                             setState(() {
-                                                              _carbsGoal = value;
+                                                              _carbsGoal =
+                                                                  value;
                                                             });
                                                           },
                                                         ),
@@ -1365,7 +1362,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                     borderRadius: BorderRadius.circular(16),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Color(0xFF10B981).withOpacity(0.3),
+                                        color:
+                                            Color(0xFF10B981).withOpacity(0.3),
                                         blurRadius: 12,
                                         offset: const Offset(0, 4),
                                       ),

@@ -122,7 +122,8 @@ class _LoginPageState extends State<LoginPage> {
               behavior:
                   ScrollConfiguration.of(context).copyWith(scrollbars: false),
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 440),
                   child: Column(
@@ -234,7 +235,7 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Spend your Calories wisely!',
+                                  'Track calories like money!',
                                   style: TextStyle(
                                     color: Colors.grey.shade600,
                                     fontSize: 15,
@@ -266,7 +267,8 @@ class _LoginPageState extends State<LoginPage> {
 
                             // Forgot password
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 25.0),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 25.0),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
