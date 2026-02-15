@@ -35,6 +35,7 @@ class AchievementsPage extends StatelessWidget {
                 top: false,
                 child: Column(
                   children: [
+                    // Header
                     Container(
                       padding: EdgeInsets.fromLTRB(8, topPadding + 8, 8, 8),
                       decoration: BoxDecoration(
@@ -59,15 +60,12 @@ class AchievementsPage extends StatelessWidget {
                             },
                             icon: const Icon(Icons.arrow_back),
                             color: Colors.white,
-                            splashRadius: 20,
-                            tooltip: 'Back',
                           ),
                           Expanded(
                             child: Center(
                               child: Text(
                                 titleOverride ?? 'Achievements',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
@@ -79,6 +77,7 @@ class AchievementsPage extends StatelessWidget {
                         ],
                       ),
                     ),
+
                     Expanded(
                       child: StreamBuilder(
                         stream:
@@ -170,21 +169,13 @@ class AchievementsPage extends StatelessWidget {
                                 Container(
                                   padding: const EdgeInsets.all(20),
                                   decoration: BoxDecoration(
-                                    gradient: LinearGradient(
+                                    gradient: const LinearGradient(
                                       colors: [
-                                        const Color(0xFF6366F1),
-                                        const Color(0xFF8B5CF6),
+                                        Color(0xFF6366F1),
+                                        Color(0xFF8B5CF6),
                                       ],
                                     ),
                                     borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(0xFF6366F1)
-                                            .withOpacity(0.3),
-                                        blurRadius: 12,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
                                   ),
                                   child: Row(
                                     mainAxisAlignment:
@@ -203,7 +194,6 @@ class AchievementsPage extends StatelessWidget {
                                           const Text(
                                             'Unlocked',
                                             style: TextStyle(
-                                              fontSize: 14,
                                               color: Colors.white70,
                                             ),
                                           ),
@@ -212,7 +202,7 @@ class AchievementsPage extends StatelessWidget {
                                       Container(
                                         width: 1,
                                         height: 50,
-                                        color: Colors.white.withOpacity(0.3),
+                                        color: Colors.white30,
                                       ),
                                       Column(
                                         children: [
@@ -227,7 +217,6 @@ class AchievementsPage extends StatelessWidget {
                                           const Text(
                                             'Total',
                                             style: TextStyle(
-                                              fontSize: 14,
                                               color: Colors.white70,
                                             ),
                                           ),
@@ -236,9 +225,10 @@ class AchievementsPage extends StatelessWidget {
                                     ],
                                   ),
                                 ),
+
                                 const SizedBox(height: 24),
 
-                                // Achievements Grid
+                                // Grid
                                 GridView.builder(
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
@@ -247,7 +237,8 @@ class AchievementsPage extends StatelessWidget {
                                     crossAxisCount: 3,
                                     mainAxisSpacing: 16,
                                     crossAxisSpacing: 16,
-                                    childAspectRatio: 0.85,
+                                    childAspectRatio:
+                                        0.75, // FIXED overflow here
                                   ),
                                   itemCount: achievements.length,
                                   itemBuilder: (context, index) {
@@ -266,60 +257,25 @@ class AchievementsPage extends StatelessWidget {
                                         );
                                       },
                                       child: Container(
+                                        padding: const EdgeInsets.all(12),
                                         decoration: BoxDecoration(
-                                          gradient: unlocked
-                                              ? LinearGradient(
-                                                  begin: Alignment.topLeft,
-                                                  end: Alignment.bottomRight,
-                                                  colors: [
-                                                    Colors.white,
-                                                    const Color(0xFF6366F1)
-                                                        .withOpacity(0.05),
-                                                  ],
-                                                )
-                                              : null,
                                           color: unlocked
-                                              ? null
-                                              : Colors.white.withOpacity(0.6),
+                                              ? Colors.white
+                                              : Colors.white70,
                                           borderRadius:
                                               BorderRadius.circular(16),
                                           border: Border.all(
                                             color: unlocked
                                                 ? const Color(0xFF6366F1)
-                                                    .withOpacity(0.5)
                                                 : Colors.grey.shade300,
                                             width: unlocked ? 2 : 1,
                                           ),
-                                          boxShadow: unlocked
-                                              ? [
-                                                  BoxShadow(
-                                                    color:
-                                                        const Color(0xFF6366F1)
-                                                            .withOpacity(0.2),
-                                                    blurRadius: 12,
-                                                    offset: const Offset(0, 4),
-                                                  ),
-                                                  BoxShadow(
-                                                    color:
-                                                        const Color(0xFF6366F1)
-                                                            .withOpacity(0.1),
-                                                    blurRadius: 20,
-                                                    spreadRadius: 2,
-                                                  ),
-                                                ]
-                                              : [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withOpacity(0.04),
-                                                    blurRadius: 6,
-                                                    offset: const Offset(0, 3),
-                                                  ),
-                                                ],
                                         ),
-                                        padding: const EdgeInsets.all(12),
                                         child: Column(
                                           mainAxisAlignment:
-                                              MainAxisAlignment.center,
+                                              MainAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.center,
                                           children: [
                                             Container(
                                               padding: const EdgeInsets.all(12),
@@ -335,34 +291,36 @@ class AchievementsPage extends StatelessWidget {
                                                 size: 32,
                                                 color: unlocked
                                                     ? const Color(0xFF6366F1)
-                                                    : Colors.grey.shade400,
+                                                    : Colors.grey,
                                               ),
                                             ),
-                                            const SizedBox(height: 10),
-                                            Text(
-                                              achievement.title,
-                                              textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: unlocked
-                                                    ? FontWeight.w700
-                                                    : FontWeight.w500,
-                                                color: unlocked
-                                                    ? Colors.grey.shade900
-                                                    : Colors.grey.shade500,
-                                                height: 1.2,
+                                            const SizedBox(height: 8),
+                                            Expanded(
+                                              child: Center(
+                                                child: Text(
+                                                  achievement.title,
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: unlocked
+                                                        ? FontWeight.w700
+                                                        : FontWeight.w500,
+                                                    color: unlocked
+                                                        ? Colors.grey.shade900
+                                                        : Colors.grey.shade500,
+                                                  ),
+                                                ),
                                               ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                            if (unlocked) ...[
-                                              const SizedBox(height: 4),
-                                              Icon(
+                                            if (unlocked)
+                                              const Icon(
                                                 Icons.check_circle,
                                                 size: 14,
-                                                color: const Color(0xFF10B981),
+                                                color: Color(0xFF10B981),
                                               ),
-                                            ],
                                           ],
                                         ),
                                       ),
@@ -389,139 +347,16 @@ class AchievementsPage extends StatelessWidget {
   ) {
     showDialog(
       context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+      builder: (_) => AlertDialog(
+        title: Text(achievement.title),
+        content: Text(achievement.description),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
           ),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: unlocked
-                  ? LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white,
-                        const Color(0xFF6366F1).withOpacity(0.05),
-                      ],
-                    )
-                  : null,
-              color: unlocked ? null : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: unlocked
-                        ? const Color(0xFF6366F1).withOpacity(0.15)
-                        : Colors.grey.shade200,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    achievement.icon,
-                    size: 48,
-                    color: unlocked ? const Color(0xFF6366F1) : Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      unlocked ? Icons.lock_open : Icons.lock,
-                      color: unlocked ? const Color(0xFF10B981) : Colors.grey,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        achievement.title,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: unlocked
-                              ? Colors.grey.shade900
-                              : Colors.grey.shade600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  achievement.description,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                    height: 1.5,
-                  ),
-                ),
-                if (unlocked) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(
-                          Icons.check_circle,
-                          color: Color(0xFF10B981),
-                          size: 16,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Unlocked',
-                          style: TextStyle(
-                            color: Color(0xFF10B981),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: unlocked
-                          ? const Color(0xFF6366F1)
-                          : Colors.grey.shade400,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Close',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
