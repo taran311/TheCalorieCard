@@ -67,10 +67,6 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
     Future.delayed(const Duration(seconds: 2), () async {
       if (!mounted) return;
 
-      setState(() {
-        _isCheckingVerification = true;
-      });
-
       try {
         // Reload user to get fresh email verification status
         await _user?.reload();
@@ -79,6 +75,9 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
         if (_user?.emailVerified ?? false) {
           // Email verified, proceed to next page
           if (mounted) {
+            setState(() {
+              _isCheckingVerification = false;
+            });
             // Reset category to default for new user
             Provider.of<CategoryService>(context, listen: false)
                 .resetToDefault();
@@ -90,9 +89,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
           }
         } else {
           // Not verified yet, check again in 2 seconds
-          setState(() {
-            _isCheckingVerification = false;
-          });
+          // Keep _isCheckingVerification = true to show spinner continuously
           _startVerificationCheck();
         }
       } catch (e) {
