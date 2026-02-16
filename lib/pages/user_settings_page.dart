@@ -1194,6 +1194,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             setState(() {
               _manualCalorieGoal = int.tryParse(value);
               cardActiveCalories = _manualCalorieGoal;
+              _prefillMacrosFromCalories(_manualCalorieGoal);
             });
           },
         ),
