@@ -45,6 +45,7 @@ class _SelectExistingRecipePage extends StatefulWidget {
 class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
   int? _editingRecipeIndex;
   final TextEditingController _portionController = TextEditingController();
+  int _selectedTabIndex = 0; // 0 = My Recipes, 1 = Shared with Me
 
   @override
   void dispose() {
@@ -55,349 +56,607 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Select Recipe')),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('recipes')
-            .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No recipes yet.'));
-          }
+      appBar: AppBar(
+        title: const Text('Select Recipe'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Container(
+            color: Colors.white,
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedTabIndex = 0;
+                        _editingRecipeIndex = null;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: _selectedTabIndex == 0
+                                ? const Color(0xFF6366F1)
+                                : Colors.grey.shade300,
+                            width: 3,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        'My Recipes',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: _selectedTabIndex == 0
+                              ? const Color(0xFF6366F1)
+                              : Colors.grey.shade600,
+                          fontSize: 14,
+                          fontWeight: _selectedTabIndex == 0
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedTabIndex = 1;
+                        _editingRecipeIndex = null;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: _selectedTabIndex == 1
+                                ? const Color(0xFF6366F1)
+                                : Colors.grey.shade300,
+                            width: 3,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        'Shared with Me',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: _selectedTabIndex == 1
+                              ? const Color(0xFF6366F1)
+                              : Colors.grey.shade600,
+                          fontSize: 14,
+                          fontWeight: _selectedTabIndex == 1
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: _selectedTabIndex == 0
+          ? _buildMyRecipesTab()
+          : _buildSharedRecipesTab(),
+    );
+  }
 
-          final recipes = snapshot.data!.docs;
-          // Sort by created_at descending (client-side)
-          recipes.sort((a, b) {
-            final timeA = a['created_at'] as Timestamp?;
-            final timeB = b['created_at'] as Timestamp?;
-            if (timeA == null || timeB == null) return 0;
-            return timeB.compareTo(timeA);
-          });
+  Widget _buildMyRecipesTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('recipes')
+          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(child: Text('No recipes yet.'));
+        }
 
-          return ListView.builder(
-            itemCount: recipes.length,
-            itemBuilder: (context, index) {
-              final recipe = recipes[index];
-              final calories = recipe['total_calories'] as num? ?? 0;
-              final protein =
-                  (recipe['total_protein'] as num?)?.toDouble() ?? 0;
-              final carbs = (recipe['total_carbs'] as num?)?.toDouble() ?? 0;
-              final fat = (recipe['total_fat'] as num?)?.toDouble() ?? 0;
-              final servingSize =
-                  recipe['serving_size'] as String? ?? 'Per 1 Serving';
-              final isEditing = _editingRecipeIndex == index;
+        final recipes = snapshot.data!.docs;
+        // Sort by created_at descending (client-side)
+        recipes.sort((a, b) {
+          final timeA = a['created_at'] as Timestamp?;
+          final timeB = b['created_at'] as Timestamp?;
+          if (timeA == null || timeB == null) return 0;
+          return timeB.compareTo(timeA);
+        });
 
-              // Parse serving size to determine unit and value
-              final isGrams = servingSize.contains('g') &&
-                  !servingSize.toLowerCase().contains('serving');
-              final servingMatch =
-                  RegExp(r'(\d+(?:\.\d+)?)').firstMatch(servingSize);
-              final originalServingValue = servingMatch != null
-                  ? double.parse(servingMatch.group(1)!)
-                  : 1.0;
-              final unit = isGrams
-                  ? 'g'
-                  : 'Serving${originalServingValue != 1 ? 's' : ''}';
+        return ListView.builder(
+          itemCount: recipes.length,
+          itemBuilder: (context, index) {
+            final recipe = recipes[index];
+            final calories = recipe['total_calories'] as num? ?? 0;
+            final protein = (recipe['total_protein'] as num?)?.toDouble() ?? 0;
+            final carbs = (recipe['total_carbs'] as num?)?.toDouble() ?? 0;
+            final fat = (recipe['total_fat'] as num?)?.toDouble() ?? 0;
+            final servingSize =
+                recipe['serving_size'] as String? ?? 'Per 1 Serving';
+            final isEditing = _editingRecipeIndex == index;
+
+            // Parse serving size to determine unit and value
+            final isGrams = servingSize.contains('g') &&
+                !servingSize.toLowerCase().contains('serving');
+            final servingMatch =
+                RegExp(r'(\d+(?:\.\d+)?)').firstMatch(servingSize);
+            final originalServingValue = servingMatch != null
+                ? double.parse(servingMatch.group(1)!)
+                : 1.0;
+            final unit = isGrams
+                ? 'g'
+                : 'Serving${originalServingValue != 1 ? 's' : ''}';
+
+            return Column(
+              children: [
+                ListTile(
+                  title: Text(recipe['name'] ?? 'Recipe'),
+                  subtitle: Text(
+                      '${calories.toStringAsFixed(0)} kcal ($servingSize)'),
+                  trailing: const Icon(Icons.add_circle_outline,
+                      color: Color(0xFF6366F1)),
+                  onTap: () {
+                    setState(() {
+                      _editingRecipeIndex = index;
+                      _portionController.text =
+                          originalServingValue.toStringAsFixed(isGrams ? 0 : 1);
+                    });
+                  },
+                ),
+                if (isEditing)
+                  _buildExpandedPortionView(
+                    recipe.id,
+                    recipe.data() as Map<String, dynamic>,
+                    calories,
+                    protein,
+                    carbs,
+                    fat,
+                    originalServingValue,
+                    isGrams,
+                    unit,
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSharedRecipesTab() {
+    final currentUserId = FirebaseAuth.instance.currentUser!.uid;
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('shared_recipes')
+          .where('shared_with_user_id', isEqualTo: currentUserId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(
+            child: Text('No recipes shared with you yet.'),
+          );
+        }
+
+        final sharedRecipeDocs = snapshot.data!.docs;
+
+        return FutureBuilder<List<Map<String, dynamic>>>(
+          future: _loadSharedRecipeDetailsForHome(sharedRecipeDocs),
+          builder: (context, detailSnapshot) {
+            if (detailSnapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (!detailSnapshot.hasData || detailSnapshot.data!.isEmpty) {
+              return const Center(child: Text('No recipes available'));
+            }
+
+            final recipes = detailSnapshot.data!;
+
+            return ListView.builder(
+              itemCount: recipes.length,
+              itemBuilder: (context, index) {
+                final item = recipes[index];
+                final recipe = item['recipe'] as Map<String, dynamic>;
+                final recipeId = item['recipe_id'] as String;
+                final calories = recipe['total_calories'] as num? ?? 0;
+                final protein =
+                    (recipe['total_protein'] as num?)?.toDouble() ?? 0;
+                final carbs = (recipe['total_carbs'] as num?)?.toDouble() ?? 0;
+                final fat = (recipe['total_fat'] as num?)?.toDouble() ?? 0;
+                final servingSize =
+                    recipe['serving_size'] as String? ?? 'Per 1 Serving';
+                final isEditing = _editingRecipeIndex == index;
+
+                final isGrams = servingSize.contains('g') &&
+                    !servingSize.toLowerCase().contains('serving');
+                final servingMatch =
+                    RegExp(r'(\d+(?:\.\d+)?)').firstMatch(servingSize);
+                final originalServingValue = servingMatch != null
+                    ? double.parse(servingMatch.group(1)!)
+                    : 1.0;
+                final unit = isGrams
+                    ? 'g'
+                    : 'Serving${originalServingValue != 1 ? 's' : ''}';
+
+                return Column(
+                  children: [
+                    ListTile(
+                      title: Text(recipe['name'] ?? 'Recipe'),
+                      subtitle: Text(
+                          '${calories.toStringAsFixed(0)} kcal ($servingSize)\n${item['sharedByEmail']}'),
+                      isThreeLine: true,
+                      trailing: const Icon(Icons.add_circle_outline,
+                          color: Color(0xFF6366F1)),
+                      onTap: () {
+                        setState(() {
+                          _editingRecipeIndex = index;
+                          _portionController.text = originalServingValue
+                              .toStringAsFixed(isGrams ? 0 : 1);
+                        });
+                      },
+                    ),
+                    if (isEditing)
+                      _buildRecipeExpandedView(
+                        recipeId,
+                        recipe,
+                        calories,
+                        protein,
+                        carbs,
+                        fat,
+                        servingSize,
+                        originalServingValue,
+                        isGrams,
+                        unit,
+                      ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildRecipeExpandedView(
+    String recipeId,
+    Map<String, dynamic> recipe,
+    num calories,
+    double protein,
+    double carbs,
+    double fat,
+    String servingSize,
+    double originalServingValue,
+    bool isGrams,
+    String unit,
+  ) {
+    return _buildExpandedPortionView(
+      recipeId,
+      recipe,
+      calories,
+      protein,
+      carbs,
+      fat,
+      originalServingValue,
+      isGrams,
+      unit,
+    );
+  }
+
+  Widget _buildExpandedPortionView(
+    String recipeId,
+    Map<String, dynamic> recipe,
+    num calories,
+    double protein,
+    double carbs,
+    double fat,
+    double originalServingValue,
+    bool isGrams,
+    String unit,
+  ) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.indigo.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.indigo.shade300, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'per ',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+              SizedBox(
+                width: 70,
+                child: TextField(
+                  controller: _portionController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  onSubmitted: (_) => setState(() {}),
+                  onTapOutside: (_) {
+                    FocusScope.of(context).unfocus();
+                    setState(() {});
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                unit,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Builder(
+            builder: (context) {
+              final newPortion = double.tryParse(_portionController.text) ??
+                  originalServingValue;
+              final ratio = newPortion / originalServingValue;
+              final adjustedCalories = (calories * ratio).toInt();
+              final adjustedProtein = protein * ratio;
+              final adjustedCarbs = carbs * ratio;
+              final adjustedFat = fat * ratio;
 
               return Column(
                 children: [
-                  ListTile(
-                    title: Text(recipe['name'] ?? 'Recipe'),
-                    subtitle: Text(
-                        '${calories.toStringAsFixed(0)} kcal ($servingSize)'),
-                    trailing: const Icon(Icons.add_circle_outline,
-                        color: Color(0xFF6366F1)),
-                    onTap: () {
-                      setState(() {
-                        _editingRecipeIndex = index;
-                        _portionController.text = originalServingValue
-                            .toStringAsFixed(isGrams ? 0 : 1);
-                      });
-                    },
-                  ),
-                  if (isEditing)
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.indigo.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: Colors.indigo.shade300, width: 1.5),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.orange.shade400,
+                          Colors.orange.shade600,
+                        ],
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.orange.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.local_fire_department,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$adjustedCalories',
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'kcal',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.blue.shade300,
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
                             children: [
-                              const Text(
-                                'per ',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              SizedBox(
-                                width: 70,
-                                child: TextField(
-                                  controller: _portionController,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                          decimal: true),
-                                  decoration: InputDecoration(
-                                    isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 8),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                  ),
-                                  onSubmitted: (_) => setState(() {}),
-                                  onTapOutside: (_) {
-                                    FocusScope.of(context).unfocus();
-                                    setState(() {});
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 8),
                               Text(
-                                unit,
-                                style: const TextStyle(
+                                'Protein',
+                                style: TextStyle(
+                                  fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: 14,
+                                  color: Colors.blue.shade800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${adjustedProtein.toStringAsFixed(1)}g',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue.shade900,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
-                          Builder(
-                            builder: (context) {
-                              final newPortion =
-                                  double.tryParse(_portionController.text) ??
-                                      originalServingValue;
-                              final ratio = newPortion / originalServingValue;
-                              final adjustedCalories =
-                                  (calories * ratio).toInt();
-                              final adjustedProtein = protein * ratio;
-                              final adjustedCarbs = carbs * ratio;
-                              final adjustedFat = fat * ratio;
-
-                              return Column(
-                                children: [
-                                  // Calories - Prominent display
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          Colors.orange.shade400,
-                                          Colors.orange.shade600,
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(10),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.orange.withOpacity(0.3),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        const Icon(
-                                          Icons.local_fire_department,
-                                          color: Colors.white,
-                                          size: 24,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          '$adjustedCalories',
-                                          style: const TextStyle(
-                                            fontSize: 28,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Text(
-                                          'kcal',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  // Macros - Grid layout
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 10, horizontal: 8),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue.shade100,
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            border: Border.all(
-                                              color: Colors.blue.shade300,
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Column(
-                                            children: [
-                                              Text(
-                                                'Protein',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.blue.shade800,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                '${adjustedProtein.toStringAsFixed(1)}g',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.blue.shade900,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 10, horizontal: 8),
-                                          decoration: BoxDecoration(
-                                            color: Colors.green.shade100,
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            border: Border.all(
-                                              color: Colors.green.shade300,
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Column(
-                                            children: [
-                                              Text(
-                                                'Carbs',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.green.shade800,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                '${adjustedCarbs.toStringAsFixed(1)}g',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.green.shade900,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 10, horizontal: 8),
-                                          decoration: BoxDecoration(
-                                            color: Colors.purple.shade100,
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            border: Border.all(
-                                              color: Colors.purple.shade300,
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Column(
-                                            children: [
-                                              Text(
-                                                'Fat',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.purple.shade800,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                '${adjustedFat.toStringAsFixed(1)}g',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.purple.shade900,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      TextButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            _editingRecipeIndex = null;
-                                          });
-                                        },
-                                        child: const Text('Cancel'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: () {
-                                          final multiplier = ratio;
-                                          Navigator.pop(context, {
-                                            'recipeId': recipe.id,
-                                            'multiplier': multiplier,
-                                          });
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              const Color(0xFF6366F1),
-                                          foregroundColor: Colors.white,
-                                        ),
-                                        child: const Text('Add'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.green.shade300,
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'Carbs',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green.shade800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${adjustedCarbs.toStringAsFixed(1)}g',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.purple.shade300,
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'Fat',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.purple.shade800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${adjustedFat.toStringAsFixed(1)}g',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.purple.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _editingRecipeIndex = null;
+                          });
+                        },
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () {
+                          final multiplier = ratio;
+                          Navigator.pop(context, {
+                            'recipeId': recipeId,
+                            'multiplier': multiplier,
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6366F1),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Add'),
+                      ),
+                    ],
+                  ),
                 ],
               );
             },
-          );
-        },
+          ),
+        ],
       ),
     );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadSharedRecipeDetailsForHome(
+    List<QueryDocumentSnapshot> sharedRecipeDocs,
+  ) async {
+    final firestore = FirebaseFirestore.instance;
+    final results = <Map<String, dynamic>>[];
+
+    for (final doc in sharedRecipeDocs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final recipeId = data['recipe_id'] as String;
+      final sharedByUserId = data['shared_by_user_id'] as String;
+
+      try {
+        final recipeDoc =
+            await firestore.collection('recipes').doc(recipeId).get();
+        if (!recipeDoc.exists) continue;
+
+        final userDoc =
+            await firestore.collection('users').doc(sharedByUserId).get();
+        final sharedByEmail = userDoc['email'] as String? ?? 'Unknown';
+
+        results.add({
+          'recipe_id': recipeId,
+          'recipe': recipeDoc.data(),
+          'sharedByEmail': sharedByEmail,
+        });
+      } catch (e) {
+        continue;
+      }
+    }
+
+    return results;
   }
 }
 
@@ -2529,31 +2788,49 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                           onPressed: _isDayFinished
                                               ? null
                                               : () async {
-                                                  await Navigator.push(
+                                                  final result =
+                                                      await Navigator.push<
+                                                          Map<String, dynamic>>(
                                                     context,
                                                     MaterialPageRoute(
                                                       builder: (_) =>
-                                                          const AddRecipePage(
-                                                              addToHome: true),
+                                                          const _SelectExistingRecipePage(),
                                                     ),
                                                   );
-                                                  await populateFoodItems();
-                                                  final categoryService =
-                                                      Provider.of<
-                                                              CategoryService>(
-                                                          context,
-                                                          listen: false);
-                                                  await _fetchCategoryTotals(
-                                                      categoryService
-                                                          .selectedCategory);
-                                                  if (_isSelectedDateToday) {
-                                                    await _upsertDailyLogForDate(
-                                                        _selectedLogDate);
-                                                    await _fetchDailyLogForDate(
-                                                        _selectedLogDate);
+
+                                                  if (result != null) {
+                                                    final recipeId =
+                                                        result['recipeId']
+                                                            as String;
+                                                    final multiplier =
+                                                        result['multiplier']
+                                                            as double;
+                                                    final categoryService =
+                                                        Provider.of<
+                                                                CategoryService>(
+                                                            context,
+                                                            listen: false);
+                                                    final category =
+                                                        categoryService
+                                                            .selectedCategory;
+
+                                                    await _addRecipeToHome(
+                                                      recipeId,
+                                                      category,
+                                                      multiplier: multiplier,
+                                                    );
+                                                    await populateFoodItems();
+                                                    await _fetchCategoryTotals(
+                                                        category);
+                                                    if (_isSelectedDateToday) {
+                                                      await _upsertDailyLogForDate(
+                                                          _selectedLogDate);
+                                                      await _fetchDailyLogForDate(
+                                                          _selectedLogDate);
+                                                    }
+                                                    setState(() =>
+                                                        _creditCardRefreshKey++);
                                                   }
-                                                  setState(() =>
-                                                      _creditCardRefreshKey++);
                                                 },
                                           heroTag: 'addRecipe',
                                           backgroundColor: _isDayFinished

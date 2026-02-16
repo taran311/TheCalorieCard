@@ -593,7 +593,7 @@ class _QuickAddFoodPageState extends State<QuickAddFoodPage> {
                                       ),
                                     ),
                                     subtitle: Text(
-                                      'P: ${item['protein'].round()}g • C: ${item['carbs'].round()}g • F: ${item['fat'].round()}g',
+                                      'Protein: ${item['protein'].round()}g • Carbs: ${item['carbs'].round()}g • Fat: ${item['fat'].round()}g',
                                       style: TextStyle(
                                         color: Colors.white.withOpacity(0.9),
                                         fontSize: 12,
