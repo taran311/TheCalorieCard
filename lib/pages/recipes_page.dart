@@ -367,6 +367,11 @@ class _RecipesPageState extends State<RecipesPage> {
                     builder: (_) => AddRecipePage(recipeId: recipe.id),
                   ),
                 );
+                if (mounted) {
+                  setState(() {
+                    _selectedTabIndex = 0;
+                  });
+                }
               },
               child: Container(
                 margin: const EdgeInsets.only(bottom: 16),
@@ -1089,6 +1094,11 @@ class _RecipesPageState extends State<RecipesPage> {
                 context,
                 MaterialPageRoute(builder: (_) => const AddRecipePage()),
               );
+              if (mounted) {
+                setState(() {
+                  _selectedTabIndex = 0;
+                });
+              }
             },
             backgroundColor: Colors.green.shade400,
             child: const Icon(Icons.add),
