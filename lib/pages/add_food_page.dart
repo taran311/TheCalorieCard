@@ -80,10 +80,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
           final foodName = jsonResponse['name'] ?? ingredient;
           final mode = jsonResponse['mode'] ?? 'grams';
-          final servingGrams = mode == 'serving'
-              ? (jsonResponse['estimated_serving_grams'] ?? 100)
-              : (jsonResponse['grams'] ?? 100);
           final servingDescription = jsonResponse['serving_description'];
+          final servingGrams = (jsonResponse['grams'] ?? 100) as int;
 
           final totalCalories =
               ((jsonResponse['calories'] ?? 0) as num).toDouble();
@@ -92,7 +90,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
           final totalCarbs = ((jsonResponse['carbs'] ?? 0) as num).toDouble();
           final totalFat = ((jsonResponse['fat'] ?? 0) as num).toDouble();
 
-          final portion = '${servingGrams}g';
+          final portion = mode == 'serving' && servingDescription != null
+              ? servingDescription
+              : '${servingGrams}g';
 
           // Use the user's original input string
           final displayName = ingredient;
