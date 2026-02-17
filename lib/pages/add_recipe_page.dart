@@ -48,6 +48,43 @@ class _AddRecipePageState extends State<AddRecipePage> {
   bool _calculatingAi = false;
   bool _isAiLoading = false;
   bool _showMiniGame = false;
+  bool _tutorialMode = false;
+
+  // Cached tutorial data for instant demo
+  static const List<Map<String, dynamic>> _tutorialCachedResults = [
+    {
+      'name': '100g oats',
+      'calories': 389.0,
+      'protein': 16.9,
+      'carbs': 66.3,
+      'fat': 6.9,
+      'portion': '100g',
+    },
+    {
+      'name': '200ml almond milk',
+      'calories': 30.0,
+      'protein': 1.0,
+      'carbs': 1.0,
+      'fat': 2.5,
+      'portion': '200ml',
+    },
+    {
+      'name': '1 banana',
+      'calories': 105.0,
+      'protein': 1.3,
+      'carbs': 27.0,
+      'fat': 0.4,
+      'portion': '1 banana',
+    },
+    {
+      'name': '20g honey',
+      'calories': 64.0,
+      'protein': 0.1,
+      'carbs': 17.3,
+      'fat': 0.0,
+      'portion': '20g',
+    },
+  ];
 
   @override
   void initState() {
@@ -64,7 +101,149 @@ class _AddRecipePageState extends State<AddRecipePage> {
     _ingredientPortionController.dispose();
     _searchPortionController.dispose();
     _freeTextController.dispose();
+    _nameController.dispose();
+    _searchController.dispose();
+    _servingSizeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _runTutorial() async {
+    setState(() {
+      _tutorialMode = true;
+      _ingredients.clear();
+      _freeTextIngredients.clear();
+      _nameController.clear();
+      _servingSizeController.text = '1';
+      _servingUnit = 'Serving';
+    });
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Step 1: Type recipe name with typing effect
+    final recipeName = 'Healthy Breakfast Bowl';
+    for (int i = 0; i <= recipeName.length; i++) {
+      await Future.delayed(const Duration(milliseconds: 40));
+      if (mounted) {
+        setState(() {
+          _nameController.text = recipeName.substring(0, i);
+        });
+      }
+    }
+
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Step 2: Change serving size to grams
+    if (mounted) {
+      setState(() {
+        _servingUnit = 'g';
+      });
+    }
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Type serving size
+    _servingSizeController.clear();
+    final servingSize = '250';
+    for (int i = 0; i <= servingSize.length; i++) {
+      await Future.delayed(const Duration(milliseconds: 80));
+      if (mounted) {
+        setState(() {
+          _servingSizeController.text = servingSize.substring(0, i);
+        });
+      }
+    }
+
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Step 3: Add tutorial ingredients with typing effect
+    final tutorialIngredients = ['100g oats', '200ml almond milk', '1 banana', '20g honey'];
+    _freeTextController.text = '';
+
+    for (int i = 0; i < tutorialIngredients.length; i++) {
+      final ingredient = tutorialIngredients[i];
+
+      // Typing effect
+      for (int j = 0; j <= ingredient.length; j++) {
+        await Future.delayed(const Duration(milliseconds: 30));
+        if (mounted) {
+          setState(() {
+            _freeTextController.text = ingredient.substring(0, j);
+          });
+        }
+      }
+
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // Add ingredient
+      if (mounted) {
+        setState(() {
+          _freeTextIngredients.add(ingredient);
+          _freeTextController.clear();
+        });
+      }
+
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Step 4: Show calculating state with cached results
+    if (mounted) {
+      setState(() {
+        _calculatingAi = true;
+      });
+    }
+
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    // Step 5: Display cached calculated items
+    if (mounted) {
+      final cachedIngredients = _tutorialCachedResults.map((data) {
+        return _IngredientEntry(
+          name: data['name'] as String,
+          calories: data['calories'] as double,
+          protein: data['protein'] as double,
+          carbs: data['carbs'] as double,
+          fat: data['fat'] as double,
+          portion: data['portion'] as String,
+        );
+      }).toList();
+
+      setState(() {
+        _ingredients.addAll(cachedIngredients);
+        _freeTextIngredients.clear();
+        _calculatingAi = false;
+      });
+    }
+
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    // Step 6: Clear all fields
+    if (mounted) {
+      setState(() {
+        _ingredients.clear();
+        _nameController.clear();
+        _servingSizeController.text = '1';
+        _servingUnit = 'Serving';
+      });
+    }
+
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Step 7: End tutorial
+    if (mounted) {
+      setState(() {
+        _tutorialMode = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tutorial complete! Now try it yourself.'),
+          backgroundColor: Color(0xFF10B981),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -72,12 +251,23 @@ class _AddRecipePageState extends State<AddRecipePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.recipeId != null ? 'Edit Recipe' : 'Add Recipe'),
+        actions: [
+          if (widget.recipeId == null)
+            IconButton(
+              onPressed: _tutorialMode ? null : _runTutorial,
+              icon: const Icon(Icons.help_outline, size: 36),
+              tooltip: 'Tutorial',
+              iconSize: 36,
+            ),
+        ],
       ),
       body: Stack(
         children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Form(
+          AbsorbPointer(
+            absorbing: _tutorialMode,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -193,6 +383,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
               ),
             ),
           ),
+          ),
           if (_saving)
             Container(
               color: Colors.black45,
@@ -200,6 +391,61 @@ class _AddRecipePageState extends State<AddRecipePage> {
             ),
           if ((_isAiLoading || _calculatingAi) && _showMiniGame)
             const PingPongGame(),
+          if (_tutorialMode)
+            Container(
+              color: Colors.black.withOpacity(0.3),
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.school,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                      SizedBox(width: 12),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tutorial Mode',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Watch how to create a recipe',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
