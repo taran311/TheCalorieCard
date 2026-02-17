@@ -1409,6 +1409,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       );
       if (!mounted) return;
       setState(() {
+        _deleteMode = false;
         _creditCardRefreshKey++;
       });
     }
@@ -1818,6 +1819,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                               builder: (context) => const MenuPage(),
                             ),
                           );
+                          if (mounted) {
+                            setState(() {
+                              _deleteMode = false;
+                            });
+                          }
                         },
                         child: Container(
                           decoration: BoxDecoration(
@@ -1848,12 +1854,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     ),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
+                        onTap: () async {
+                          await Navigator.push(
                             context,
                             MaterialPageRoute(
                                 builder: (_) => const RecipesPage()),
                           );
+                          if (mounted) {
+                            setState(() {
+                              _deleteMode = false;
+                            });
+                          }
                         },
                         child: Container(
                           child: const Center(
@@ -2758,6 +2769,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                           AddFoodPage(),
                                                     ),
                                                   );
+                                                  setState(() {
+                                                    _deleteMode = false;
+                                                  });
                                                   await populateFoodItems();
                                                   final categoryService =
                                                       Provider.of<
@@ -2819,6 +2833,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                       category,
                                                       multiplier: multiplier,
                                                     );
+                                                    setState(() {
+                                                      _deleteMode = false;
+                                                    });
                                                     await populateFoodItems();
                                                     await _fetchCategoryTotals(
                                                         category);

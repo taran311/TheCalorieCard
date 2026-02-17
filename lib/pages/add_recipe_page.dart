@@ -156,7 +156,12 @@ class _AddRecipePageState extends State<AddRecipePage> {
     await Future.delayed(const Duration(milliseconds: 500));
 
     // Step 3: Add tutorial ingredients with typing effect
-    final tutorialIngredients = ['100g oats', '200ml almond milk', '1 banana', '20g honey'];
+    final tutorialIngredients = [
+      '100g oats',
+      '200ml almond milk',
+      '1 banana',
+      '20g honey'
+    ];
     _freeTextController.text = '';
 
     for (int i = 0; i < tutorialIngredients.length; i++) {
@@ -268,121 +273,123 @@ class _AddRecipePageState extends State<AddRecipePage> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Recipe Name',
-                      border: OutlineInputBorder(),
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Recipe Name',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Enter a recipe name'
+                          : null,
                     ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Enter a recipe name'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Serving Size',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: TextFormField(
-                          controller: _servingSizeController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Per',
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Serving Size',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _servingSizeController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
                             ),
+                            decoration: const InputDecoration(
+                              labelText: 'Per',
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Enter a number';
+                              }
+                              if (double.tryParse(v) == null) {
+                                return 'Enter a valid number';
+                              }
+                              return null;
+                            },
                           ),
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) {
-                              return 'Enter a number';
-                            }
-                            if (double.tryParse(v) == null) {
-                              return 'Enter a valid number';
-                            }
-                            return null;
-                          },
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 1,
-                        child: DropdownButtonFormField<String>(
-                          value: _servingUnit,
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'Serving',
-                              child: Text('Serving'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'g',
-                              child: Text('Grams'),
-                            ),
-                          ],
-                          onChanged: (value) {
-                            setState(() {
-                              _servingUnit = value ?? 'Serving';
-                            });
-                          },
-                          decoration: const InputDecoration(
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 1,
+                          child: DropdownButtonFormField<String>(
+                            value: _servingUnit,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'Serving',
+                                child: Text('Serving'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'g',
+                                child: Text('Grams'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              setState(() {
+                                _servingUnit = value ?? 'Serving';
+                              });
+                            },
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Ingredients',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildSelectedIngredients(),
-                  const SizedBox(height: 8),
-                  _buildFreeTextInput(),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _saving
-                          ? null
-                          : (widget.recipeId != null
-                              ? _updateRecipe
-                              : _saveRecipe),
-                      icon: const Icon(Icons.check),
-                      label: Text(widget.recipeId != null
-                          ? 'Save Changes'
-                          : 'Save Recipe'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Ingredients',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildSelectedIngredients(),
+                    const SizedBox(height: 8),
+                    _buildFreeTextInput(),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _saving
+                            ? null
+                            : (widget.recipeId != null
+                                ? _updateRecipe
+                                : _saveRecipe),
+                        icon: const Icon(Icons.check),
+                        label: Text(widget.recipeId != null
+                            ? 'Save Changes'
+                            : 'Save Recipe'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6366F1),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
           ),
           if (_saving)
             Container(
@@ -398,7 +405,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
                 alignment: Alignment.bottomCenter,
                 child: Container(
                   margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   decoration: BoxDecoration(
                     color: const Color(0xFF6366F1),
                     borderRadius: BorderRadius.circular(12),

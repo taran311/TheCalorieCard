@@ -204,7 +204,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
           final foodName = jsonResponse['name'] ?? ingredient;
           final mode = jsonResponse['mode'] ?? 'grams';
           final servingDescription = jsonResponse['serving_description'];
-          final servingGrams = (jsonResponse['grams'] ?? 100) as int;
+          final servingGrams = jsonResponse['grams'];
+          final servingMl = jsonResponse['ml'];
 
           final totalCalories =
               ((jsonResponse['calories'] ?? 0) as num).toDouble();
@@ -213,9 +214,16 @@ class _AddFoodPageState extends State<AddFoodPage> {
           final totalCarbs = ((jsonResponse['carbs'] ?? 0) as num).toDouble();
           final totalFat = ((jsonResponse['fat'] ?? 0) as num).toDouble();
 
-          final portion = mode == 'serving' && servingDescription != null
-              ? servingDescription
-              : '${servingGrams}g';
+          // Determine portion display
+          String portion = '';
+          if (mode == 'serving' && servingDescription != null) {
+            portion = servingDescription;
+          } else if (servingGrams != null) {
+            portion = '${servingGrams}g';
+          } else if (servingMl != null) {
+            portion = '${servingMl}ml';
+          }
+          // If both grams and ml are null, portion remains empty
 
           // Use the user's original input string
           final displayName = ingredient;
