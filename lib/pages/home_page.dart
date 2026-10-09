@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/add_food_page.dart';
-import 'package:namer_app/pages/coach_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
@@ -19,6 +18,7 @@ import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/home_inbox.dart';
 import 'package:namer_app/ui/home_widgets.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/spotlight_tour.dart';
 
 class HomePage extends StatefulWidget {
   final bool readOnly;
@@ -704,6 +704,12 @@ class _HomePageState extends State<HomePage>
   final List<String> _tabs = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
   int _creditCardRefreshKey = 0;
   bool _isLoading = true;
+
+  // First-time walkthrough of the Card screen.
+  final _tourCard = GlobalKey(debugLabel: 'tour-home-card');
+  final _tourDay = GlobalKey(debugLabel: 'tour-home-day');
+  final _tourMeals = GlobalKey(debugLabel: 'tour-home-meals');
+  final _tourAdd = GlobalKey(debugLabel: 'tour-home-add');
   bool _deleteMode = false;
   bool _isDayFinished = false;
   bool _isUpdatingDailyLog = false;
@@ -941,7 +947,81 @@ class _HomePageState extends State<HomePage>
       setState(() {
         _isLoading = false;
       });
+      _startHomeTour();
     }
+  }
+
+  /// Shows new users round the Card screen once (after the page has drawn).
+  void _startHomeTour() {
+    if (!_isOwnCard || widget.showBanner) return;
+    // Only while the Card tab is on screen with nothing on top of it.
+    bool onScreen() =>
+        mounted &&
+        (ShellTourScope.maybeOf(context)?.cardTabShowing ?? true) &&
+        (ModalRoute.of(context)?.isCurrent ?? true) &&
+        !Navigator.of(context, rootNavigator: true).canPop();
+
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (!onScreen()) return;
+      final shell = ShellTourScope.maybeOf(context);
+      SpotlightTour.showOnce(context, id: 'home_intro', canStart: onScreen,
+          steps: [
+        TourStep(
+          target: _tourCard,
+          title: 'Your card',
+          body: 'Tap it to flip it over and see your macros. When you\'re '
+              'done for the day, swipe it sideways to close the day.',
+          padding: 6,
+          radius: 24,
+        ),
+        TourStep(
+          target: _tourDay,
+          title: 'Your days',
+          body: 'Step back to look at earlier days and how you did.',
+        ),
+        TourStep(
+          target: _tourMeals,
+          title: 'Meals',
+          body: 'Food is grouped by meal. Pick one, then add what you ate.',
+        ),
+        TourStep(
+          target: _tourAdd,
+          title: 'Add food',
+          body: 'Search or scan a food, or add one of your saved recipes. '
+              'The bin removes something you logged by mistake.',
+          radius: 30,
+        ),
+        if (shell != null)
+          TourStep(
+            target: shell.coach,
+          title: 'Calorie Coach',
+          body: 'Ask for a meal that fits what you\'ve got left, a pep talk, '
+              'or help if you\'ve gone over.',
+          padding: 4,
+          radius: 40,
+        ),
+        if (shell != null)
+          TourStep(
+            target: shell.recipes,
+          title: 'Recipes',
+          body: 'Save meals you make often and log them in one tap.',
+        ),
+        if (shell != null)
+          TourStep(
+            target: shell.friends,
+          title: 'Friends',
+          body: 'Add friends, see the hiscores, take on challenges and chat. '
+              'Messages are at the top.',
+        ),
+        if (shell != null)
+          TourStep(
+            target: shell.profile,
+          title: 'Profile',
+          body: 'Your statement, achievements, pots, card designs and '
+              'settings all live here.',
+        ),
+      ]);
+    });
   }
 
   Future<void> _changeDay(DateTime day) async {
@@ -1637,6 +1717,7 @@ class _HomePageState extends State<HomePage>
                         _resetCardPosition(promptAfterReset: shouldPrompt);
                       },
                       child: Stack(
+                        key: _tourCard,
                         children: [
                           _isSelectedDateToday
                               ? CreditCard(
@@ -1711,6 +1792,7 @@ class _HomePageState extends State<HomePage>
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: DayStepper(
+                    key: _tourDay,
                     selected: _selectedLogDate,
                     onChanged: _changeDay,
                   ),
@@ -1726,16 +1808,12 @@ class _HomePageState extends State<HomePage>
                       onBalanceChanged: _refreshAfterChange,
                     ),
                   ),
-                if (_isOwnCard && _isSelectedDateToday)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
-                    child: CoachEntry(),
-                  ),
                 const SizedBox(height: 12),
                 // Meals
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Consumer<CategoryService>(
+                    key: _tourMeals,
                     builder: (context, categoryService, _) => MealTabs(
                       meals: _tabs,
                       selected: categoryService.selectedCategory,
@@ -2301,6 +2379,7 @@ class _HomePageState extends State<HomePage>
                                     )
                                   else if (_isOwnCard)
                                     Row(
+                                      key: _tourAdd,
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceEvenly,
                                       children: <Widget>[

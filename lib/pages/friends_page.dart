@@ -7,6 +7,7 @@ import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/friend_group_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
+import 'package:namer_app/ui/messages_button.dart';
 
 class FriendsPage extends StatefulWidget {
   const FriendsPage({Key? key}) : super(key: key);
@@ -775,7 +776,7 @@ class _FriendsPageState extends State<FriendsPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 48),
+                        const MessagesButton(),
                       ],
                     ),
                   ),

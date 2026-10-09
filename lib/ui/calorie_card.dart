@@ -140,15 +140,17 @@ class CalorieCardShell extends StatelessWidget {
 
 /// Front of the card, laid out like a payment card:
 ///
-///   BALANCE                      [chip]
-///   1,840 kcal
-///   (P 112g) (C 180g) (F 54g)
+///   1,840 kcal                     [chip]
+///
+///   ● PROTEIN    ● CARBS      ● FAT
+///   112g left    180g left    54g left
+///
 ///   SAM JONES               VALID THRU 09/10
 class CalorieCardFront extends StatelessWidget {
   /// The balance in kcal. Negative means overspent.
   final num amount;
 
-  /// Small label top-left. Defaults to BALANCE (OVER BUDGET when negative).
+  /// Optional small caption above the balance (none by default).
   final String? label;
 
   /// Remaining macros shown as pills under the balance.
@@ -163,6 +165,9 @@ class CalorieCardFront extends StatelessWidget {
 
   final CardDesign design;
 
+  /// Marks each part of the card for the first-time spotlight tour.
+  final CardTourKeys? tourKeys;
+
   const CalorieCardFront({
     super.key,
     required this.amount,
@@ -171,6 +176,7 @@ class CalorieCardFront extends StatelessWidget {
     this.holder,
     this.validThru,
     this.design = CardDesign.midnight,
+    this.tourKeys,
   });
 
   @override
@@ -183,22 +189,44 @@ class CalorieCardFront extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (label != null) ...[
+            Text(
+              label!,
+              style: TextStyle(
+                color: over
+                    ? CalorieCardColors.overBudget
+                    : Colors.white.withValues(alpha: 0.55),
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.8,
+              ),
+            ),
+            const SizedBox(height: 2),
+          ],
+          // Balance top-left, chip top-right.
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label ?? (over ? 'OVER BUDGET' : 'BALANCE'),
-                style: TextStyle(
-                  color: over
-                      ? CalorieCardColors.overBudget
-                      : Colors.white.withValues(alpha: 0.6),
-                  fontSize: 12,
-                  letterSpacing: 2,
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '${over ? '−' : ''}${formatCardKcal(amount)} kcal',
+                    key: tourKeys?.balance,
+                    style: TextStyle(
+                      color: over ? CalorieCardColors.overBudget : Colors.white,
+                      fontSize: 22,
+                      height: 1.15,
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
                 ),
               ),
+              const SizedBox(width: 12),
               Container(
-                width: 38,
-                height: 28,
+                width: 36,
+                height: 27,
                 decoration: BoxDecoration(
                   color: design.chip,
                   borderRadius: BorderRadius.circular(6),
@@ -206,28 +234,22 @@ class CalorieCardFront extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '${over ? '−' : ''}${formatCardKcal(amount)} kcal',
-              style: TextStyle(
-                color: over ? CalorieCardColors.overBudget : Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.w700,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
+          // Flexible gaps: roomy on big cards, still fits on small ones.
+          const Spacer(),
+          if (macros.isNotEmpty)
+            Row(
+              children: [
+                for (var i = 0; i < macros.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 10),
+                  Expanded(
+                    child: MacroPill(
+                      macro: macros[i],
+                      contentKey: tourKeys?.macro(i),
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ),
-          if (macros.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [for (final m in macros) MacroPill(macro: m)],
-            ),
-          ],
           const Spacer(),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -235,7 +257,9 @@ class CalorieCardFront extends StatelessWidget {
               Expanded(
                 child: holder == null
                     ? const SizedBox.shrink()
-                    : AnimatedSwitcher(
+                    : _tourMark(
+                        tourKeys?.holder,
+                        AnimatedSwitcher(
                         duration: const Duration(milliseconds: 180),
                         // Keep the name on the left like a real card
                         // (the default layout centres it).
@@ -257,10 +281,12 @@ class CalorieCardFront extends StatelessWidget {
                           ),
                         ),
                       ),
+                      ),
               ),
               if (validThru != null) ...[
                 const SizedBox(width: 12),
                 Column(
+                  key: tourKeys?.validThru,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -294,32 +320,102 @@ class CalorieCardFront extends StatelessWidget {
   }
 }
 
-/// "P 112g" style pill, tinted with the macro's colour.
+/// Wraps [child] so the tour can highlight just its own width.
+Widget _tourMark(Key? key, Widget child) => key == null
+    ? child
+    : Align(
+        alignment: Alignment.centerLeft,
+        child: KeyedSubtree(key: key, child: child),
+      );
+
+/// Keys for the parts of the card front, used by the spotlight tour.
+class CardTourKeys {
+  final balance = GlobalKey(debugLabel: 'tour-card-balance');
+  final protein = GlobalKey(debugLabel: 'tour-card-protein');
+  final carbs = GlobalKey(debugLabel: 'tour-card-carbs');
+  final fat = GlobalKey(debugLabel: 'tour-card-fat');
+  final holder = GlobalKey(debugLabel: 'tour-card-holder');
+  final validThru = GlobalKey(debugLabel: 'tour-card-date');
+
+  /// Macros are shown protein, carbs, fat.
+  GlobalKey? macro(int i) => switch (i) {
+        0 => protein,
+        1 => carbs,
+        2 => fat,
+        _ => null,
+      };
+}
+
+/// One macro on the front of the card: a small coloured label over what's
+/// left, e.g. "● PROTEIN" / "112g left" (or "20g over").
 class MacroPill extends StatelessWidget {
   final CardMacro macro;
 
-  const MacroPill({super.key, required this.macro});
+  /// Put on the label + amount (not the whole column), for the tour.
+  final Key? contentKey;
+
+  const MacroPill({super.key, required this.macro, this.contentKey});
 
   @override
   Widget build(BuildContext context) {
     final over = macro.remaining < 0;
-    final color = over ? CalorieCardColors.overBudget : macro.color;
-    final value = over
-        ? '−${macro.remaining.abs().round()}g'
-        : '${macro.remaining.round()}g';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '${macro.short} $value',
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
+    final grams = macro.remaining.abs().round();
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Column(
+        key: contentKey,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: macro.color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                macro.name.toUpperCase(),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text.rich(
+            TextSpan(children: [
+              TextSpan(
+                text: '${grams}g',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              TextSpan(
+                text: over ? ' over' : ' left',
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: over
+                      ? CalorieCardColors.overBudget
+                      : Colors.white.withValues(alpha: 0.7),
+                ),
+              ),
+            ]),
+            maxLines: 1,
+            style: TextStyle(
+              color: over ? CalorieCardColors.overBudget : Colors.white,
+              fontSize: 13,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/coach_actions.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/statement_service.dart';
 
@@ -16,6 +18,53 @@ class CoachMessage {
       {'role': fromUser ? 'user' : 'assistant', 'content': text};
 }
 
+/// Something in today's diary Coach can point at (e.g. to remove it).
+class CoachEntryRef {
+  final String id;
+  final String name;
+  final String portion;
+  final String meal;
+  final double calories;
+
+  const CoachEntryRef({
+    required this.id,
+    required this.name,
+    required this.portion,
+    required this.meal,
+    required this.calories,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        if (portion.isNotEmpty) 'portion': portion,
+        'meal': meal,
+        'kcal': calories.round(),
+      };
+}
+
+/// One of your saved recipes, so Coach can log or delete it.
+class CoachRecipeRef {
+  final String id;
+  final String name;
+  final String servingSize;
+  final double calories;
+
+  const CoachRecipeRef({
+    required this.id,
+    required this.name,
+    required this.servingSize,
+    required this.calories,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'serving_size': servingSize,
+        'kcal_for_serving_size': calories.round(),
+      };
+}
+
 /// Today's numbers, sent with each question so answers are about you.
 class CoachContext {
   final double calorieGoal;
@@ -27,6 +76,8 @@ class CoachContext {
   final int daysLoggedThisWeek;
   final double averageThisWeek;
   final int hour;
+  final List<CoachEntryRef> entries;
+  final List<CoachRecipeRef> recipes;
 
   const CoachContext({
     required this.calorieGoal,
@@ -38,6 +89,8 @@ class CoachContext {
     required this.daysLoggedThisWeek,
     required this.averageThisWeek,
     required this.hour,
+    this.entries = const [],
+    this.recipes = const [],
   });
 
   bool get isOver => caloriesLeft < 0;
@@ -69,6 +122,8 @@ class CoachContext {
           'days_over_budget': daysOverThisWeek,
           'average_calories': averageThisWeek.round(),
         },
+        'entries_today': [for (final e in entries.take(30)) e.toJson()],
+        'recipes': [for (final r in recipes.take(30)) r.toJson()],
       };
 
   /// Loads today's numbers. Missing pieces just come through as zero.
@@ -79,10 +134,28 @@ class CoachContext {
     final statementFuture = StatementService.load(uid, days: 7)
         .then<Statement?>((s) => s)
         .catchError((_) => null);
+    final recipesFuture = BalanceService.db
+        .collection('recipes')
+        .where('user_id', isEqualTo: uid)
+        .limit(60)
+        .get()
+        .then((snap) => [
+              for (final d in snap.docs)
+                CoachRecipeRef(
+                  id: d.id,
+                  name: '${d.data()['name'] ?? ''}',
+                  servingSize:
+                      '${d.data()['serving_size'] ?? 'Per 1 Serving'}',
+                  calories:
+                      BalanceService.number(d.data()['total_calories']) ?? 0,
+                )
+            ])
+        .catchError((_) => <CoachRecipeRef>[]);
 
     final profile = (await profileFuture)?.data() ?? const <String, dynamic>{};
     final entries = await entriesFuture;
     final statement = await statementFuture;
+    final recipes = await recipesFuture;
 
     final goals = BalanceService.goalsFrom(profile) ?? Macros.zero;
     final eaten = BalanceService.totalOf(entries.map((e) => e.data()));
@@ -117,8 +190,27 @@ class CoachContext {
           : pastDays.fold<double>(0, (s, d) => s + d.calories) /
               pastDays.length,
       hour: BalanceService.now().hour,
+      entries: [
+        for (final e in entries)
+          CoachEntryRef(
+            id: e.id,
+            name: '${e.data()['food_description'] ?? ''}',
+            portion: '${e.data()['food_portion'] ?? ''}',
+            meal: '${e.data()['foodCategory'] ?? ''}',
+            calories: Macros.fromEntry(e.data()).calories,
+          )
+      ],
+      recipes: recipes,
     );
   }
+}
+
+/// Coach's answer: the text, plus any changes it's proposing.
+class CoachReply {
+  final String text;
+  final List<CoachAction> actions;
+
+  const CoachReply(this.text, [this.actions = const []]);
 }
 
 /// A ready-made question shown as a tappable chip.
@@ -134,6 +226,21 @@ class CoachPrompt {
 
 class CoachService {
   CoachService._();
+
+  /// True while Coach is working on an answer (the Coach button animates).
+  /// Use [startThinking] / [stopThinking]: two Coach screens can be open.
+  static final thinking = ValueNotifier<bool>(false);
+  static int _busy = 0;
+
+  static void startThinking() {
+    _busy++;
+    thinking.value = true;
+  }
+
+  static void stopThinking() {
+    if (_busy > 0) _busy--;
+    thinking.value = _busy > 0;
+  }
 
   /// Ready-made questions, the most useful for right now first.
   static List<CoachPrompt> promptsFor(CoachContext? c) {
@@ -173,6 +280,17 @@ class CoachService {
     if (hour < 11) {
       prompts.add(const CoachPrompt('🥣', 'Breakfast ideas',
           'Give me a few breakfast ideas that set me up well for today.'));
+    }
+
+    prompts.addAll(const [
+      CoachPrompt('✍️', 'Add food for me',
+          "I'd like you to add some food to my diary for me."),
+      CoachPrompt('📖', 'Save a recipe',
+          "Help me save one of my usual meals as a recipe."),
+    ]);
+    if (c != null && c.entries.isNotEmpty) {
+      prompts.add(const CoachPrompt('🗑️', 'Remove something',
+          "I logged something by mistake today. Can you help me remove it?"));
     }
 
     prompts.addAll(const [
@@ -218,9 +336,9 @@ class CoachService {
         'How can I help?';
   }
 
-  /// Sends the conversation and returns Coach's reply. Throws a readable
-  /// message on failure.
-  static Future<String> ask({
+  /// Sends the conversation and returns Coach's reply (and any proposed
+  /// changes). Throws a readable message on failure.
+  static Future<CoachReply> ask({
     required List<CoachMessage> history,
     CoachContext? context,
   }) async {
@@ -241,7 +359,12 @@ class CoachService {
     }
     final reply = (body?['reply'] as String?)?.trim() ?? '';
     if (reply.isEmpty) throw const CoachException('Coach is lost for words.');
-    return reply;
+    final raw = body?['actions'];
+    final actions = [
+      for (final a in (raw is List ? raw : const []))
+        if (CoachAction.fromJson(a) case final CoachAction action) action
+    ];
+    return CoachReply(reply, actions);
   }
 }
 

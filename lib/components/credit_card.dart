@@ -28,6 +28,9 @@ class CreditCard extends StatefulWidget {
   /// Card finish (from the owner's `users.card_design`).
   final CardDesign design;
 
+  /// Marks the card's parts for the first-time spotlight tour.
+  final CardTourKeys? tourKeys;
+
   const CreditCard({
     super.key,
     this.initialCalories,
@@ -41,6 +44,7 @@ class CreditCard extends StatefulWidget {
     this.userIdOverride,
     this.cardUserNameOverride,
     this.design = CardDesign.midnight,
+    this.tourKeys,
   });
 
   @override
@@ -246,6 +250,7 @@ class _CreditCardWidgetState extends State<CreditCard>
           holder: holder,
           validThru: _validThru(),
           design: widget.design,
+          tourKeys: widget.tourKeys,
         );
         final back = CalorieCardBack(
           footnote: _shortDate(),

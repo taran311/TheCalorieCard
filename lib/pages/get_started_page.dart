@@ -8,6 +8,8 @@ import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/ui/calorie_card.dart';
+import 'package:namer_app/ui/spotlight_tour.dart';
 import 'dart:convert';
 
 class GetStartedPage extends StatefulWidget {
@@ -70,9 +72,15 @@ class _GetStartedPageState extends State<GetStartedPage> {
       TextEditingController();
   int? _manualCalorieGoal;
 
+  // First-time walkthrough of the card once it's revealed.
+  final _cardTour = CardTourKeys();
+  final _tourCard = GlobalKey(debugLabel: 'tour-card');
+  bool _cardTourStarted = false;
+
   @override
   void initState() {
     super.initState();
+    FocusManager.instance.addListener(_maybeStartCardTour);
     // Wake the lookup server early (it sleeps when idle).
     ProxyClient.warmUp();
     _ageFocusNode = FocusNode();
@@ -83,8 +91,96 @@ class _GetStartedPageState extends State<GetStartedPage> {
     _fatsFocusNode = FocusNode();
   }
 
+  /// Walks through each part of the card the first time it has numbers on
+  /// it, and not while they're typing.
+  bool _cardReadyForTour() {
+    if (!mounted || _flowState != 'results') return false;
+    // The card is filled in: a balance and all three macros.
+    if ((cardActiveCalories ?? 0) <= 0 ||
+        _proteinGoal == null ||
+        _carbsGoal == null ||
+        _fatsGoal == null) {
+      return false;
+    }
+    // Not while they're typing.
+    final focus = FocusManager.instance.primaryFocus?.context;
+    if (focus != null &&
+        focus.findAncestorWidgetOfExactType<EditableText>() != null) {
+      return false;
+    }
+    return _tourCard.currentContext != null;
+  }
+
+  void _maybeStartCardTour() {
+    if (_cardTourStarted || !_cardReadyForTour()) return;
+    _cardTourStarted = true;
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!_cardReadyForTour()) {
+        _cardTourStarted = false;
+        return;
+      }
+      SpotlightTour.showOnce(context,
+          id: 'card_intro', canStart: _cardReadyForTour, steps: [
+        TourStep(
+          target: _tourCard,
+          title: 'This is your Calorie Card',
+          body: 'Think of calories like money. Your card is topped up every '
+              'day, and the food you log is spent from it.',
+          padding: 6,
+          radius: 24,
+        ),
+        TourStep(
+          target: _cardTour.balance,
+          title: 'Your calorie balance',
+          body: "What you've got left to spend today. If you go over, it "
+              'turns red with a minus.',
+          radius: 10,
+        ),
+        TourStep(
+          target: _cardTour.protein,
+          title: 'Protein allowance',
+          body: "How much protein you've got left today. It keeps you full "
+              'and helps build muscle.',
+          radius: 10,
+        ),
+        TourStep(
+          target: _cardTour.carbs,
+          title: 'Carbs allowance',
+          body: 'Your main energy for the day: bread, rice, pasta, fruit '
+              'and the like.',
+          radius: 10,
+        ),
+        TourStep(
+          target: _cardTour.fat,
+          title: 'Fat allowance',
+          body: 'Fats from things like oils, nuts, cheese and meat. You need '
+              'some, but they add up fast.',
+          radius: 10,
+        ),
+        TourStep(
+          target: _cardTour.holder,
+          title: 'Your name',
+          body: 'Your name goes on your card, just like a real one. Friends '
+              'see it too.',
+          radius: 10,
+        ),
+        TourStep(
+          target: _cardTour.validThru,
+          title: "Today's date",
+          body: 'Each card is good for one day. At midnight it starts again '
+              'with a full balance.',
+          radius: 10,
+        ),
+      ]).then((done) {
+        // Couldn't show yet (e.g. they started typing): try again later.
+        if (!done && mounted) _cardTourStarted = false;
+      });
+    });
+  }
+
   @override
   void dispose() {
+    FocusManager.instance.removeListener(_maybeStartCardTour);
     _ageFocusNode.dispose();
     _heightFocusNode.dispose();
     _weightFocusNode.dispose();
@@ -750,6 +846,10 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                                       setState(() {
                                                         _flowState = 'results';
                                                       });
+                                                      WidgetsBinding.instance
+                                                          .addPostFrameCallback(
+                                                              (_) =>
+                                                                  _maybeStartCardTour());
                                                     }
                                                   }
                                                 : null,
@@ -1151,7 +1251,9 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                       ),
                                       const SizedBox(height: 24),
                                       // Credit Card Preview
-                                      CreditCard(
+                                      KeyedSubtree(
+                                        key: _tourCard,
+                                        child: CreditCard(
                                         key: ValueKey(
                                             '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
                                         initialCalories:
@@ -1165,6 +1267,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                         fatsOverride:
                                             (_fatsGoal ?? 0).toDouble(),
                                         skipFetch: true,
+                                        tourKeys: _cardTour,
+                                      ),
                                       ),
                                     ],
                                   ),

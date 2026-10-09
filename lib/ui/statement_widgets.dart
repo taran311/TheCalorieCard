@@ -432,7 +432,7 @@ class TransactionTile extends StatelessWidget {
                   [
                     if (showTime) formatTime(tx.time),
                     if (tx.category.isNotEmpty) tx.category,
-                    'P ${tx.protein.round()} · C ${tx.carbs.round()} · F ${tx.fat.round()}',
+                    '${tx.protein.round()}g protein · ${tx.carbs.round()}g carbs · ${tx.fat.round()}g fat',
                   ].join('  ·  '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

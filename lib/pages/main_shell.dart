@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/pages/auth_page.dart';
+import 'package:namer_app/pages/coach_page.dart';
 import 'package:namer_app/pages/friends_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
 import 'package:namer_app/pages/home_page.dart';
@@ -10,11 +11,22 @@ import 'package:namer_app/pages/menu_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
 import 'package:namer_app/pages/recipes_page.dart';
 import 'package:namer_app/pages/statement_page.dart';
+import 'package:namer_app/ui/coach_orb.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/spotlight_tour.dart';
 import 'package:namer_app/ui/today_panel.dart';
 
 /// Top-level destinations of the signed-in app.
-enum ShellTab { card, recipes, friends, hiscores, statement, chat, profile }
+enum ShellTab {
+  card,
+  coach,
+  recipes,
+  friends,
+  hiscores,
+  statement,
+  chat,
+  profile
+}
 
 class _TabSpec {
   final ShellTab tab;
@@ -32,9 +44,26 @@ class _TabSpec {
   });
 }
 
+/// Lets the first-time tour point at these tabs.
+GlobalKey? _tourKeyFor(BuildContext context, ShellTab tab) {
+  final keys = ShellTourScope.maybeOf(context);
+  if (keys == null) return null;
+  return switch (tab) {
+    ShellTab.coach => keys.coach,
+    ShellTab.recipes => keys.recipes,
+    ShellTab.friends => keys.friends,
+    ShellTab.profile => keys.profile,
+    _ => null,
+  };
+}
+
 const _tabs = <_TabSpec>[
   _TabSpec(ShellTab.card, 'Card', Icons.credit_card_outlined,
       Icons.credit_card),
+  // On phones Coach is the round button in the middle of the bottom bar.
+  _TabSpec(ShellTab.coach, 'Coach', Icons.auto_awesome_outlined,
+      Icons.auto_awesome,
+      onPhone: false),
   _TabSpec(ShellTab.recipes, 'Recipes', Icons.restaurant_outlined,
       Icons.restaurant),
   _TabSpec(ShellTab.friends, 'Friends', Icons.people_outline, Icons.people),
@@ -44,15 +73,18 @@ const _tabs = <_TabSpec>[
   _TabSpec(ShellTab.statement, 'Statement', Icons.receipt_long_outlined,
       Icons.receipt_long,
       onPhone: false),
+  // On phones Chat opens from the icon at the top of Friends.
   _TabSpec(ShellTab.chat, 'Chat', Icons.chat_bubble_outline,
-      Icons.chat_bubble),
+      Icons.chat_bubble,
+      onPhone: false),
   _TabSpec(ShellTab.profile, 'Profile', Icons.person_outline, Icons.person),
 ];
 
 /// Signed-in layout.
 ///
-/// * Phone: page + bottom navigation bar (Card, Recipes, Friends, Chat,
-///   Profile). Hiscores lives inside Friends, Statement inside Profile.
+/// * Phone: page + bottom bar (Card, Recipes, the round Coach button,
+///   Friends, Profile). Hiscores and Chat live inside Friends, Statement
+///   inside Profile.
 /// * Tablet / desktop: navigation sidebar, the page in a centred column and,
 ///   on wide screens, a live "Today" panel on the right.
 ///
@@ -71,6 +103,8 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   late ShellTab _current;
+  // This shell's own keys for the first-time tour.
+  final _tourKeys = ShellTourKeys();
   final Set<ShellTab> _visited = {};
   final Map<ShellTab, GlobalKey<NavigatorState>> _navKeys = {
     for (final t in ShellTab.values) t: GlobalKey<NavigatorState>(),
@@ -88,6 +122,7 @@ class _MainShellState extends State<MainShell> {
       _ => ShellTab.card,
     };
     _visited.add(_current);
+    _tourKeys.cardTabShowing = _current == ShellTab.card;
     // Tell the outer frame a shell is on screen. Done after the frame:
     // ancestors can't be rebuilt while this widget is mounting/unmounting.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -105,6 +140,8 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _select(ShellTab tab) {
+    // Coach picks up your latest numbers each time you open it.
+    if (tab == ShellTab.coach) CoachPage.refresh.value++;
     if (tab == _current) {
       // Tapping the active tab again returns to its first page.
       _navKeys[tab]?.currentState?.popUntil((r) => r.isFirst);
@@ -114,12 +151,15 @@ class _MainShellState extends State<MainShell> {
       _current = tab;
       _visited.add(tab);
     });
+    _tourKeys.cardTabShowing = tab == ShellTab.card;
   }
 
   Widget _rootPageFor(ShellTab tab) {
     switch (tab) {
       case ShellTab.card:
         return const HomePage();
+      case ShellTab.coach:
+        return const CoachPage();
       case ShellTab.recipes:
         return const RecipesPage();
       case ShellTab.friends:
@@ -173,6 +213,13 @@ class _MainShellState extends State<MainShell> {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final width = MediaQuery.sizeOf(context).width;
 
+    return ShellTourScope(
+      keys: _tourKeys,
+      child: _buildShell(uid, width),
+    );
+  }
+
+  Widget _buildShell(String uid, double width) {
     return _BadgeCounts(
       userId: uid,
       builder: (context, pendingRequests, unreadMessages) {
@@ -225,36 +272,168 @@ class _PhoneLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final phoneTabs = _tabs.where((t) => t.onPhone).toList();
-    // Desktop-only tabs highlight the phone tab that contains them.
+    // Tabs without their own button highlight the one that contains them.
     final highlighted = switch (current) {
-      ShellTab.hiscores => ShellTab.friends,
+      ShellTab.hiscores || ShellTab.chat => ShellTab.friends,
       ShellTab.statement => ShellTab.profile,
       _ => current,
     };
-    final found = phoneTabs.indexWhere((t) => t.tab == highlighted);
-    final selectedIndex = found < 0 ? 0 : found;
+    int badge(ShellTab t) => t == ShellTab.friends
+        ? badgeFor(ShellTab.friends) + badgeFor(ShellTab.chat)
+        : badgeFor(t);
+    final half = phoneTabs.length ~/ 2;
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final onCoach = current == ShellTab.coach;
+
+    Widget item(_TabSpec t) => Expanded(
+          child: KeyedSubtree(
+            key: _tourKeyFor(context, t.tab),
+            child: _PhoneNavItem(
+              spec: t,
+              selected: t.tab == highlighted,
+              badge: badge(t.tab),
+              onTap: () => onSelect(t.tab),
+            ),
+          ),
+        );
 
     return Scaffold(
       body: body,
-      bottomNavigationBar: NavigationBar(
-        height: 64,
-        selectedIndex: selectedIndex,
-        backgroundColor: Colors.white,
-        indicatorColor: AppColors.primary.withValues(alpha: 0.12),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (i) => onSelect(phoneTabs[i].tab),
-        destinations: [
-          for (final t in phoneTabs)
-            NavigationDestination(
-              icon: _BadgedIcon(icon: t.icon, count: badgeFor(t.tab)),
-              selectedIcon: _BadgedIcon(
-                icon: t.selectedIcon,
-                count: badgeFor(t.tab),
-                color: AppColors.primary,
+      // Always the same widget (the tour's key must never be on two at
+      // once); just empty while the keyboard is up.
+      floatingActionButton: KeyedSubtree(
+        key: _tourKeyFor(context, ShellTab.coach),
+        child: keyboardOpen
+            ? const SizedBox.shrink()
+            : CoachOrb(
+                selected: onCoach,
+                onTap: () => onSelect(ShellTab.coach),
               ),
-              label: t.label,
+      ),
+      floatingActionButtonLocation: const _OrbLocation(),
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: const Border(top: BorderSide(color: AppColors.border)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, -2),
             ),
-        ],
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 64,
+            child: Row(
+              children: [
+                for (final t in phoneTabs.take(half)) item(t),
+                // Space under the Coach button, with its label.
+                SizedBox(
+                  width: 76,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onSelect(ShellTab.coach),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Coach',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight:
+                                onCoach ? FontWeight.w700 : FontWeight.w500,
+                            color: onCoach ? AppColors.primary : AppColors.muted,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                      ],
+                    ),
+                  ),
+                ),
+                for (final t in phoneTabs.skip(half)) item(t),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Puts the Coach button in the middle of the bottom bar, rising above it.
+class _OrbLocation extends FloatingActionButtonLocation {
+  const _OrbLocation();
+
+  @override
+  Offset getOffset(ScaffoldPrelayoutGeometry geometry) {
+    final size = geometry.floatingActionButtonSize;
+    return Offset(
+      (geometry.scaffoldSize.width - size.width) / 2,
+      // contentBottom is the top of the bottom bar.
+      geometry.contentBottom - size.height / 2 + 4,
+    );
+  }
+}
+
+class _PhoneNavItem extends StatelessWidget {
+  final _TabSpec spec;
+  final bool selected;
+  final int badge;
+  final VoidCallback onTap;
+
+  const _PhoneNavItem({
+    required this.spec,
+    required this.selected,
+    required this.badge,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? AppColors.primary : AppColors.muted;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: spec.label,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 36,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 56,
+              height: 30,
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.primary.withValues(alpha: 0.12)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(15),
+              ),
+              alignment: Alignment.center,
+              child: _BadgedIcon(
+                icon: selected ? spec.selectedIcon : spec.icon,
+                count: badge,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              spec.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -407,12 +586,15 @@ class _Sidebar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               children: [
                 for (final t in _tabs)
-                  _SidebarItem(
-                    spec: t,
-                    selected: t.tab == current,
-                    badge: badgeFor(t.tab),
-                    extended: extended,
-                    onTap: () => onSelect(t.tab),
+                  KeyedSubtree(
+                    key: _tourKeyFor(context, t.tab),
+                    child: _SidebarItem(
+                      spec: t,
+                      selected: t.tab == current,
+                      badge: badgeFor(t.tab),
+                      extended: extended,
+                      onTap: () => onSelect(t.tab),
+                    ),
                   ),
               ],
             ),

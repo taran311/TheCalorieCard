@@ -306,7 +306,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     Text(
                       [
                         if (portion.isNotEmpty) portion,
-                        'P ${g('protein')}g · C ${g('carbs')}g · F ${g('fat')}g',
+                        '${g('protein')}g protein · ${g('carbs')}g carbs · ${g('fat')}g fat',
                       ].join('  ·  '),
                       style:
                           TextStyle(fontSize: 12, color: AppColors.gray600),

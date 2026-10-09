@@ -233,9 +233,12 @@ class CalorieCardPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 1.6,
-      child: CalorieCardFront(
+    // Card shape, but never so short on a small phone that it overflows.
+    return LayoutBuilder(
+      builder: (context, constraints) => SizedBox(
+        width: constraints.maxWidth,
+        height: constraints.maxWidth / 1.6 < 190 ? 190 : constraints.maxWidth / 1.6,
+        child: CalorieCardFront(
         amount: 2000,
         holder: cardholder ?? '',
         macros: const [
@@ -243,6 +246,7 @@ class CalorieCardPreview extends StatelessWidget {
           CardMacro(name: 'Carbs', remaining: 220, color: CalorieCardColors.carbs),
           CardMacro(name: 'Fat', remaining: 65, color: CalorieCardColors.fat),
         ],
+        ),
       ),
     );
   }

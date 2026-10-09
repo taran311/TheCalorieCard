@@ -22,7 +22,6 @@ class MessagesPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Messages'),
-        automaticallyImplyLeading: false,
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -1249,7 +1248,7 @@ class _SharedCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'P ${n('protein_left')}g   C ${n('carbs_left')}g   F ${n('fat_left')}g left',
+            'Left: ${n('protein_left')}g protein · ${n('carbs_left')}g carbs · ${n('fat_left')}g fat',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
