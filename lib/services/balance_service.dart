@@ -230,14 +230,15 @@ class BalanceService {
       );
     }
 
-    controller
-      ..onListen = () => listen(
-            all
-                .where('time_added', isGreaterThanOrEqualTo: start)
-                .where('time_added', isLessThan: end),
-            ranged: true,
-          )
-      ..onCancel = () => sub?.cancel();
+    controller.onListen = () {
+      listen(
+        all
+            .where('time_added', isGreaterThanOrEqualTo: start)
+            .where('time_added', isLessThan: end),
+        ranged: true,
+      );
+    };
+    controller.onCancel = () => sub?.cancel();
     return controller.stream;
   }
 
