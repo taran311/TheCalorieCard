@@ -1,0 +1,174 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:namer_app/services/statement_service.dart';
+import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/statement_widgets.dart';
+
+/// Keeps a weekly [Statement] fresh: reloads whenever the card balance
+/// changes (i.e. food was added or removed anywhere in the app).
+class LiveStatement extends StatefulWidget {
+  final String userId;
+  final int days;
+  final Widget Function(BuildContext context, Statement? statement) builder;
+
+  const LiveStatement({
+    super.key,
+    required this.userId,
+    required this.builder,
+    this.days = 7,
+  });
+
+  @override
+  State<LiveStatement> createState() => _LiveStatementState();
+}
+
+class _LiveStatementState extends State<LiveStatement> {
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
+  Statement? _statement;
+  Timer? _debounce;
+  int _loadToken = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = FirebaseFirestore.instance
+        .collection('user_data')
+        .where('user_id', isEqualTo: widget.userId)
+        .limit(1)
+        .snapshots()
+        .listen((_) => _scheduleReload(), onError: (_) {});
+    _reload();
+  }
+
+  void _scheduleReload() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 600), _reload);
+  }
+
+  Future<void> _reload() async {
+    final token = ++_loadToken;
+    try {
+      final s = await StatementService.load(widget.userId, days: widget.days);
+      if (!mounted || token != _loadToken) return;
+      setState(() => _statement = s);
+    } catch (_) {
+      // Keep showing the last good statement.
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _statement);
+}
+
+/// Right-hand column on wide desktop screens: today's balance, the week's
+/// spending and the latest transactions.
+class TodayPanel extends StatelessWidget {
+  final String userId;
+  final VoidCallback? onOpenStatement;
+
+  const TodayPanel({super.key, required this.userId, this.onOpenStatement});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(4, 24, 24, 24),
+      children: [
+        PanelCard(
+          title: 'Today',
+          child: LiveBalanceSummary(userId: userId),
+        ),
+        const SizedBox(height: 16),
+        LiveStatement(
+          userId: userId,
+          builder: (context, statement) {
+            if (statement == null) {
+              return const PanelCard(
+                title: 'This week',
+                child: SizedBox(
+                  height: 160,
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            }
+            final recent = statement.recent.take(6).toList();
+            return Column(
+              children: [
+                PanelCard(
+                  title: 'This week',
+                  trailing: Text(
+                    'avg ${formatKcal(statement.averageCalories)} kcal',
+                    style:
+                        const TextStyle(fontSize: 12, color: AppColors.muted),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      WeeklySpendChart(statement: statement),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Container(
+                            width: 14,
+                            height: 2,
+                            color: AppColors.green,
+                          ),
+                          const SizedBox(width: 6),
+                          const Text('Daily budget',
+                              style: TextStyle(
+                                  fontSize: 11, color: AppColors.muted)),
+                          const Spacer(),
+                          Text(
+                            '${statement.daysUnderBudget} days on budget',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                PanelCard(
+                  title: 'Recent transactions',
+                  trailing: onOpenStatement == null
+                      ? null
+                      : TextButton(
+                          onPressed: onOpenStatement,
+                          child: const Text('Statement'),
+                        ),
+                  child: recent.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            'Nothing logged this week yet.',
+                            style: TextStyle(color: AppColors.muted),
+                          ),
+                        )
+                      : Column(
+                          children: [
+                            for (final tx in recent) TransactionTile(tx: tx),
+                          ],
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}

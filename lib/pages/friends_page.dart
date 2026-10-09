@@ -70,7 +70,7 @@ class _FriendsPageState extends State<FriendsPage> {
     final email = _emailController.text.trim();
 
     if (email.isEmpty) {
-      _errorMessage = 'Please enter an email address';
+      setState(() => _errorMessage = 'Please enter an email address');
       return;
     }
 
@@ -81,12 +81,20 @@ class _FriendsPageState extends State<FriendsPage> {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) return;
 
-      // Find user by email
-      final userQuery = await FirebaseFirestore.instance
+      // Find user by email (as typed, then lower-case: sign-up emails are
+      // usually stored lower-case, but people type "Sam@Gmail.com").
+      var userQuery = await FirebaseFirestore.instance
           .collection('users')
           .where('email', isEqualTo: email)
           .limit(1)
           .get();
+      if (userQuery.docs.isEmpty && email.toLowerCase() != email) {
+        userQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: email.toLowerCase())
+            .limit(1)
+            .get();
+      }
 
       if (userQuery.docs.isEmpty) {
         _errorMessage = 'User not found';
@@ -129,6 +137,27 @@ class _FriendsPageState extends State<FriendsPage> {
       if (existingRequest.docs.isNotEmpty) {
         _errorMessage = 'Friend request already sent';
         _isSubmitting.value = false;
+        return;
+      }
+
+      // They already asked to be your friend? Accept that instead of
+      // sending a second request the other way.
+      final reverseRequest = await FirebaseFirestore.instance
+          .collection('friend_requests')
+          .where('from_user_id', isEqualTo: targetUserId)
+          .where('to_user_id', isEqualTo: currentUser.uid)
+          .where('status', isEqualTo: 'pending')
+          .limit(1)
+          .get();
+      if (reverseRequest.docs.isNotEmpty) {
+        _emailController.clear();
+        _showAddFriendForm.value = false;
+        _isSubmitting.value = false;
+        await _acceptFriendRequest(
+          reverseRequest.docs.first.id,
+          targetUserId,
+          (reverseRequest.docs.first.data()['from_email'] as String?) ?? email,
+        );
         return;
       }
 
@@ -719,15 +748,18 @@ class _FriendsPageState extends State<FriendsPage> {
                     ),
                     child: Row(
                       children: [
-                        IconButton(
-                          onPressed: () {
-                            Navigator.of(context).maybePop();
-                          },
-                          icon: const Icon(Icons.arrow_back),
-                          color: Colors.white,
-                          splashRadius: 20,
-                          tooltip: 'Back',
-                        ),
+                        if (Navigator.of(context).canPop())
+                          IconButton(
+                            onPressed: () {
+                              Navigator.of(context).maybePop();
+                            },
+                            icon: const Icon(Icons.arrow_back),
+                            color: Colors.white,
+                            splashRadius: 20,
+                            tooltip: 'Back',
+                          )
+                        else
+                          const SizedBox(width: 48),
                         const Expanded(
                           child: Center(
                             child: Text(
@@ -1455,18 +1487,33 @@ class _FriendsPageState extends State<FriendsPage> {
                                                     ),
                                                     const SizedBox(width: 12),
                                                     Expanded(
-                                                      child: Text(
-                                                        friendEmail
-                                                            .split('@')[0],
-                                                        style: const TextStyle(
-                                                          fontSize: 16,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          color:
-                                                              Color(0xFF1F2937),
-                                                        ),
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          Text(
+                                                            friendEmail
+                                                                .split('@')[0],
+                                                            style:
+                                                                const TextStyle(
+                                                              fontSize: 16,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color: Color(
+                                                                  0xFF1F2937),
+                                                            ),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                          const SizedBox(
+                                                              height: 3),
+                                                          FriendTodayStatus(
+                                                              friendId:
+                                                                  friendId),
+                                                        ],
                                                       ),
                                                     ),
                                                     if (!isDeleteMode) ...[
@@ -1800,6 +1847,65 @@ class _FriendsPageState extends State<FriendsPage> {
                 );
               },
             ),
+    );
+  }
+}
+
+
+/// Shows whether a friend has finished logging today.
+class FriendTodayStatus extends StatelessWidget {
+  final String friendId;
+
+  const FriendTodayStatus({super.key, required this.friendId});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final key =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance
+          .collection('daily_logs')
+          .doc('${friendId}_$key')
+          .get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox(height: 16);
+        final data = snapshot.data!.data();
+        final finished = data?['finished'] == true;
+        final balances = data?['balances'];
+        final left = balances is Map ? balances['calories'] : null;
+        final onBudget = left is num && left >= 0;
+
+        final String label;
+        final Color color;
+        if (finished && onBudget) {
+          label = 'Finished today · on budget';
+          color = const Color(0xFF10B981);
+        } else if (finished) {
+          label = 'Finished today';
+          color = const Color(0xFF6366F1);
+        } else {
+          label = 'Not finished today';
+          color = Colors.grey.shade500;
+        }
+        return Row(
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: color),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

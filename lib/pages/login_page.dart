@@ -54,8 +54,7 @@ class _LoginPageState extends State<LoginPage> {
       } else {
         // Email verified, allow login
         if (context.mounted) {
-          Navigator.pushReplacement(
-            context,
+          Navigator.of(context, rootNavigator: true).pushReplacement(
             MaterialPageRoute(
                 builder: (context) => const MainShell(initialIndex: 1)),
           );

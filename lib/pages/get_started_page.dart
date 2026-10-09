@@ -1178,8 +1178,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                     child: ElevatedButton(
                                       onPressed: () async {
                                         saveData();
-                                        await Navigator.pushAndRemoveUntil(
-                                          context,
+                                        await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                                           MaterialPageRoute(
                                             builder: (context) =>
                                                 const MainShell(

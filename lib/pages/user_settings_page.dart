@@ -837,8 +837,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                       setState(() {
                         _isSaving = false;
                       });
-                      await Navigator.pushAndRemoveUntil(
-                        context,
+                      await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                         MaterialPageRoute(
                           builder: (context) =>
                               const MainShell(initialIndex: 1),
@@ -1317,8 +1316,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                     setState(() {
                       _isSaving = false;
                     });
-                    await Navigator.pushAndRemoveUntil(
-                      context,
+                    await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                       MaterialPageRoute(
                         builder: (context) => const MainShell(initialIndex: 1),
                       ),

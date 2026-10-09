@@ -1,6 +1,55 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/leaderboard_service.dart';
+import 'package:namer_app/ui/responsive.dart';
+
+class _Board {
+  final String label;
+  final String emoji;
+  final String description;
+  final String unit;
+  final num Function(PlayerStats) value;
+
+  const _Board({
+    required this.label,
+    required this.emoji,
+    required this.description,
+    required this.unit,
+    required this.value,
+  });
+}
+
+final _boards = <_Board>[
+  _Board(
+    label: 'Streak',
+    emoji: '🔥',
+    description: 'Days in a row with a finished log',
+    unit: 'days',
+    value: (p) => p.streak,
+  ),
+  _Board(
+    label: 'Logged',
+    emoji: '📅',
+    description: 'Finished days this month',
+    unit: 'days',
+    value: (p) => p.daysLogged,
+  ),
+  _Board(
+    label: 'On budget',
+    emoji: '💳',
+    description: 'Days this month the card ended in credit',
+    unit: 'days',
+    value: (p) => p.daysOnBudget,
+  ),
+  _Board(
+    label: 'Protein',
+    emoji: '💪',
+    description: 'Protein logged since Monday',
+    unit: 'g',
+    value: (p) => p.proteinThisWeek.round(),
+  ),
+];
 
 class HiscoresPage extends StatefulWidget {
   const HiscoresPage({Key? key}) : super(key: key);
@@ -9,538 +58,370 @@ class HiscoresPage extends StatefulWidget {
   State<HiscoresPage> createState() => _HiscoresPageState();
 }
 
-class _HiscoresPageState extends State<HiscoresPage>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _HiscoresPageState extends State<HiscoresPage> {
+  int _board = 0;
+  Future<List<PlayerStats>>? _future;
+  List<String> _loadedFor = const [];
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+  void _ensureLoaded(String uid, List<String> friendIds) {
+    final sorted = [...friendIds]..sort();
+    final same = sorted.length == _loadedFor.length &&
+        List.generate(sorted.length, (i) => sorted[i] == _loadedFor[i])
+            .every((x) => x);
+    if (_future != null && same) return;
+    _loadedFor = sorted;
+    _future = LeaderboardService.load(myUserId: uid, friendIds: friendIds);
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  Future<Map<String, int>> _getDaysLoggedThisMonth(
-      List<String> friendIds) async {
-    final Map<String, int> leaderboard = {};
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return leaderboard;
-
-    // Include current user
-    final allUserIds = [currentUser.uid, ...friendIds];
-
-    final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1);
-    final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-
-    for (final userId in allUserIds) {
-      // Get user email
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .get();
-      final email = userDoc.data()?['email'] as String? ?? 'Unknown';
-
-      // Count days logged this month (only finished logs)
-      int daysLogged = 0;
-      DateTime checkDate = DateTime(now.year, now.month, now.day);
-
-      while (
-          checkDate.isAfter(startOfMonth.subtract(const Duration(days: 1)))) {
-        final key =
-            '${checkDate.year}-${checkDate.month.toString().padLeft(2, '0')}-${checkDate.day.toString().padLeft(2, '0')}';
-        final docSnapshot = await FirebaseFirestore.instance
-            .collection('daily_logs')
-            .doc('${userId}_$key')
-            .get();
-
-        if (docSnapshot.exists) {
-          final data = docSnapshot.data();
-          final finished = data?['finished'] as bool? ?? false;
-          if (finished) {
-            daysLogged++;
-          }
-        }
-
-        checkDate = checkDate.subtract(const Duration(days: 1));
-        if (daysLogged > 31) break; // Safety limit
-      }
-
-      leaderboard[email] = daysLogged;
-    }
-
-    return leaderboard;
-  }
-
-  Future<Map<String, double>> _getHighestProteinThisWeek(
-      List<String> friendIds) async {
-    final Map<String, double> leaderboard = {};
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return leaderboard;
-
-    // Include current user
-    final allUserIds = [currentUser.uid, ...friendIds];
-
-    final now = DateTime.now();
-    final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-    final startOfWeekDay =
-        DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
-    final endOfWeek = startOfWeekDay.add(const Duration(days: 7));
-
-    for (final userId in allUserIds) {
-      // Get user email
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .get();
-      final email = userDoc.data()?['email'] as String? ?? 'Unknown';
-
-      // Get all food items this week
-      final foodDocs = await FirebaseFirestore.instance
-          .collection('user_food')
-          .where('user_id', isEqualTo: userId)
-          .get();
-
-      double totalProtein = 0;
-      for (final doc in foodDocs.docs) {
-        final data = doc.data();
-        DateTime? docDate;
-
-        final timeAdded = data['time_added'];
-        final createdAt = data['created_at'];
-
-        if (timeAdded is Timestamp) {
-          docDate = timeAdded.toDate();
-        } else if (timeAdded is DateTime) {
-          docDate = timeAdded;
-        } else if (createdAt is Timestamp) {
-          docDate = createdAt.toDate();
-        } else if (createdAt is DateTime) {
-          docDate = createdAt;
-        }
-
-        if (docDate != null &&
-            !docDate.isBefore(startOfWeekDay) &&
-            docDate.isBefore(endOfWeek)) {
-          totalProtein += (data['food_protein'] as num?)?.toDouble() ?? 0;
-        }
-      }
-
-      leaderboard[email] = totalProtein;
-    }
-
-    return leaderboard;
+  Future<void> _refresh(String uid) async {
+    setState(() {
+      _future = LeaderboardService.load(myUserId: uid, friendIds: _loadedFor);
+    });
+    await _future;
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
       return const Scaffold(
         body: Center(child: Text('Please log in to view hiscores')),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.canvas,
       appBar: AppBar(
-        title: const Text(
-          '🏆 Hiscores',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF6366F1),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white.withOpacity(0.6),
-          labelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
+        title: const Text('Hiscores',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _refresh(user.uid),
           ),
-          tabs: const [
-            Tab(
-              icon: Icon(Icons.calendar_month, size: 20),
-              text: 'Days Logged',
-            ),
-            Tab(
-              icon: Icon(Icons.fitness_center, size: 20),
-              text: 'Protein This Week',
-            ),
-          ],
-        ),
+        ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection('users')
-            .doc(currentUser.uid)
+            .doc(user.uid)
             .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
+          final friends = (snapshot.data!.data()?['friends'] as List?)
+                  ?.map((e) => e.toString())
+                  .toList() ??
+              <String>[];
 
-          final userData = snapshot.data!.data() as Map<String, dynamic>?;
-          final List<dynamic> friends = userData?['friends'] ?? [];
-          final List<String> friendIds = friends.cast<String>();
+          if (friends.isEmpty) return const _NoFriends();
 
-          if (friendIds.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.group_off,
-                      size: 80,
-                      color: Colors.grey.shade400,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No Friends Yet',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Add friends to see leaderboards!',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey.shade500,
-                      ),
+          _ensureLoaded(user.uid, friends);
+
+          return FutureBuilder<List<PlayerStats>>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      "Couldn't load hiscores.\n${snap.error}",
                       textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.muted),
                     ),
+                  ),
+                );
+              }
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final board = _boards[_board];
+              final ranked = [...snap.data!]
+                ..sort((a, b) {
+                  final byValue = board.value(b).compareTo(board.value(a));
+                  if (byValue != 0) return byValue;
+                  return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+                });
+
+              return RefreshIndicator(
+                onRefresh: () => _refresh(user.uid),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                  children: [
+                    _BoardPicker(
+                      selected: _board,
+                      onSelected: (i) => setState(() => _board = i),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      board.description,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: AppColors.muted, fontSize: 13),
+                    ),
+                    const SizedBox(height: 18),
+                    _Podium(ranked: ranked, board: board),
+                    const SizedBox(height: 18),
+                    for (var i = 0; i < ranked.length; i++)
+                      _RankRow(
+                        rank: _rankOf(ranked, i, board),
+                        player: ranked[i],
+                        value: board.value(ranked[i]),
+                        unit: board.unit,
+                        leaderValue: board.value(ranked.first),
+                      ),
                   ],
                 ),
-              ),
-            );
-          }
-
-          return TabBarView(
-            controller: _tabController,
-            children: [
-              // Days Logged This Month Tab
-              _buildDaysLoggedLeaderboard(friendIds),
-              // Highest Protein This Week Tab
-              _buildProteinLeaderboard(friendIds),
-            ],
+              );
+            },
           );
         },
       ),
     );
   }
 
-  Widget _buildDaysLoggedLeaderboard(List<String> friendIds) {
-    return FutureBuilder<Map<String, int>>(
-      future: _getDaysLoggedThisMonth(friendIds),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+  /// Equal scores share a rank (1, 2, 2, 4...).
+  int _rankOf(List<PlayerStats> ranked, int index, _Board board) {
+    var i = index;
+    while (i > 0 && board.value(ranked[i - 1]) == board.value(ranked[index])) {
+      i--;
+    }
+    return i + 1;
+  }
+}
 
-        final data = snapshot.data!;
-        final sortedEntries = data.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value));
+class _BoardPicker extends StatelessWidget {
+  final int selected;
+  final ValueChanged<int> onSelected;
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.orange.shade400,
-                  Colors.deepOrange.shade600,
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.orange.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+  const _BoardPicker({required this.selected, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (var i = 0; i < _boards.length; i++)
+          ChoiceChip(
+            label: Text('${_boards[i].emoji}  ${_boards[i].label}'),
+            selected: i == selected,
+            showCheckmark: false,
+            selectedColor: AppColors.primary,
+            labelStyle: TextStyle(
+              color: i == selected ? Colors.white : AppColors.ink,
+              fontWeight: FontWeight.w600,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.calendar_month, color: Colors.white, size: 24),
-                    SizedBox(width: 8),
-                    Text(
-                      'Days Logged This Month',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                ...sortedEntries.map((entry) {
-                  final rank = sortedEntries.indexOf(entry) + 1;
-                  final maxValue = sortedEntries.first.value;
-                  final percentage =
-                      maxValue > 0 ? entry.value / maxValue : 0.0;
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: rank <= 3
-                                    ? Colors.white
-                                    : Colors.white.withOpacity(0.7),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '$rank',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: rank == 1
-                                        ? Colors.amber.shade700
-                                        : rank == 2
-                                            ? Colors.grey.shade700
-                                            : rank == 3
-                                                ? Colors.brown.shade700
-                                                : Colors.grey.shade600,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    entry.key.split('@')[0],
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                          child: LinearProgressIndicator(
-                                            value: percentage,
-                                            backgroundColor:
-                                                Colors.white.withOpacity(0.3),
-                                            valueColor:
-                                                const AlwaysStoppedAnimation<
-                                                    Color>(Colors.white),
-                                            minHeight: 8,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        '${entry.value}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ],
-            ),
+            onSelected: (_) => onSelected(i),
           ),
-        );
-      },
+      ],
     );
   }
+}
 
-  Widget _buildProteinLeaderboard(List<String> friendIds) {
-    return FutureBuilder<Map<String, double>>(
-      future: _getHighestProteinThisWeek(friendIds),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+class _Podium extends StatelessWidget {
+  final List<PlayerStats> ranked;
+  final _Board board;
 
-        final data = snapshot.data!;
-        final sortedEntries = data.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value));
+  const _Podium({required this.ranked, required this.board});
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.red.shade400,
-                  Colors.pink.shade600,
+  @override
+  Widget build(BuildContext context) {
+    // Order on screen: 2nd, 1st, 3rd.
+    final slots = <int>[1, 0, 2].where((i) => i < ranked.length).toList();
+    const heights = {0: 120.0, 1: 92.0, 2: 72.0};
+    const medals = {0: '🥇', 1: '🥈', 2: '🥉'};
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 20, 12, 0),
+      decoration: BoxDecoration(
+        gradient: AppColors.brandGradient,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (final i in slots)
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(medals[i]!, style: const TextStyle(fontSize: 26)),
+                  const SizedBox(height: 4),
+                  CircleAvatar(
+                    radius: i == 0 ? 26 : 21,
+                    backgroundColor: Colors.white,
+                    child: Text(
+                      ranked[i].name.isEmpty
+                          ? '?'
+                          : ranked[i].name[0].toUpperCase(),
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    ranked[i].name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: heights[i],
+                    margin: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: i == 0 ? 0.3 : 0.2),
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(14)),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${board.value(ranked[i])}\n${board.unit}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        height: 1.1,
+                      ),
+                    ),
+                  ),
                 ],
               ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.red.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RankRow extends StatelessWidget {
+  final int rank;
+  final PlayerStats player;
+  final num value;
+  final String unit;
+  final num leaderValue;
+
+  const _RankRow({
+    required this.rank,
+    required this.player,
+    required this.value,
+    required this.unit,
+    required this.leaderValue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final share = leaderValue <= 0 ? 0.0 : value / leaderValue;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: player.isMe
+            ? AppColors.primary.withValues(alpha: 0.08)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: player.isMe ? AppColors.primary : AppColors.border,
+          width: player.isMe ? 1.5 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 28,
+            child: Text(
+              '#$rank',
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: AppColors.muted,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
-                  children: [
-                    Icon(Icons.fitness_center, color: Colors.white, size: 24),
-                    SizedBox(width: 8),
-                    Text(
-                      'Highest Protein This Week',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
+                Text(
+                  player.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
                 ),
-                const SizedBox(height: 16),
-                ...sortedEntries.map((entry) {
-                  final rank = sortedEntries.indexOf(entry) + 1;
-                  final maxValue = sortedEntries.first.value;
-                  final percentage =
-                      maxValue > 0 ? entry.value / maxValue : 0.0;
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: rank <= 3
-                                    ? Colors.white
-                                    : Colors.white.withOpacity(0.7),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '$rank',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: rank == 1
-                                        ? Colors.amber.shade700
-                                        : rank == 2
-                                            ? Colors.grey.shade700
-                                            : rank == 3
-                                                ? Colors.brown.shade700
-                                                : Colors.grey.shade600,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    entry.key.split('@')[0],
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                          child: LinearProgressIndicator(
-                                            value: percentage,
-                                            backgroundColor:
-                                                Colors.white.withOpacity(0.3),
-                                            valueColor:
-                                                const AlwaysStoppedAnimation<
-                                                    Color>(Colors.white),
-                                            minHeight: 8,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        '${entry.value.toStringAsFixed(0)}g',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: share.clamp(0.0, 1.0).toDouble(),
+                    minHeight: 6,
+                    backgroundColor: AppColors.border,
+                    valueColor:
+                        const AlwaysStoppedAnimation(AppColors.primary),
+                  ),
+                ),
               ],
             ),
           ),
-        );
-      },
+          const SizedBox(width: 14),
+          Text(
+            '$value $unit',
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoFriends extends StatelessWidget {
+  const _NoFriends();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.group_off, size: 80, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              'No Friends Yet',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add friends to see leaderboards!',
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

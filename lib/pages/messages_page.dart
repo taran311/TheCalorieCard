@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class MessagesPage extends StatelessWidget {
@@ -550,138 +552,153 @@ class ChatDetailPage extends StatefulWidget {
 class _ChatDetailPageState extends State<ChatDetailPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _inputFocus = FocusNode();
+
+  late final DocumentReference<Map<String, dynamic>> _conversationRef;
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _conversationStream;
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _messagesStream;
+
+  bool _marking = false;
+  bool _sharingCard = false;
+
+  /// Only the most recent messages are loaded; older ones aren't needed to
+  /// chat and loading everything gets slower as a conversation grows.
+  static const _messageLimit = 200;
 
   @override
   void initState() {
     super.initState();
-    _markAsRead();
-    _markMessagesAsDelivered();
+    _conversationRef = FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(widget.conversationId);
+    _conversationStream = _conversationRef.snapshots();
+    _messagesStream = _conversationRef
+        .collection('messages')
+        .orderBy('timestamp', descending: true)
+        .limit(_messageLimit)
+        .snapshots();
+    _resetUnreadCount();
   }
 
-  Future<void> _markMessagesAsDelivered() async {
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUserId == null) return;
-
+  Future<void> _resetUnreadCount() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
     try {
-      final messagesSnapshot = await FirebaseFirestore.instance
-          .collection('conversations')
-          .doc(widget.conversationId)
-          .collection('messages')
-          .where('sender_id', isNotEqualTo: currentUserId)
-          .where('status', isEqualTo: 'sent')
-          .get();
+      await _conversationRef.update({'unread_count.$uid': 0});
+    } catch (_) {}
+  }
 
-      for (final doc in messagesSnapshot.docs) {
-        if (widget.isGroup) {
-          await doc.reference.update({
-            'delivered_to': FieldValue.arrayUnion([currentUserId]),
-          });
-        } else {
-          await doc.reference.update({'status': 'delivered'});
-        }
+  /// Marks incoming messages as read, in a single batched write, and only
+  /// for messages that aren't already marked.
+  Future<void> _markIncomingRead(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _marking) return;
+
+    final batch = FirebaseFirestore.instance.batch();
+    var count = 0;
+    for (final doc in docs) {
+      final data = doc.data();
+      if (data['sender_id'] == uid) continue;
+      if (widget.isGroup) {
+        final readBy = (data['read_by'] as List?) ?? const [];
+        if (readBy.contains(uid)) continue;
+        batch.update(doc.reference, {
+          'read_by': FieldValue.arrayUnion([uid]),
+          'delivered_to': FieldValue.arrayUnion([uid]),
+        });
+      } else {
+        if (data['status'] == 'read') continue;
+        batch.update(doc.reference, {'status': 'read'});
       }
-    } catch (e) {
-      // Error marking as delivered
+      if (++count >= 450) break; // Firestore batch limit is 500.
+    }
+    if (count == 0) return;
+
+    batch.update(_conversationRef, {'unread_count.$uid': 0});
+    _marking = true;
+    try {
+      await batch.commit();
+    } catch (_) {
+      // Not critical; we'll try again on the next update.
+    } finally {
+      _marking = false;
     }
   }
 
-  Future<void> _markAsRead() async {
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUserId == null) return;
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('conversations')
-          .doc(widget.conversationId)
-          .update({
-        'unread_count.$currentUserId': 0,
-      });
-
-      // Mark all messages as read
-      final messagesSnapshot = await FirebaseFirestore.instance
-          .collection('conversations')
-          .doc(widget.conversationId)
-          .collection('messages')
-          .where('sender_id', isNotEqualTo: currentUserId)
-          .get();
-
-      for (final doc in messagesSnapshot.docs) {
-        if (widget.isGroup) {
-          await doc.reference.update({
-            'read_by': FieldValue.arrayUnion([currentUserId]),
-          });
-        } else {
-          await doc.reference.update({'status': 'read'});
-        }
+  bool _hasUnreadIncoming(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, String? uid) {
+    for (final doc in docs) {
+      final data = doc.data();
+      if (data['sender_id'] == uid) continue;
+      if (widget.isGroup) {
+        final readBy = (data['read_by'] as List?) ?? const [];
+        if (!readBy.contains(uid)) return true;
+      } else if (data['status'] != 'read') {
+        return true;
       }
-    } catch (e) {
-      // Error marking as read
     }
+    return false;
   }
 
-  Future<void> _sendMessage() async {
-    final messageText = _messageController.text.trim();
+  Future<void> _sendMessage({
+    String? overrideText,
+    Map<String, dynamic>? card,
+  }) async {
+    final messageText = (overrideText ?? _messageController.text).trim();
     if (messageText.isEmpty) return;
 
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
-    final currentUserEmail = currentUser.email ?? 'Unknown';
-    final username = currentUserEmail.split('@')[0];
+    final username = (currentUser.email ?? 'Unknown').split('@')[0];
 
-    _messageController.clear();
+    if (overrideText == null) {
+      _messageController.clear();
+      // On desktop browsers the Enter key can land after we clear; tidy up.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_messageController.text.trim().isEmpty) {
+          _messageController.clear();
+        }
+      });
+    }
 
     try {
-      // Get participant_ids first
-      final conversationDoc = await FirebaseFirestore.instance
-          .collection('conversations')
-          .doc(widget.conversationId)
-          .get();
-
+      final conversationDoc = await _conversationRef.get();
       final participantIds =
           List<String>.from(conversationDoc.data()?['participant_ids'] ?? []);
 
-      // Add message to messages subcollection
-      final messageData = {
+      final messageData = <String, dynamic>{
         'sender_id': currentUser.uid,
         'sender_name': username,
         'message': messageText,
         'timestamp': FieldValue.serverTimestamp(),
         'status': 'sent',
+        if (card != null) 'type': 'card',
+        if (card != null) 'card': card,
       };
-
       if (widget.isGroup) {
         messageData['delivered_to'] = [];
         messageData['read_by'] = [];
       }
 
-      final messageRef = await FirebaseFirestore.instance
-          .collection('conversations')
-          .doc(widget.conversationId)
-          .collection('messages')
-          .add(messageData);
+      final unreadCountUpdate = <String, dynamic>{
+        for (final id in participantIds)
+          if (id != currentUser.uid)
+            'unread_count.$id': FieldValue.increment(1),
+      };
 
-      // Build unread count map (increment for all except sender)
-      Map<String, dynamic> unreadCountUpdate = {};
-      for (final participantId in participantIds) {
-        if (participantId != currentUser.uid) {
-          unreadCountUpdate['unread_count.$participantId'] =
-              FieldValue.increment(1);
-        }
-      }
-
-      // Update conversation with last message info
-      await FirebaseFirestore.instance
-          .collection('conversations')
-          .doc(widget.conversationId)
-          .update({
+      // Message + conversation preview are written together.
+      final batch = FirebaseFirestore.instance.batch();
+      batch.set(_conversationRef.collection('messages').doc(), messageData);
+      batch.update(_conversationRef, {
         'last_message': messageText,
         'last_message_time': FieldValue.serverTimestamp(),
         'last_sender_id': currentUser.uid,
         ...unreadCountUpdate,
       });
+      await batch.commit();
 
-      // Scroll to bottom
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           0,
@@ -698,26 +715,88 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
   }
 
+  /// Posts today's card balance into the chat.
+  Future<void> _shareCard() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _sharingCard) return;
+    setState(() => _sharingCard = true);
+    try {
+      final doc = await BalanceService.userDataDoc(uid);
+      final data = doc?.data();
+      if (data == null) return;
+      double n(dynamic v) => v is num ? v.toDouble() : 0;
+      final card = <String, dynamic>{
+        'calories_left': n(data['calories']).round(),
+        'calorie_goal': (BalanceService.calorieGoalFrom(data) ?? 0).round(),
+        'protein_left': n(data['protein_balance']).round(),
+        'carbs_left': n(data['carbs_balance']).round(),
+        'fat_left': n(data['fats_balance']).round(),
+      };
+      final kcal = card['calories_left'] as int;
+      final text = kcal >= 0
+          ? '💳 My card: $kcal kcal left today · P ${card['protein_left']}g · C ${card['carbs_left']}g · F ${card['fat_left']}g'
+          : '💳 My card: ${-kcal} kcal over today';
+      await _sendMessage(overrideText: text, card: card);
+    } finally {
+      if (mounted) setState(() => _sharingCard = false);
+    }
+  }
+
+  KeyEventResult _onInputKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        (event.logicalKey == LogicalKeyboardKey.enter ||
+            event.logicalKey == LogicalKeyboardKey.numpadEnter) &&
+        !HardwareKeyboard.instance.isShiftPressed) {
+      _sendMessage();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _inputFocus.dispose();
     super.dispose();
   }
+
+  static bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  static String _dayLabel(DateTime d) {
+    final now = DateTime.now();
+    if (_sameDay(d, now)) return 'Today';
+    if (_sameDay(d, now.subtract(const Duration(days: 1)))) return 'Yesterday';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${d.day} ${months[d.month - 1]} ${d.year}';
+  }
+
+  static String _clock(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF3F4F8),
       appBar: AppBar(
         title: Row(
           children: [
-            Icon(
-              widget.isGroup ? Icons.group : Icons.person,
-              size: 20,
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.white.withValues(alpha: 0.25),
+              child: Icon(
+                widget.isGroup ? Icons.group : Icons.person,
+                size: 18,
+                color: Colors.white,
+              ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 widget.conversationName,
@@ -730,128 +809,90 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       body: Column(
         children: [
           Expanded(
-            child: StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('conversations')
-                  .doc(widget.conversationId)
-                  .snapshots(),
+            child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: _conversationStream,
               builder: (context, conversationSnapshot) {
-                if (!conversationSnapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final conversationData =
-                    conversationSnapshot.data!.data() as Map<String, dynamic>?;
                 final participantIds = List<String>.from(
-                    conversationData?['participant_ids'] ?? []);
+                    conversationSnapshot.data?.data()?['participant_ids'] ??
+                        []);
 
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('conversations')
-                      .doc(widget.conversationId)
-                      .collection('messages')
-                      .orderBy('timestamp', descending: true)
-                      .snapshots(),
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: _messagesStream,
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
+                    if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
+                    final docs = snapshot.data!.docs;
 
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    if (docs.isEmpty) {
                       return Center(
                         child: Text(
                           'No messages yet. Say hi! 👋',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                          ),
+                          style: TextStyle(color: Colors.grey.shade600),
                         ),
                       );
                     }
 
-                    return ListView.builder(
-                      controller: _scrollController,
-                      reverse: true,
-                      padding: const EdgeInsets.all(16),
-                      itemCount: snapshot.data!.docs.length,
-                      itemBuilder: (context, index) {
-                        final message = snapshot.data!.docs[index];
-                        final data = message.data() as Map<String, dynamic>;
+                    if (_hasUnreadIncoming(docs, currentUserId)) {
+                      WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => _markIncomingRead(docs));
+                    }
 
-                        final senderId = data['sender_id'];
-                        final senderName = data['sender_name'] ?? 'Unknown';
-                        final messageText = data['message'] ?? '';
-                        final timestamp = data['timestamp'] as Timestamp?;
-                        final status = data['status'] ?? 'sent';
-                        final deliveredTo =
-                            data['delivered_to'] as List<dynamic>? ?? [];
-                        final readBy = data['read_by'] as List<dynamic>? ?? [];
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final maxBubble = constraints.maxWidth * 0.72;
+                        return ListView.builder(
+                          controller: _scrollController,
+                          reverse: true,
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                          itemCount: docs.length,
+                          itemBuilder: (context, index) {
+                            final data = docs[index].data();
+                            final senderId = data['sender_id'];
+                            final isMe = senderId == currentUserId;
+                            final time =
+                                (data['timestamp'] as Timestamp?)?.toDate() ??
+                                    DateTime.now();
 
-                        final isMe = senderId == currentUserId;
+                            // The list is newest-first and drawn bottom-up,
+                            // so index + 1 is the message *above* this one.
+                            final older = index + 1 < docs.length
+                                ? docs[index + 1].data()
+                                : null;
+                            final olderTime =
+                                (older?['timestamp'] as Timestamp?)?.toDate();
+                            final newDay = olderTime == null ||
+                                !_sameDay(olderTime, time);
+                            final continued = olderTime != null &&
+                                !newDay &&
+                                older?['sender_id'] == senderId &&
+                                time.difference(olderTime).inMinutes < 5;
 
-                        return Align(
-                          alignment: isMe
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            constraints: BoxConstraints(
-                              maxWidth: MediaQuery.of(context).size.width * 0.7,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isMe
-                                  ? const Color(0xFF6366F1)
-                                  : Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            return Column(
                               children: [
-                                if (widget.isGroup && !isMe)
-                                  Text(
-                                    senderName,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: isMe
-                                          ? Colors.white70
-                                          : Colors.grey.shade700,
-                                    ),
-                                  ),
-                                Text(
-                                  messageText,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: isMe ? Colors.white : Colors.black87,
-                                  ),
-                                ),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (timestamp != null)
-                                      Text(
-                                        timeago.format(timestamp.toDate()),
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: isMe
-                                              ? Colors.white70
-                                              : Colors.grey.shade600,
-                                        ),
-                                      ),
-                                    if (isMe)
-                                      ..._buildMessageStatus(
-                                          status,
-                                          deliveredTo,
-                                          readBy,
-                                          participantIds.length),
-                                  ],
+                                if (newDay) _DaySeparator(label: _dayLabel(time)),
+                                _MessageBubble(
+                                  data: data,
+                                  isMe: isMe,
+                                  isGroup: widget.isGroup,
+                                  continued: continued,
+                                  maxWidth: maxBubble,
+                                  timeLabel: _clock(time),
+                                  status: isMe
+                                      ? _buildMessageStatus(
+                                          (data['status'] ?? 'sent')
+                                              .toString(),
+                                          (data['delivered_to'] as List?) ??
+                                              const [],
+                                          (data['read_by'] as List?) ??
+                                              const [],
+                                          participantIds.length,
+                                        )
+                                      : const [],
                                 ),
                               ],
-                            ),
-                          ),
+                            );
+                          },
                         );
                       },
                     );
@@ -860,46 +901,73 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
               },
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  IconButton(
+                    tooltip: 'Share my card',
+                    onPressed: _sharingCard ? null : _shareCard,
+                    icon: _sharingCard
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.credit_card),
+                    color: const Color(0xFF6366F1),
+                  ),
+                  Expanded(
+                    child: Focus(
+                      onKeyEvent: _onInputKey,
+                      child: TextField(
+                        controller: _messageController,
+                        focusNode: _inputFocus,
+                        minLines: 1,
+                        maxLines: 5,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendMessage(),
+                        decoration: InputDecoration(
+                          hintText: 'Message',
+                          filled: true,
+                          fillColor: const Color(0xFFF3F4F6),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                        ),
                       ),
                     ),
-                    maxLines: null,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: _sendMessage,
-                  icon: const Icon(Icons.send),
-                  color: const Color(0xFF6366F1),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _messageController,
+                    builder: (context, value, _) {
+                      final canSend = value.text.trim().isNotEmpty;
+                      return IconButton.filled(
+                        tooltip: 'Send',
+                        onPressed: canSend ? () => _sendMessage() : null,
+                        icon: const Icon(Icons.send_rounded, size: 20),
+                        style: IconButton.styleFrom(
+                          backgroundColor: const Color(0xFF6366F1),
+                          foregroundColor: Colors.white,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -982,5 +1050,210 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         ];
       }
     }
+  }
+}
+
+class _DaySeparator extends StatelessWidget {
+  final String label;
+
+  const _DaySeparator({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final bool isMe;
+  final bool isGroup;
+  final bool continued;
+  final double maxWidth;
+  final String timeLabel;
+  final List<Widget> status;
+
+  const _MessageBubble({
+    required this.data,
+    required this.isMe,
+    required this.isGroup,
+    required this.continued,
+    required this.maxWidth,
+    required this.timeLabel,
+    required this.status,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isCard = data['type'] == 'card' && data['card'] is Map;
+    final radius = Radius.circular(18);
+    final tight = Radius.circular(continued ? 18 : 6);
+
+    final meta = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          timeLabel,
+          style: TextStyle(
+            fontSize: 10,
+            color: isMe ? Colors.white70 : Colors.grey.shade600,
+          ),
+        ),
+        ...status,
+      ],
+    );
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: EdgeInsets.only(top: continued ? 2 : 8),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        decoration: BoxDecoration(
+          color: isMe ? const Color(0xFF6366F1) : Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: radius,
+            topRight: radius,
+            bottomLeft: isMe ? radius : tight,
+            bottomRight: isMe ? tight : radius,
+          ),
+          border: isMe ? null : Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isGroup && !isMe && !continued)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    (data['sender_name'] ?? 'Unknown').toString(),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6366F1),
+                    ),
+                  ),
+                ),
+              ),
+            if (isCard)
+              _SharedCard(card: Map<String, dynamic>.from(data['card'] as Map))
+            else
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  (data['message'] ?? '').toString(),
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.3,
+                    color: isMe ? Colors.white : const Color(0xFF111827),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 2),
+            meta,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A calorie card shared into a chat.
+class _SharedCard extends StatelessWidget {
+  final Map<String, dynamic> card;
+
+  const _SharedCard({required this.card});
+
+  @override
+  Widget build(BuildContext context) {
+    int n(String k) => (card[k] is num) ? (card[k] as num).round() : 0;
+    final left = n('calories_left');
+    final goal = n('calorie_goal');
+    final over = left < 0;
+    final spent = goal - left;
+    final progress = goal <= 0 ? 0.0 : (spent / goal).clamp(0.0, 1.0);
+
+    return Container(
+      width: 230,
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1F2937), Color(0xFF111827)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.credit_card, color: Colors.white70, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                over ? 'OVER BUDGET' : 'BALANCE TODAY',
+                style: TextStyle(
+                  color: over ? const Color(0xFFFCA5A5) : Colors.white70,
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${left.abs()} kcal',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress.toDouble(),
+              minHeight: 5,
+              backgroundColor: Colors.white12,
+              valueColor: AlwaysStoppedAnimation(
+                over ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'P ${n('protein_left')}g   C ${n('carbs_left')}g   F ${n('fat_left')}g left',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ],
+      ),
+    );
   }
 }

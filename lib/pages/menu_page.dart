@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:namer_app/pages/login_or_register_page.dart';
+import 'package:namer_app/pages/auth_page.dart';
+import 'package:namer_app/pages/hiscores_page.dart';
+import 'package:namer_app/pages/statement_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/recipes_page.dart';
@@ -11,17 +13,25 @@ import 'package:namer_app/pages/achievements_page.dart';
 class MenuPage extends StatelessWidget {
   final bool hideNav;
 
-  const MenuPage({Key? key, this.hideNav = false}) : super(key: key);
+  /// Opened from the menu; provided by the app shell.
+  final VoidCallback? onOpenStatement;
+  final VoidCallback? onOpenHiscores;
+
+  const MenuPage({
+    Key? key,
+    this.hideNav = false,
+    this.onOpenStatement,
+    this.onOpenHiscores,
+  }) : super(key: key);
 
   Future<void> _logout(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
       if (context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const LoginOrRegisterPage(),
-          ),
+        // Reset the whole app (not just this tab) back to the sign-in flow.
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const AuthPage()),
+          (route) => false,
         );
       }
     } catch (e) {
@@ -267,6 +277,46 @@ class MenuPage extends StatelessWidget {
                             ),
                           );
                         },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  // Statement
+                  _buildMenuCard(
+                    icon: Icons.receipt_long,
+                    iconColor: const Color(0xFF0EA5E9),
+                    title: 'Statement',
+                    subtitle: 'Your spending, day by day',
+                    onTap: () async {
+                      if (onOpenStatement != null) {
+                        onOpenStatement!();
+                        return;
+                      }
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const StatementPage(),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  // Hiscores
+                  _buildMenuCard(
+                    icon: Icons.leaderboard,
+                    iconColor: const Color(0xFFEC4899),
+                    title: 'Hiscores',
+                    subtitle: 'See how you rank against friends',
+                    onTap: () async {
+                      if (onOpenHiscores != null) {
+                        onOpenHiscores!();
+                        return;
+                      }
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HiscoresPage(),
+                        ),
                       );
                     },
                   ),
