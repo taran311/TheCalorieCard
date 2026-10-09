@@ -73,6 +73,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
   @override
   void initState() {
     super.initState();
+    // Wake the lookup server early (it sleeps when idle).
+    ProxyClient.warmUp();
     _ageFocusNode = FocusNode();
     _heightFocusNode = FocusNode();
     _weightFocusNode = FocusNode();

@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/calorie_sense.dart';
+import 'package:namer_app/services/card_design_service.dart';
 
 /// Everything the hiscores need for one person.
 class PlayerStats {
@@ -19,6 +21,11 @@ class PlayerStats {
   /// Protein logged since Monday, in grams.
   final double proteinThisWeek;
 
+  /// Average "guess the price" score this month (0-100), and how many
+  /// guesses it's based on.
+  final double calorieSense;
+  final int senseGuesses;
+
   const PlayerStats({
     required this.userId,
     required this.name,
@@ -27,6 +34,8 @@ class PlayerStats {
     required this.daysOnBudget,
     required this.streak,
     required this.proteinThisWeek,
+    this.calorieSense = 0,
+    this.senseGuesses = 0,
   });
 }
 
@@ -53,6 +62,10 @@ class LeaderboardService {
     final ids = <String>{myUserId, ...friendIds}.toList();
     return Future.wait(ids.map((id) => _loadOne(id, id == myUserId)));
   }
+
+  /// Recomputes your own stats, which also records your best streak (it
+  /// unlocks card designs). Called when you finish a day.
+  static Future<void> refreshMine(String uid) => _loadOne(uid, true);
 
   static Future<PlayerStats> _loadOne(String userId, bool isMe) async {
     final now = BalanceService.now();
@@ -128,6 +141,12 @@ class LeaderboardService {
       // Leave protein at 0 if this friend's food can't be read.
     }
 
+    if (isMe) {
+      // Longest streak unlocks card designs; not worth failing hiscores over.
+      CardDesignService.recordStreak(userId, streak).catchError((_) {});
+    }
+    final sense = CalorieSense.thisMonth(userDoc.data());
+
     return PlayerStats(
       userId: userId,
       name: isMe
@@ -138,6 +157,8 @@ class LeaderboardService {
       daysOnBudget: daysOnBudget,
       streak: streak,
       proteinThisWeek: protein,
+      calorieSense: sense.average,
+      senseGuesses: sense.count,
     );
   }
 }

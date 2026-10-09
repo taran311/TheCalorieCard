@@ -22,12 +22,13 @@ String formatKcal(double v) {
 }
 
 String formatDayHeading(DateTime day) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+  final now = BalanceService.now();
   final d = DateTime(day.year, day.month, day.day);
-  final diff = today.difference(d).inDays;
-  if (diff == 0) return 'Today';
-  if (diff == 1) return 'Yesterday';
+  // Compare calendar dates (not hours), so clock changes can't mislabel.
+  if (BalanceService.sameDay(d, now)) return 'Today';
+  if (BalanceService.sameDay(d, BalanceService.addDays(now, -1))) {
+    return 'Yesterday';
+  }
   return '${_weekdayShort[d.weekday - 1]} ${d.day} ${_monthShort[d.month - 1]}';
 }
 
@@ -269,7 +270,7 @@ class WeeklySpendChart extends StatelessWidget {
         .fold<double>(0, (m, d) => d.calories > m ? d.calories : m);
     final top = [budget * 1.15, maxDay * 1.05, 1.0]
         .reduce((a, b) => a > b ? a : b);
-    final todayKey = BalanceService.dateKey(DateTime.now());
+    final todayKey = BalanceService.dateKey(BalanceService.now());
     final dense = statement.days.length > 14;
     final gap = dense ? 1.5 : 5.0;
 

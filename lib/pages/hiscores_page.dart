@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/pages/challenges_page.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -49,6 +50,15 @@ final _boards = <_Board>[
     unit: 'g',
     value: (p) => p.proteinThisWeek.round(),
   ),
+  _Board(
+    label: 'Calorie Sense',
+    emoji: '🎯',
+    description: 'How well you guess calories this month. Counts after '
+        '5 guesses (guess while food is looking up)',
+    unit: '%',
+    // One lucky guess shouldn't top the board: you need a few first.
+    value: (p) => p.senseGuesses >= 5 ? p.calorieSense.round() : 0,
+  ),
 ];
 
 class HiscoresPage extends StatefulWidget {
@@ -95,6 +105,14 @@ class _HiscoresPageState extends State<HiscoresPage> {
         title: const Text('Hiscores',
             style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
+          IconButton(
+            tooltip: 'Challenges',
+            icon: const Icon(Icons.emoji_events_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ChallengesPage()),
+            ),
+          ),
           IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),

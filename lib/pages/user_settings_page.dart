@@ -10,6 +10,8 @@ import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/ui/calorie_card.dart';
+import 'package:namer_app/services/card_design_service.dart';
 import 'dart:convert';
 
 class UserSettingsPage extends StatefulWidget {
@@ -27,9 +29,21 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   AnimationController? _jiggleAnimationController;
   Animation<double>? _jiggleAnimation;
 
+  CardDesign _cardDesign = CardDesign.midnight;
+
   @override
   void initState() {
     super.initState();
+    // Wake the lookup server early (it sleeps when idle).
+    ProxyClient.warmUp();
+
+    // Show the preview card in your chosen finish.
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      CardDesignService.watch(uid).first.then((d) {
+        if (mounted) setState(() => _cardDesign = d);
+      }, onError: (_) {});
+    }
 
     _jiggleAnimationController = AnimationController(
       vsync: this,
@@ -782,6 +796,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 );
               },
               child: CreditCard(
+                design: _cardDesign,
                 key: ValueKey(
                     '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
                 initialCalories: cardActiveCalories ?? 0,
@@ -1258,6 +1273,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 );
               },
               child: CreditCard(
+                design: _cardDesign,
                 key: ValueKey(
                     '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
                 initialCalories: cardActiveCalories ?? 0,

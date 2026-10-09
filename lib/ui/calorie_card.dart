@@ -19,6 +19,67 @@ class CalorieCardColors {
   static const fat = Color(0xFF38BDF8);
 }
 
+/// A card finish. Midnight is everyone's; the others are unlocked by
+/// achievements and show on your card when friends look at it too.
+/// All are dark enough for the white text and pills to stay readable.
+class CardDesign {
+  final String id;
+  final String name;
+  final Color top;
+  final Color bottom;
+  final Color chip;
+
+  /// How to unlock it, shown in the picker.
+  final String requirement;
+
+  const CardDesign({
+    required this.id,
+    required this.name,
+    required this.top,
+    required this.bottom,
+    required this.chip,
+    required this.requirement,
+  });
+
+  static const midnight = CardDesign(
+    id: 'midnight',
+    name: 'Midnight',
+    top: CalorieCardColors.top,
+    bottom: CalorieCardColors.bottom,
+    chip: CalorieCardColors.chip,
+    requirement: 'Everyone has this one',
+  );
+  static const emerald = CardDesign(
+    id: 'emerald',
+    name: 'Emerald',
+    top: Color(0xFF047857),
+    bottom: Color(0xFF022C22),
+    chip: Color(0xFFFBBF24),
+    requirement: 'Reach a 7-day streak',
+  );
+  static const sunset = CardDesign(
+    id: 'sunset',
+    name: 'Sunset',
+    top: Color(0xFFB45309),
+    bottom: Color(0xFF4C0519),
+    chip: Color(0xFFFDE68A),
+    requirement: 'Calorie Sense 75%+ over 10 guesses in a month',
+  );
+  static const metal = CardDesign(
+    id: 'metal',
+    name: 'Metal',
+    top: Color(0xFF6B7280),
+    bottom: Color(0xFF111827),
+    chip: Color(0xFFE5E7EB),
+    requirement: 'Reach a 30-day streak',
+  );
+
+  static const all = [midnight, emerald, sunset, metal];
+
+  static CardDesign byId(dynamic id) =>
+      all.firstWhere((d) => d.id == id, orElse: () => midnight);
+}
+
 /// Turns "sam.jones@gmail.com" into "Sam Jones" for the card.
 String cardholderFromEmail(String email) {
   final local = email.split('@').first.trim();
@@ -42,11 +103,16 @@ String formatCardKcal(num value) {
   return b.toString();
 }
 
-/// The rounded, dark-indigo body of the card.
+/// The rounded, dark body of the card.
 class CalorieCardShell extends StatelessWidget {
   final Widget child;
+  final CardDesign design;
 
-  const CalorieCardShell({super.key, required this.child});
+  const CalorieCardShell({
+    super.key,
+    required this.child,
+    this.design = CardDesign.midnight,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -54,14 +120,14 @@ class CalorieCardShell extends StatelessWidget {
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [CalorieCardColors.top, CalorieCardColors.bottom],
+          colors: [design.top, design.bottom],
         ),
         boxShadow: [
           BoxShadow(
-            color: CalorieCardColors.bottom.withValues(alpha: 0.35),
+            color: design.bottom.withValues(alpha: 0.35),
             blurRadius: 28,
             offset: const Offset(0, 14),
           ),
@@ -95,6 +161,8 @@ class CalorieCardFront extends StatelessWidget {
   /// Bottom-right "valid thru" value, e.g. 09/10 for the day shown.
   final String? validThru;
 
+  final CardDesign design;
+
   const CalorieCardFront({
     super.key,
     required this.amount,
@@ -102,6 +170,7 @@ class CalorieCardFront extends StatelessWidget {
     this.macros = const [],
     this.holder,
     this.validThru,
+    this.design = CardDesign.midnight,
   });
 
   @override
@@ -110,6 +179,7 @@ class CalorieCardFront extends StatelessWidget {
     final name = (holder ?? '').trim().toUpperCase();
 
     return CalorieCardShell(
+      design: design,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -130,7 +200,7 @@ class CalorieCardFront extends StatelessWidget {
                 width: 38,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: CalorieCardColors.chip,
+                  color: design.chip,
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
@@ -277,12 +347,19 @@ class CardMacro {
 class CalorieCardBack extends StatelessWidget {
   final List<CardMacro> macros;
   final String? footnote;
+  final CardDesign design;
 
-  const CalorieCardBack({super.key, required this.macros, this.footnote});
+  const CalorieCardBack({
+    super.key,
+    required this.macros,
+    this.footnote,
+    this.design = CardDesign.midnight,
+  });
 
   @override
   Widget build(BuildContext context) {
     return CalorieCardShell(
+      design: design,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -389,7 +466,9 @@ class _MacroLine extends StatelessWidget {
 
 /// Placeholder while the balance loads, the same size as the real card.
 class CalorieCardSkeleton extends StatelessWidget {
-  const CalorieCardSkeleton({super.key});
+  final CardDesign design;
+
+  const CalorieCardSkeleton({super.key, this.design = CardDesign.midnight});
 
   @override
   Widget build(BuildContext context) {
@@ -402,6 +481,7 @@ class CalorieCardSkeleton extends StatelessWidget {
           ),
         );
     return CalorieCardShell(
+      design: design,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

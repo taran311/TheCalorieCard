@@ -25,6 +25,9 @@ class CreditCard extends StatefulWidget {
   final String? userIdOverride;
   final String? cardUserNameOverride;
 
+  /// Card finish (from the owner's `users.card_design`).
+  final CardDesign design;
+
   const CreditCard({
     super.key,
     this.initialCalories,
@@ -37,6 +40,7 @@ class CreditCard extends StatefulWidget {
     this.validThruDate,
     this.userIdOverride,
     this.cardUserNameOverride,
+    this.design = CardDesign.midnight,
   });
 
   @override
@@ -214,7 +218,7 @@ class _CreditCardWidgetState extends State<CreditCard>
         Widget sized(Widget child) =>
             SizedBox(width: width, height: height, child: child);
 
-        if (_loading) return sized(const CalorieCardSkeleton());
+        if (_loading) return sized(CalorieCardSkeleton(design: widget.design));
 
         final macros = [
           CardMacro(
@@ -241,8 +245,13 @@ class _CreditCardWidgetState extends State<CreditCard>
           macros: macros,
           holder: holder,
           validThru: _validThru(),
+          design: widget.design,
         );
-        final back = CalorieCardBack(footnote: _shortDate(), macros: macros);
+        final back = CalorieCardBack(
+          footnote: _shortDate(),
+          macros: macros,
+          design: widget.design,
+        );
 
         return Semantics(
           button: true,

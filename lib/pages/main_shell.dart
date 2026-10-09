@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/friends_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
@@ -78,6 +79,8 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
+    // Wake the lookup server early (it sleeps when idle).
+    ProxyClient.warmUp();
     _current = switch (widget.initialIndex) {
       0 => ShellTab.profile,
       2 => ShellTab.recipes,

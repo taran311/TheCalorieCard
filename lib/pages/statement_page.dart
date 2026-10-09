@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
@@ -61,6 +62,11 @@ class _StatementPageState extends State<StatementPage> {
                           statement: statement,
                           height: 150,
                         ),
+                      ),
+                      const SizedBox(height: 16),
+                      PanelCard(
+                        title: 'Where it went',
+                        child: _WhereItWent(statement: statement),
                       ),
                       const SizedBox(height: 16),
                       ..._buildDays(statement),
@@ -228,6 +234,87 @@ class _Stat extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Spending categories, like a banking app's "where your money went".
+class _WhereItWent extends StatelessWidget {
+  final Statement statement;
+
+  const _WhereItWent({required this.statement});
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = SpendInsights.breakdown([
+      for (final tx in statement.recent)
+        (description: tx.description, isRecipe: false, calories: tx.calories)
+    ]);
+    if (rows.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Text('Log some food to see where your calories go.',
+            style: TextStyle(color: AppColors.muted)),
+      );
+    }
+    return Column(
+      children: [
+        for (final r in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: r.category.color.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(r.category.icon,
+                      size: 18, color: r.category.color),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(r.category.label,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                          Text('${formatKcal(r.calories)} kcal',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: r.share.clamp(0.0, 1.0).toDouble(),
+                          minHeight: 6,
+                          backgroundColor: AppColors.border,
+                          valueColor:
+                              AlwaysStoppedAnimation(r.category.color),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${(r.share * 100).round()}% · ${r.count} item${r.count == 1 ? '' : 's'}',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

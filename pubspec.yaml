@@ -18,6 +18,9 @@ dependencies:
   cloud_firestore: ^5.4.1
   http: ^1.2.2
   timeago: ^3.6.1
+  # Contactless logging: barcode scanning and meal photos.
+  mobile_scanner: ^5.2.3
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

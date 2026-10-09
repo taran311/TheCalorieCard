@@ -9,6 +9,10 @@ import 'package:namer_app/pages/statement_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/pages/friends_page.dart';
 import 'package:namer_app/pages/achievements_page.dart';
+import 'package:namer_app/pages/card_design_page.dart';
+import 'package:namer_app/pages/direct_debits_page.dart';
+import 'package:namer_app/pages/pots_page.dart';
+import 'package:namer_app/pages/wrapped_page.dart';
 
 class MenuPage extends StatelessWidget {
   /// Opened from the menu; provided by the app shell.
@@ -332,6 +336,50 @@ class MenuPage extends StatelessWidget {
                         ),
                       );
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMenuCard(
+                    icon: Icons.auto_graph,
+                    iconColor: AppColors.violet600,
+                    title: 'Monthly Wrapped',
+                    subtitle: 'Your month in review, ready to share',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const WrappedPage()),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMenuCard(
+                    icon: Icons.credit_card,
+                    iconColor: AppColors.indigo700,
+                    title: 'Card design',
+                    subtitle: 'Unlock new finishes with streaks',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const CardDesignPage()),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMenuCard(
+                    icon: Icons.autorenew,
+                    iconColor: AppColors.sky,
+                    title: 'Direct debits',
+                    subtitle: 'Foods you have every day',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const DirectDebitsPage()),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMenuCard(
+                    icon: Icons.savings_outlined,
+                    iconColor: AppColors.emerald600,
+                    title: 'Pots',
+                    subtitle: 'Save a little each day for a treat',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const PotsPage()),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   // Logout

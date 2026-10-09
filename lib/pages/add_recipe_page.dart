@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/balance_service.dart';
@@ -78,6 +79,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
   @override
   void initState() {
     super.initState();
+    // Wake the lookup server early (it sleeps when idle).
+    ProxyClient.warmUp();
     _ingredientPortionController = TextEditingController();
     if (widget.recipeId != null) {
       _loadRecipeForEdit(widget.recipeId!);

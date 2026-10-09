@@ -317,10 +317,11 @@ class BalanceService {
     );
   }
 
-  static Map<String, dynamic> _balanceFields(Macros goals, Macros eaten) {
+  static Map<String, dynamic> _balanceFields(Macros goals, Macros eaten,
+      {double potTopUp = 0}) {
     final left = goals - eaten;
     return {
-      'calories': left.calories,
+      'calories': left.calories + potTopUp,
       'protein_balance': left.protein,
       'carbs_balance': left.carbs,
       'fats_balance': left.fat,
@@ -345,16 +346,123 @@ class BalanceService {
     if (goals == null) return false; // Nothing sensible to reset to.
 
     final eaten = await todaysTotals(userId);
+    final today = dateKey(now());
+    final isNewDay = data['balance_date'] != today;
+    final pot = isNewDay ? await _potAfterDay(userId, data) : null;
+
     // Re-check inside a transaction: if another write (another device, or
     // a second tap) already started today's balance, leave it alone rather
     // than overwrite charges made since.
     return _db.runTransaction<bool>((tx) async {
       final fresh = await tx.get(doc.reference);
-      if (!force && fresh.data()?['balance_date'] == dateKey(now())) {
+      if (!force && fresh.data()?['balance_date'] == today) {
         return false;
       }
-      tx.update(doc.reference, _balanceFields(goals, eaten));
+      tx.update(doc.reference, {
+        ..._balanceFields(goals, eaten,
+            potTopUp: isNewDay ? 0 : _potSpentToday(data)),
+        if (pot != null) ...pot,
+      });
       return true;
+    });
+  }
+
+  // -------------------- Pots --------------------
+  //
+  // Optional (`pots_enabled`). At the end of a day where you logged food,
+  // up to [potDailyCap] kcal you didn't spend goes into this week's pot,
+  // which tops out at [potWeeklyCap] and empties every Monday. You can move
+  // the pot onto your card whenever you like (e.g. a weekend treat).
+  // The caps stop it turning into "starve all week, binge on Saturday".
+
+  static const double potDailyCap = 150;
+  static const double potWeeklyCap = 750;
+
+  static DateTime? _parseKey(dynamic key) {
+    final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch('${key ?? ''}');
+    if (m == null) return null;
+    return DateTime(
+        int.parse(m.group(1)!), int.parse(m.group(2)!), int.parse(m.group(3)!));
+  }
+
+  /// Monday of the week [d] falls in, as a date key.
+  static String weekKey(DateTime d) {
+    final day = startOfDay(d);
+    return dateKey(addDays(day, -(day.weekday - 1)));
+  }
+
+  /// Calories moved from the pot onto today's card (so a settings change
+  /// or "clear today" doesn't take them away again).
+  static double _potSpentToday(Map<String, dynamic> data) =>
+      data['pot_spent_date'] == dateKey(now())
+          ? (number(data['pot_spent']) ?? 0)
+          : 0;
+
+  /// What the pot should hold once the stored (earlier) day is closed, or
+  /// null if pots are off. Only days with food logged count, so not
+  /// logging can't fill the pot.
+  static Future<Map<String, dynamic>?> _potAfterDay(
+      String userId, Map<String, dynamic> data) async {
+    if (data['pots_enabled'] != true) return null;
+    final thisWeek = weekKey(now());
+    var pot = data['pot_week'] == thisWeek ? (number(data['pot']) ?? 0.0) : 0.0;
+
+    final closedDay = _parseKey(data['balance_date']);
+    if (closedDay != null && weekKey(closedDay) == thisWeek) {
+      final logged = await entriesOn(userId, closedDay);
+      // Only a day you actually logged counts: at least half your goal.
+      // Logging one tiny snack (or nothing) can't bank the full amount.
+      final goal = calorieGoalFrom(data) ?? 0;
+      final eaten = totalOf(logged.map((d) => d.data())).calories;
+      if (logged.isNotEmpty && goal > 0 && eaten >= goal * 0.5) {
+        final spentFromPot = data['pot_spent_date'] == data['balance_date']
+            ? (number(data['pot_spent']) ?? 0)
+            : 0.0;
+        final leftover = (number(data['calories']) ?? 0) - spentFromPot;
+        final saved = leftover.clamp(0, potDailyCap).toDouble();
+        pot = (pot + saved).clamp(0, potWeeklyCap).toDouble();
+      }
+    }
+    return {'pot': pot, 'pot_week': thisWeek};
+  }
+
+  /// This week's pot, from a `user_data` document.
+  static double potFrom(Map<String, dynamic> data) =>
+      data['pots_enabled'] == true && data['pot_week'] == weekKey(now())
+          ? (number(data['pot']) ?? 0)
+          : 0;
+
+  static Future<void> setPotsEnabled(String userId, bool enabled) async {
+    final doc = await userDataDoc(userId);
+    if (doc == null) throw StateError('No profile to update');
+    await doc.reference.update({
+      'pots_enabled': enabled,
+      if (!enabled) 'pot': 0,
+      'pot_week': weekKey(now()),
+    });
+  }
+
+  /// Moves the whole pot onto today's card. Returns how much was moved.
+  static Future<double> spendPot(String userId) async {
+    await ensureDailyReset(userId);
+    final doc = await userDataDoc(userId);
+    if (doc == null) return 0;
+    final today = dateKey(now());
+    return _db.runTransaction<double>((tx) async {
+      final snap = await tx.get(doc.reference);
+      final data = snap.data() ?? const <String, dynamic>{};
+      final amount = potFrom(data);
+      if (amount <= 0) return 0;
+      tx.update(doc.reference, {
+        'pot': 0,
+        'calories': FieldValue.increment(amount),
+        'pot_spent': (data['pot_spent_date'] == today
+                ? (number(data['pot_spent']) ?? 0)
+                : 0) +
+            amount,
+        'pot_spent_date': today,
+      });
+      return amount;
     });
   }
 
@@ -454,8 +562,11 @@ class BalanceService {
     if (!goals.isValid || goals.calories <= 0) {
       throw ArgumentError('Calorie goal must be more than zero: $goals');
     }
+    // Close yesterday first (pot savings etc.) if Home hasn't yet today.
+    await ensureDailyReset(userId);
     final doc = await userDataDoc(userId);
     if (doc == null) throw StateError('No profile to update');
+    final data = doc.data() ?? const <String, dynamic>{};
     final eaten = await todaysTotals(userId);
     await doc.reference.update({
       ...extra,
@@ -463,7 +574,7 @@ class BalanceService {
       'protein_goal': goals.protein,
       'carbs_goal': goals.carbs,
       'fats_goal': goals.fat,
-      ..._balanceFields(goals, eaten),
+      ..._balanceFields(goals, eaten, potTopUp: _potSpentToday(data)),
     });
   }
 

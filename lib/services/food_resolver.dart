@@ -96,6 +96,7 @@ class FoodResolver {
     List<String> queries, {
     int concurrency = 3,
     void Function(int done, int total)? onProgress,
+    void Function(int index, ResolvedFood? result)? onResult,
   }) async {
     final results = List<ResolvedFood?>.filled(queries.length, null);
     var next = 0;
@@ -111,6 +112,7 @@ class FoodResolver {
           results[i] = null;
         }
         done++;
+        onResult?.call(i, results[i]);
         onProgress?.call(done, queries.length);
       }
     }
@@ -119,5 +121,55 @@ class FoodResolver {
       for (var w = 0; w < concurrency && w < queries.length; w++) worker(),
     ]);
     return results;
+  }
+
+  /// Looks up a packaged food by its barcode. Returns null if the product
+  /// isn't known; throws on network/server errors.
+  static Future<ResolvedFood?> fromBarcode(String code) async {
+    final digits = code.replaceAll(RegExp(r'\D'), '');
+    final response = await ProxyClient.get('/food/barcode',
+            query: {'code': digits})
+        .timeout(const Duration(seconds: 60));
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) {
+      throw Exception('Barcode lookup failed (${response.statusCode})');
+    }
+    final j = json.decode(response.body) as Map<String, dynamic>;
+    return ResolvedFood(
+      query: digits,
+      name: (j['name'] ?? 'Scanned product').toString(),
+      portion: (j['portion'] ?? '').toString(),
+      calories: _n(j['calories']),
+      protein: _n(j['protein']),
+      carbs: _n(j['carbs']),
+      fat: _n(j['fat']),
+      source: 'barcode',
+      confidence: 1,
+    );
+  }
+
+  /// Asks the AI what's in a meal photo. Returns food descriptions with
+  /// portions ("150g grilled chicken breast") ready for [resolveAll].
+  static Future<List<String>> foodsInPhoto(
+      List<int> bytes, String mimeType) async {
+    final response = await ProxyClient.post('/food/photo', {
+      'image': base64Encode(bytes),
+      'mime': mimeType,
+    }).timeout(const Duration(seconds: 90));
+    if (response.statusCode != 200) {
+      String message = "Couldn't read that photo";
+      try {
+        final err = json.decode(response.body);
+        if (err is Map && err['error'] is String) message = err['error'];
+      } catch (_) {}
+      throw Exception(message);
+    }
+    final j = json.decode(response.body);
+    final items = j is Map ? j['items'] : null;
+    if (items is! List) return const [];
+    return [
+      for (final item in items)
+        if (item.toString().trim().isNotEmpty) item.toString().trim()
+    ];
   }
 }

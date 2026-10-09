@@ -9,7 +9,12 @@ import 'package:namer_app/pages/add_food_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/card_design_service.dart';
+import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/leaderboard_service.dart';
+import 'package:namer_app/ui/calorie_card.dart';
+import 'package:namer_app/ui/home_inbox.dart';
 import 'package:namer_app/ui/home_widgets.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -690,6 +695,10 @@ class _HomePageState extends State<HomePage>
 
   Future<void>? _refreshing;
   bool _refreshAgain = false;
+
+  /// The card finish the card's owner picked (live).
+  CardDesign _cardDesign = CardDesign.midnight;
+  StreamSubscription<CardDesign>? _designSub;
   final List<String> _tabs = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
   int _creditCardRefreshKey = 0;
   bool _isLoading = true;
@@ -780,6 +789,14 @@ class _HomePageState extends State<HomePage>
 
     _initializeHome();
     FoodLog.changed.addListener(_onFoodLogChanged);
+    _designSub = CardDesignService.watch(_activeUserId).listen(
+      (d) {
+        if (mounted && d.id != _cardDesign.id) {
+          setState(() => _cardDesign = d);
+        }
+      },
+      onError: (_) {},
+    );
     WidgetsBinding.instance.addObserver(this);
     _scheduleMidnightCheck();
   }
@@ -867,6 +884,7 @@ class _HomePageState extends State<HomePage>
   @override
   void dispose() {
     FoodLog.changed.removeListener(_onFoodLogChanged);
+    _designSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _midnightTimer?.cancel();
     _jiggleAnimationController?.dispose();
@@ -1181,6 +1199,11 @@ class _HomePageState extends State<HomePage>
     await _setDailyLogFinished(_selectedLogDate, true);
     await _fetchDailyLogForDate(_selectedLogDate);
     await AchievementService.updateAchievementsForUser(_activeUserId);
+    // Update your best streak now, so card designs unlock without having
+    // to open Hiscores first.
+    try {
+      await LeaderboardService.refreshMine(_activeUserId);
+    } catch (_) {}
   }
 
   /// Loads the selected day's food: the list for the selected meal, that
@@ -1393,6 +1416,59 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  /// Long-press a food: have it every day? Set up a direct debit.
+  Future<void> _offerDirectDebit(Map<String, dynamic> entry) async {
+    final name = (entry['food_description'] ?? 'this').toString();
+    final yes = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Have this every day?',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Text(
+                'Set up a direct debit for $name. Each morning it waits on '
+                'your Card screen for a one-tap Pay (or Skip).',
+                style: const TextStyle(color: AppColors.muted),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => Navigator.pop(sheetContext, true),
+                  icon: const Icon(Icons.autorenew),
+                  label: const Text('Set up direct debit'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (yes != true || !mounted) return;
+    try {
+      await DirectDebitService.createFromEntry(_activeUserId, entry);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Direct debit set up for $name')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Couldn't set that up. Please try again.")),
+        );
+      }
+    }
+  }
+
   Future<void> _addRecipeToHome(String recipeId, String category,
       {double multiplier = 1.0}) async {
     try {
@@ -1544,6 +1620,7 @@ class _HomePageState extends State<HomePage>
                                   key: ValueKey(_creditCardRefreshKey),
                                   userIdOverride: widget.userIdOverride,
                                   cardUserNameOverride: widget.bannerTitle,
+                                  design: _cardDesign,
                                   validThruDate:
                                       '${_selectedLogDate.day}/${_selectedLogDate.month}/${_selectedLogDate.year}',
                                   onToggleMacros: (showMacros) {
@@ -1570,6 +1647,7 @@ class _HomePageState extends State<HomePage>
                                   fatsOverride: _selectedDayBalance.fat,
                                   userIdOverride: widget.userIdOverride,
                                   cardUserNameOverride: widget.bannerTitle,
+                                  design: _cardDesign,
                                   validThruDate:
                                       '${_selectedLogDate.day}/${_selectedLogDate.month}/${_selectedLogDate.year}',
                                   onToggleMacros: (showMacros) {
@@ -1614,6 +1692,17 @@ class _HomePageState extends State<HomePage>
                     onChanged: _changeDay,
                   ),
                 ),
+                if (_isOwnCard && _isSelectedDateToday)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: HomeInbox(
+                      userId: _activeUserId,
+                      isDayFinished: _isDayFinished,
+                      hasFoodToday: _dayTotals.calories > 0,
+                      onFinishDay: _handleCardSwipe,
+                      onBalanceChanged: _refreshAfterChange,
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 // Meals
                 Padding(
@@ -1773,6 +1862,10 @@ class _HomePageState extends State<HomePage>
                                                 onTap: () {
                                                   _handleFoodItemTap(doc.id);
                                                 },
+                                                onLongPress: _isOwnCard
+                                                    ? () => _offerDirectDebit(
+                                                        data)
+                                                    : null,
                                                 child: Column(
                                                   children: [
                                                     ListTile(
