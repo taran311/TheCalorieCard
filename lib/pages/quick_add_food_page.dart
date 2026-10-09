@@ -5,7 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
-import 'package:http/http.dart' as http;
+import 'package:namer_app/services/proxy_client.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'dart:convert';
 
 class QuickAddFoodPage extends StatefulWidget {
@@ -64,16 +65,8 @@ class _QuickAddFoodPageState extends State<QuickAddFoodPage> {
 
     for (final ingredient in _ingredients) {
       try {
-        final Uri requestUri =
-            Uri.parse('https://fatsecret-proxy.onrender.com/food/resolve');
-
-        final response = await http.post(
-          requestUri,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: json.encode({'food': ingredient}),
-        );
+        final response = await ProxyClient.post(
+            '/food/resolve', {'food': ingredient});
 
         if (response.statusCode == 200) {
           final Map<String, dynamic> jsonResponse = json.decode(response.body);
@@ -150,6 +143,10 @@ class _QuickAddFoodPageState extends State<QuickAddFoodPage> {
           Provider.of<CategoryService>(context, listen: false);
       final category = categoryService.selectedCategory;
 
+      // Make sure the card is on today's balance before spending from it.
+      await BalanceService.ensureDailyReset(userId);
+      final userDataDoc = await BalanceService.userDataDoc(userId);
+
       // Create a batch to add all items
       final batch = firestore.batch();
 
@@ -179,41 +176,23 @@ class _QuickAddFoodPageState extends State<QuickAddFoodPage> {
         totalFatConsumed += item['fat'];
       }
 
+      // Spend from the card in the same atomic write as the food entries.
+      if (userDataDoc != null) {
+        batch.update(
+          userDataDoc.reference,
+          BalanceService.spendUpdate(
+            calories: totalCaloriesConsumed,
+            protein: totalProteinConsumed,
+            carbs: totalCarbsConsumed,
+            fat: totalFatConsumed,
+          ),
+        );
+      }
+
       await batch.commit();
 
       // Mark first time logger achievement
       await AchievementService.markFirstTimeLogger(userId);
-
-      // Update user balances
-      final userDataSnapshot = await firestore
-          .collection('user_data')
-          .where('user_id', isEqualTo: userId)
-          .get(const GetOptions(source: Source.server));
-
-      if (userDataSnapshot.docs.isNotEmpty) {
-        final docId = userDataSnapshot.docs.first.id;
-        final docRef = firestore.collection('user_data').doc(docId);
-        final data = userDataSnapshot.docs.first.data();
-
-        final currentCalories = (data['calories'] as num?)?.toDouble() ?? 0.0;
-        final newCalories = currentCalories - totalCaloriesConsumed;
-
-        await docRef.update({
-          'calories': newCalories,
-          'protein_balance': ((data['protein_balance'] as num?)?.toDouble() ??
-                  (data['protein_goal'] as num?)?.toDouble() ??
-                  0.0) -
-              totalProteinConsumed,
-          'carbs_balance': ((data['carbs_balance'] as num?)?.toDouble() ??
-                  (data['carbs_goal'] as num?)?.toDouble() ??
-                  0.0) -
-              totalCarbsConsumed,
-          'fats_balance': ((data['fats_balance'] as num?)?.toDouble() ??
-                  (data['fats_goal'] as num?)?.toDouble() ??
-                  0.0) -
-              totalFatConsumed,
-        });
-      }
 
       if (mounted) {
         // Navigate back to homepage with success

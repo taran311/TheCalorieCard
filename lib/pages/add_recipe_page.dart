@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/pages/fat_secret_api.dart';
-import 'package:http/http.dart' as http;
+import 'package:namer_app/services/proxy_client.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'dart:convert';
 import 'package:namer_app/components/mini_game.dart';
 
@@ -1241,6 +1242,21 @@ class _AddRecipePageState extends State<AddRecipePage> {
         'created_at': FieldValue.serverTimestamp(),
         'is_recipe': true,
       });
+
+      // Spend from the card in the same atomic write.
+      await BalanceService.ensureDailyReset(uid);
+      final userDataDoc = await BalanceService.userDataDoc(uid);
+      if (userDataDoc != null) {
+        batch.update(
+          userDataDoc.reference,
+          BalanceService.spendUpdate(
+            calories: totalCalories.toDouble(),
+            protein: totalProtein,
+            carbs: totalCarbs,
+            fat: totalFat,
+          ),
+        );
+      }
     }
 
     // Update ingredient docs with the recipe_id now that we have it
@@ -1289,16 +1305,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
     });
 
     try {
-      final Uri requestUri =
-          Uri.parse('https://fatsecret-proxy.onrender.com/food/resolve');
-
-      final response = await http.post(
-        requestUri,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({'food': q}),
-      );
+      final response = await ProxyClient.post(
+            '/food/resolve', {'food': q});
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> jsonResponse = json.decode(response.body);
@@ -1463,16 +1471,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
     for (final ingredient in _freeTextIngredients) {
       try {
-        final Uri requestUri =
-            Uri.parse('https://fatsecret-proxy.onrender.com/food/resolve');
-
-        final response = await http.post(
-          requestUri,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: json.encode({'food': ingredient}),
-        );
+        final response = await ProxyClient.post(
+            '/food/resolve', {'food': ingredient});
 
         if (response.statusCode == 200) {
           final Map<String, dynamic> jsonResponse = json.decode(response.body);

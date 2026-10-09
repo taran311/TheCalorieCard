@@ -1,10 +1,7 @@
-import 'package:http/http.dart' as http;
+import 'package:namer_app/services/proxy_client.dart';
 import 'dart:convert';
 
 class FatSecretApi {
-  // Proxy URL
-  final String proxyUrl = 'https://fatsecret-proxy.onrender.com';
-
   // Maximum number of retries for the IP error
   final int maxRetries = 3;
 
@@ -15,15 +12,13 @@ class FatSecretApi {
     while (attempt < maxRetries) {
       attempt++;
       try {
-        // Build the request URL with query parameters
-        final Uri requestUri = Uri.parse(
-            '$proxyUrl/foods/search/v1?search_expression=$query&max_results=10&format=json');
-
-        // Make the GET request to the proxy
-        final response = await http.get(
-          requestUri,
-          headers: {
-            'Content-Type': 'application/json', // Optional: Set content type
+        // Query is URL-encoded by ProxyClient; auth token attached there too.
+        final response = await ProxyClient.get(
+          '/foods/search/v1',
+          query: {
+            'search_expression': query,
+            'max_results': '10',
+            'format': 'json',
           },
         );
 

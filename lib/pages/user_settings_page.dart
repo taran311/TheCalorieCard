@@ -5,7 +5,8 @@ import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
 import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/pages/main_shell.dart';
-import 'package:http/http.dart' as http;
+import 'package:namer_app/services/proxy_client.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'dart:convert';
 
 class UserSettingsPage extends StatefulWidget {
@@ -123,55 +124,11 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       TextEditingController();
   int? _manualCalorieGoal;
 
-  Future<Map<String, double>> _getCurrentIntakeTotals() async {
+  Future<Map<String, double>> _getCurrentIntakeTotals() {
     final userId = FirebaseAuth.instance.currentUser!.uid;
-    final today = DateTime.now();
-    final startOfDay = DateTime(today.year, today.month, today.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-    final snapshot = await FirebaseFirestore.instance
-        .collection('user_food')
-        .where('user_id', isEqualTo: userId)
-        .get(const GetOptions(source: Source.server));
-
-    double calories = 0;
-    double protein = 0;
-    double carbs = 0;
-    double fats = 0;
-
-    for (final doc in snapshot.docs) {
-      final data = doc.data();
-      DateTime? docDate;
-      final timeAdded = data['time_added'];
-      final createdAt = data['created_at'];
-
-      if (timeAdded is Timestamp) {
-        docDate = timeAdded.toDate();
-      } else if (timeAdded is DateTime) {
-        docDate = timeAdded;
-      } else if (createdAt is Timestamp) {
-        docDate = createdAt.toDate();
-      } else if (createdAt is DateTime) {
-        docDate = createdAt;
-      }
-
-      if (docDate == null ||
-          docDate.isBefore(startOfDay) ||
-          !docDate.isBefore(endOfDay)) {
-        continue;
-      }
-      calories += (data['food_calories'] as num?)?.toDouble() ?? 0;
-      protein += (data['food_protein'] as num?)?.toDouble() ?? 0;
-      carbs += (data['food_carbs'] as num?)?.toDouble() ?? 0;
-      fats += (data['food_fat'] as num?)?.toDouble() ?? 0;
-    }
-
-    return {
-      'calories': calories,
-      'protein': protein,
-      'carbs': carbs,
-      'fats': fats,
-    };
+    return BalanceService.todaysTotals(userId);
   }
+
 
   Future<void> _clearAllTodaysFoodItems() async {
     try {
@@ -281,6 +238,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           'protein_balance': proteinGoal - (totals['protein'] ?? 0),
           'carbs_balance': carbsGoal - (totals['carbs'] ?? 0),
           'fats_balance': fatsGoal - (totals['fats'] ?? 0),
+          'balance_date': BalanceService.dateKey(DateTime.now()),
         });
 
         // Wait a moment to ensure Firestore write propagates to server
@@ -455,18 +413,13 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           );
         }
 
-        final response = await http
-            .post(
-          Uri.parse('https://fatsecret-proxy.onrender.com/macro-targets'),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode({
+        final response = await ProxyClient.post('/macro-targets', {
             'age': _selectedAge,
             'gender': genderSelections.first ? 'male' : 'female',
             'height_cm': _selectedHeight,
             'weight_kg': _selectedWeight,
             'exercise_level': _getExerciseLevelText(),
-          }),
-        )
+          })
             .timeout(
           const Duration(seconds: 30),
           onTimeout: () {

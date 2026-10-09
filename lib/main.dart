@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/services/category_service.dart';
@@ -17,7 +16,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    dotenv.load();
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => CategoryService()),

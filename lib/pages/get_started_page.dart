@@ -5,7 +5,8 @@ import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
 import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/pages/main_shell.dart';
-import 'package:http/http.dart' as http;
+import 'package:namer_app/services/proxy_client.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'dart:convert';
 
 class GetStartedPage extends StatefulWidget {
@@ -117,6 +118,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
       'weight': _selectedWeight,
       'exercise_level': _exerciseLevel,
       'calories': finalCalories,
+      'calorie_goal': finalCalories,
+      'balance_date': BalanceService.dateKey(DateTime.now()),
       'calorie_mode': calorieMode,
       'protein_goal': _proteinGoal ?? 0,
       'carbs_goal': _carbsGoal ?? 0,
@@ -219,17 +222,13 @@ class _GetStartedPageState extends State<GetStartedPage> {
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('https://fatsecret-proxy.onrender.com/macro-targets'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
+      final response = await ProxyClient.post('/macro-targets', {
           'age': _selectedAge,
           'gender': genderSelections.first ? 'male' : 'female',
           'height_cm': _selectedHeight,
           'weight_kg': _selectedWeight,
           'exercise_level': _getExerciseLevelText(),
-        }),
-      );
+        });
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);

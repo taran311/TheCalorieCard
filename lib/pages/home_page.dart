@@ -11,6 +11,7 @@ import 'package:namer_app/pages/recipes_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
+import 'package:namer_app/services/balance_service.dart';
 
 class HomePage extends StatefulWidget {
   final bool addFoodAnimation;
@@ -784,6 +785,20 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Future<void> _initializeHome() async {
+    // New day? Put the card back to today's goals before showing it.
+    // Only for your own card — never write to a friend's data.
+    if (!widget.readOnly && widget.userIdOverride == null) {
+      try {
+        final didReset = await BalanceService.ensureDailyReset(_activeUserId);
+        if (didReset && mounted) {
+          setState(() {
+            _creditCardRefreshKey++;
+          });
+        }
+      } catch (_) {
+        // Card still shows the stored balance; next load will retry.
+      }
+    }
     await populateFoodItems();
     await _fetchDailyLogForDate(_selectedLogDate);
     // Fetch category totals on initial load
@@ -965,6 +980,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       }
 
       final filteredDocs = foodSnapshot.docs.where((doc) {
+        // Skip recipe ingredient docs; they aren't food eaten that day.
+        if (doc.data()['foodCategory'] == BalanceService.recipeCategory) {
+          return false;
+        }
         final docDate = _extractDocDate(doc);
         if (docDate == null) return false;
         return !docDate.isBefore(startOfDay) && docDate.isBefore(endOfDay);
@@ -1297,91 +1316,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> deleteFood() async {
-    try {
-      QuerySnapshot userFoodSnapshot = await FirebaseFirestore.instance
-          .collection('user_food')
-          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-          .get();
-
-      WriteBatch batch = FirebaseFirestore.instance.batch();
-
-      num caloriesToReAdd = 0;
-      double proteinToReAdd = 0;
-      double carbsToReAdd = 0;
-      double fatsToReAdd = 0;
-
-      for (var doc in userFoodSnapshot.docs) {
-        caloriesToReAdd += doc['food_calories'];
-        proteinToReAdd += (doc['food_protein'] as num?)?.toDouble() ?? 0.0;
-        carbsToReAdd += (doc['food_carbs'] as num?)?.toDouble() ?? 0.0;
-        fatsToReAdd += (doc['food_fat'] as num?)?.toDouble() ?? 0.0;
-        batch.delete(doc.reference);
-      }
-
-      await batch.commit();
-
-      QuerySnapshot userDataSnapshot = await FirebaseFirestore.instance
-          .collection('user_data')
-          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-          .get(const GetOptions(source: Source.server));
-
-      final docRef = FirebaseFirestore.instance
-          .collection('user_data')
-          .doc(userDataSnapshot.docs.first.id);
-
-      final updatedCalories =
-          userDataSnapshot.docs.first['calories'] + caloriesToReAdd;
-
-      await docRef.update({
-        'calories': updatedCalories,
-        'protein_balance':
-            ((userDataSnapshot.docs.first['protein_balance'] as num?)
-                        ?.toDouble() ??
-                    (userDataSnapshot.docs.first['protein_goal'] as num?)
-                        ?.toDouble() ??
-                    0.0) +
-                proteinToReAdd,
-        'carbs_balance': ((userDataSnapshot.docs.first['carbs_balance'] as num?)
-                    ?.toDouble() ??
-                (userDataSnapshot.docs.first['carbs_goal'] as num?)
-                    ?.toDouble() ??
-                0.0) +
-            carbsToReAdd,
-        'fats_balance': ((userDataSnapshot.docs.first['fats_balance'] as num?)
-                    ?.toDouble() ??
-                (userDataSnapshot.docs.first['fats_goal'] as num?)
-                    ?.toDouble() ??
-                0.0) +
-            fatsToReAdd,
-      });
-
-      // Reset category totals
-      final categoryService =
-          Provider.of<CategoryService>(context, listen: false);
-      await _resetCategoryTotals(categoryService.selectedCategory);
-
-      // Refresh the list of food items
-      await populateFoodItems();
-
-      if (_isSelectedDateToday) {
-        await _upsertDailyLogForDate(_selectedLogDate);
-        await _fetchDailyLogForDate(_selectedLogDate);
-      }
-
-      // Trigger CreditCard refresh
-      setState(() {
-        _creditCardRefreshKey++;
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting food: $e')),
-        );
-      }
-    }
-  }
-
   Future<void> signOut(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -1448,50 +1382,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       // Delete the food item
       await firestore.collection('user_food').doc(docId).delete();
 
-      // Update user balances (add back the calories/macros since we're removing consumption)
-      final userDataSnapshot = await firestore
-          .collection('user_data')
-          .where('user_id', isEqualTo: userId)
-          .limit(1)
-          .get(const GetOptions(source: Source.server));
-
-      if (userDataSnapshot.docs.isNotEmpty) {
-        final doc = userDataSnapshot.docs.first;
-        final docRef = doc.reference;
-        final data = doc.data();
-
-        final currentCalories = data['calories'];
-        double newCalories;
-        if (currentCalories is int) {
-          newCalories = currentCalories.toDouble() + calories;
-        } else if (currentCalories is double) {
-          newCalories = currentCalories + calories;
-        } else if (currentCalories is String) {
-          newCalories = (double.tryParse(currentCalories) ?? 0) + calories;
-        } else {
-          newCalories = 0 + calories;
-        }
-
-        double proteinBal = (data['protein_balance'] as num?)?.toDouble() ??
-            (data['protein_goal'] as num?)?.toDouble() ??
-            0.0;
-        double carbsBal = (data['carbs_balance'] as num?)?.toDouble() ??
-            (data['carbs_goal'] as num?)?.toDouble() ??
-            0.0;
-        double fatsBal = (data['fats_balance'] as num?)?.toDouble() ??
-            (data['fats_goal'] as num?)?.toDouble() ??
-            0.0;
-
-        proteinBal += protein;
-        carbsBal += carbs;
-        fatsBal += fat;
-
-        await docRef.update({
-          'calories': newCalories,
-          'protein_balance': proteinBal,
-          'carbs_balance': carbsBal,
-          'fats_balance': fatsBal,
-        });
+      // Refund the card. Only today's food affects today's balance; deleting
+      // an older entry must not inflate today's card.
+      if (BalanceService.isToday(BalanceService.entryDate(foodData))) {
+        await BalanceService.refund(
+          userId,
+          calories: calories,
+          protein: protein,
+          carbs: carbs,
+          fat: fat,
+        );
       }
 
       // Update category totals
@@ -1638,50 +1538,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }) async {
     try {
       final userId = FirebaseAuth.instance.currentUser!.uid;
-      final userDataSnapshot = await FirebaseFirestore.instance
-          .collection('user_data')
-          .where('user_id', isEqualTo: userId)
-          .limit(1)
-          .get(const GetOptions(source: Source.server));
-
-      if (userDataSnapshot.docs.isEmpty) return;
-
-      final doc = userDataSnapshot.docs.first;
-      final docRef = doc.reference;
-      final data = doc.data();
-
-      final currentCalories = data['calories'];
-      double newCalories;
-      if (currentCalories is int) {
-        newCalories = currentCalories.toDouble() - calories;
-      } else if (currentCalories is double) {
-        newCalories = currentCalories - calories;
-      } else if (currentCalories is String) {
-        newCalories = (double.tryParse(currentCalories) ?? 0) - calories;
-      } else {
-        newCalories = 0 - calories;
-      }
-
-      double proteinBal = (data['protein_balance'] as num?)?.toDouble() ??
-          (data['protein_goal'] as num?)?.toDouble() ??
-          0.0;
-      double carbsBal = (data['carbs_balance'] as num?)?.toDouble() ??
-          (data['carbs_goal'] as num?)?.toDouble() ??
-          0.0;
-      double fatsBal = (data['fats_balance'] as num?)?.toDouble() ??
-          (data['fats_goal'] as num?)?.toDouble() ??
-          0.0;
-
-      proteinBal -= protein;
-      carbsBal -= carbs;
-      fatsBal -= fat;
-
-      await docRef.update({
-        'calories': newCalories,
-        'protein_balance': proteinBal,
-        'carbs_balance': carbsBal,
-        'fats_balance': fatsBal,
-      });
+      await BalanceService.spend(
+        userId,
+        calories: calories,
+        protein: protein,
+        carbs: carbs,
+        fat: fat,
+      );
     } catch (e) {
       // Error applying recipe balances
     }
@@ -1765,33 +1628,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _resetCategoryTotals(String category) async {
-    try {
-      final userId = FirebaseAuth.instance.currentUser!.uid;
-      final docRef = FirebaseFirestore.instance
-          .collection('category_totals')
-          .doc('${userId}_$category');
-
-      await docRef.set({
-        'total_calories': 0,
-        'total_protein': 0.0,
-        'total_carbs': 0.0,
-        'total_fat': 0.0,
-      });
-
-      if (mounted) {
-        setState(() {
-          _totalCalories = 0;
-          _totalProtein = 0.0;
-          _totalCarbs = 0.0;
-          _totalFat = 0.0;
-          _showMacrosTotal = false;
-        });
-      }
-    } catch (e) {
-      // Error resetting category totals
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
