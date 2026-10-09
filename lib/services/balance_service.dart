@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:namer_app/services/achievement_service.dart';
 
 /// Calories and macros for one food entry, or a total of several.
 class Macros {
@@ -448,7 +449,7 @@ class BalanceService {
     final doc = await userDataDoc(userId);
     if (doc == null) return 0;
     final today = dateKey(now());
-    return _db.runTransaction<double>((tx) async {
+    final moved = await _db.runTransaction<double>((tx) async {
       final snap = await tx.get(doc.reference);
       final data = snap.data() ?? const <String, dynamic>{};
       final amount = potFrom(data);
@@ -464,6 +465,9 @@ class BalanceService {
       });
       return amount;
     });
+    // "Treat Yourself" achievement.
+    if (moved > 0) await AchievementService.bump(userId, 'pot_spends');
+    return moved;
   }
 
   /// Field updates that move the balance by [amount].

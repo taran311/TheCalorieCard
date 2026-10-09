@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:namer_app/pages/coach_page.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/split_service.dart';
@@ -163,7 +164,23 @@ class _HomeInboxState extends State<HomeInbox> {
           icon: Icons.warning_amber_rounded,
           color: AppColors.red600,
           title: 'Over budget by ${(-left).round()} kcal',
-          subtitle: 'Lighter choices for the rest of today will help.',
+          subtitle: "One day won't undo your progress.",
+          actions: [
+            _InboxAction(
+                'Talk it through',
+                () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CoachPage(
+                          initialQuestion:
+                              "I've gone over my calories today by ${(-left).round()} kcal. "
+                              'Can you help me feel better about it and suggest a gentle '
+                              'way to balance it out over the next few days?',
+                        ),
+                      ),
+                    ),
+                primary: true),
+          ],
         ));
       } else if (goal > 0 && left <= goal * 0.1 && widget.hasFoodToday) {
         items.add(_InboxCard(

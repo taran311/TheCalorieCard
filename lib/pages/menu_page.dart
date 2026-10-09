@@ -9,6 +9,7 @@ import 'package:namer_app/pages/statement_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/pages/friends_page.dart';
 import 'package:namer_app/pages/achievements_page.dart';
+import 'package:namer_app/pages/coach_page.dart';
 import 'package:namer_app/pages/card_design_page.dart';
 import 'package:namer_app/pages/direct_debits_page.dart';
 import 'package:namer_app/pages/pots_page.dart';
@@ -300,6 +301,20 @@ class MenuPage extends StatelessWidget {
                         ),
                       );
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  // Calorie Coach
+                  _buildMenuCard(
+                    icon: Icons.chat_bubble_outline,
+                    iconColor: AppColors.emerald600,
+                    title: 'Calorie Coach',
+                    subtitle: 'Meal ideas, a pep talk, or help if you\'re over',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const CoachPage(),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   // Hiscores

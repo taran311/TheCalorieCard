@@ -1,146 +1,185 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:namer_app/services/achievements.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/calorie_sense.dart';
+import 'package:namer_app/services/challenge_service.dart';
 
+/// Stores achievements on `user_achievements/{uid}`:
+///   <id>: true, <id>_unlocked_at: timestamp   (kept for good once earned)
+///   progress: {<id>: number}                  (so friends can see it too)
+///   stats: {foods_logged, scans, splits, ...} (running counters)
 class AchievementService {
-  static Future<void> markFirstTimeLogger(String userId) async {
-    final docRef =
-        BalanceService.db.collection('user_achievements').doc(userId);
-    await docRef.set({
-      'first_time_logger': true,
-      'first_time_logger_unlocked_at': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
+  AchievementService._();
+
+  static DocumentReference<Map<String, dynamic>> _doc(String uid) =>
+      BalanceService.db.collection('user_achievements').doc(uid);
 
   static Stream<DocumentSnapshot<Map<String, dynamic>>> streamUserAchievements(
-      String userId) {
-    return BalanceService.db
-        .collection('user_achievements')
-        .doc(userId)
-        .snapshots();
+          String userId) =>
+      _doc(userId).snapshots();
+
+  /// Adds to a running counter (e.g. 'splits', 'pot_spends'). Never throws:
+  /// a missed count isn't worth failing the action that earned it.
+  static Future<void> bump(String uid, String counter, [int by = 1]) async {
+    if (by <= 0) return;
+    try {
+      await _doc(uid).set({
+        'stats': {counter: FieldValue.increment(by)},
+      }, SetOptions(merge: true));
+    } catch (_) {}
   }
 
-  static Future<void> updateAchievementsForUser(String userId) async {
-    final logsSnapshot = await BalanceService.db
-        .collection('daily_logs')
-        .where('user_id', isEqualTo: userId)
-        .where('finished', isEqualTo: true)
-        .get();
+  /// Called after food is logged: unlocks "First Swipe" straight away and
+  /// counts foods (and barcode scans).
+  static Future<void> recordLogging(String uid,
+      {int foods = 1, int scans = 0}) async {
+    try {
+      await _doc(uid).set({
+        'first_time_logger': true,
+        'stats': {
+          'foods_logged': FieldValue.increment(foods),
+          if (scans > 0) 'scans': FieldValue.increment(scans),
+        },
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
 
-    final logs = logsSnapshot.docs.map((doc) {
-      final data = doc.data();
-      final date = (data['date'] as Timestamp?)?.toDate() ?? DateTime(1970);
-      final totals = (data['totals'] as Map<String, dynamic>?) ?? {};
-      final calories = (totals['calories'] as num?)?.toDouble() ?? 0;
-      final protein = (totals['protein'] as num?)?.toDouble() ?? 0;
-      final carbs = (totals['carbs'] as num?)?.toDouble() ?? 0;
-      return _DailyLogSummary(
-        date: DateTime(date.year, date.month, date.day),
-        calories: calories,
-        protein: protein,
-        carbs: carbs,
-      );
-    }).toList();
+  /// Kept for older callers.
+  static Future<void> markFirstTimeLogger(String userId) =>
+      recordLogging(userId, foods: 0);
 
-    logs.sort((a, b) => a.date.compareTo(b.date));
+  /// Re-checks every achievement. Returns the ones unlocked just now.
+  static Future<List<Achievement>> updateAchievementsForUser(String userId) =>
+      evaluate(userId);
 
-    bool anyCarbZero = logs.any((l) => l.carbs == 0);
-    int ketoStreak = _maxConsecutive(logs, (l) => l.carbs == 0);
+  /// Works out progress from your history, saves it, and unlocks anything
+  /// newly earned. Returns the newly unlocked achievements.
+  static Future<List<Achievement>> evaluate(String uid) async {
+    final db = BalanceService.db;
+    final results = await Future.wait<Object?>([
+      _doc(uid).get(),
+      db
+          .collection('daily_logs')
+          .where('user_id', isEqualTo: uid)
+          .where('finished', isEqualTo: true)
+          .get(),
+      db.collection('users').doc(uid).get(),
+      BalanceService.userDataDoc(uid),
+      _safe(() => db
+          .collection('direct_debits')
+          .where('user_id', isEqualTo: uid)
+          .limit(1)
+          .get()),
+      _safe(() => db
+          .collection('recipes')
+          .where('user_id', isEqualTo: uid)
+          .limit(1)
+          .get()),
+    ]);
 
-    bool anyCalZero = logs.any((l) => l.calories == 0);
-    int calZeroStreak = _maxConsecutive(logs, (l) => l.calories == 0);
+    final achData =
+        (results[0] as DocumentSnapshot<Map<String, dynamic>>).data() ??
+            const <String, dynamic>{};
+    final logs = results[1] as QuerySnapshot<Map<String, dynamic>>;
+    final user =
+        (results[2] as DocumentSnapshot<Map<String, dynamic>>).data() ??
+            const <String, dynamic>{};
+    final profile =
+        (results[3] as DocumentSnapshot<Map<String, dynamic>>?)?.data() ??
+            const <String, dynamic>{};
+    final debits = results[4] as QuerySnapshot<Map<String, dynamic>>?;
+    final recipes = results[5] as QuerySnapshot<Map<String, dynamic>>?;
 
-    final now = DateTime.now();
-    final calZeroThisMonth = logs
-      .where((l) =>
-        l.calories == 0 &&
-        l.date.year == now.year &&
-        l.date.month == now.month)
-      .length;
+    final already = <String>{
+      for (final a in Achievements.all)
+        if (achData[a.id] == true) a.id
+    };
 
-    int proteinStreak =
-        _maxConsecutive(logs, (l) => l.protein > 150);
+    final days = [
+      for (final d in logs.docs)
+        if (AchievementDay.fromLog(d.data(), fallbackGoals: profile) != null)
+          AchievementDay.fromLog(d.data(), fallbackGoals: profile)!
+    ];
 
-    final updates = <String, dynamic>{};
+    final statsRaw = achData['stats'];
+    final counters = <String, num>{
+      if (statsRaw is Map)
+        for (final e in statsRaw.entries)
+          if (e.value is num) '${e.key}': e.value as num
+    };
 
-    if (anyCarbZero) {
-      updates['keto_novice'] = true;
-      updates['keto_novice_unlocked_at'] = FieldValue.serverTimestamp();
-    }
-    if (ketoStreak >= 7) {
-      updates['keto_apprentice'] = true;
-      updates['keto_apprentice_unlocked_at'] = FieldValue.serverTimestamp();
-    }
-    if (ketoStreak >= 30) {
-      updates['keto_expert'] = true;
-      updates['keto_expert_unlocked_at'] = FieldValue.serverTimestamp();
-    }
+    final friends = user['friends'];
+    final sense = CalorieSense.thisMonth(user);
+    final design = user['card_design'];
 
-    if (anyCalZero) {
-      updates['fast_1'] = true;
-      updates['fast_1_unlocked_at'] = FieldValue.serverTimestamp();
-    }
-    if (calZeroStreak >= 2) {
-      updates['fast_2'] = true;
-      updates['fast_2_unlocked_at'] = FieldValue.serverTimestamp();
-    }
-    if (calZeroThisMonth >= 4) {
-      updates['fast_4_month'] = true;
-      updates['fast_4_month_unlocked_at'] = FieldValue.serverTimestamp();
-    }
+    final challenge = await _challengeResults(uid, already);
 
-    if (proteinStreak >= 7) {
-      updates['cultivating_mass'] = true;
-      updates['cultivating_mass_unlocked_at'] = FieldValue.serverTimestamp();
-    }
+    final progress = AchievementEngine.progress(AchievementInputs(
+      days: days,
+      counters: counters,
+      friendCount: friends is List ? friends.length : 0,
+      customCard: design is String && design.isNotEmpty && design != 'midnight',
+      calorieSenseAverage: sense.average,
+      calorieSenseCount: sense.count,
+      hasDirectDebit: debits?.docs.isNotEmpty ?? false,
+      pot: BalanceService.potFrom(profile),
+      inChallenge: challenge.inChallenge,
+      wonChallenge: challenge.won,
+      teamGoalHit: challenge.teamGoal,
+      recipesSaved: recipes?.docs.length ?? 0,
+    ));
 
-    if (updates.isNotEmpty) {
-      final docRef = BalanceService.db
-          .collection('user_achievements')
-          .doc(userId);
-      await docRef.set(updates, SetOptions(merge: true));
+    final newly = AchievementEngine.unlocked(progress).difference(already);
+
+    await _doc(uid).set({
+      'progress': progress,
+      'evaluated_at': FieldValue.serverTimestamp(),
+      for (final id in newly) ...{
+        id: true,
+        '${id}_unlocked_at': FieldValue.serverTimestamp(),
+      },
+    }, SetOptions(merge: true));
+
+    return [
+      for (final a in Achievements.all)
+        if (newly.contains(a.id)) a
+    ];
+  }
+
+  static Future<T?> _safe<T>(Future<T> Function() read) async {
+    try {
+      return await read();
+    } catch (_) {
+      return null;
     }
   }
 
-  static int _maxConsecutive(
-      List<_DailyLogSummary> logs, bool Function(_DailyLogSummary) test) {
-    int maxStreak = 0;
-    int currentStreak = 0;
-    DateTime? prevDate;
-    bool prevMatched = false;
-
-    for (final log in logs) {
-      final matched = test(log);
-      if (matched) {
-        if (prevDate != null &&
-            prevMatched &&
-            log.date.difference(prevDate).inDays == 1) {
-          currentStreak += 1;
+  /// Challenge achievements from this week's and last week's challenges.
+  /// Scores are only fetched for finished challenges, and only while the
+  /// related achievements are still locked.
+  static Future<({bool inChallenge, bool won, bool teamGoal})>
+      _challengeResults(String uid, Set<String> already) async {
+    var inChallenge = false, won = false, teamGoal = false;
+    try {
+      final list = await ChallengeService.forUser(uid).first;
+      inChallenge = list.isNotEmpty;
+      for (final c in list.where((c) => c.isOver)) {
+        final isGroup = c.type == ChallengeType.group;
+        if (isGroup && (teamGoal || already.contains('team_goal'))) continue;
+        if (!isGroup && (won || already.contains('challenge_win'))) continue;
+        final scores = await ChallengeService.scores(c);
+        if (scores.isEmpty) continue;
+        if (isGroup) {
+          final total = scores.fold<int>(0, (s, e) => s + e.finishedDays);
+          if (c.target > 0 && total >= c.target) teamGoal = true;
         } else {
-          currentStreak = 1;
+          final top = scores.first;
+          final outright = top.onBudgetDays > 0 &&
+              (scores.length < 2 || scores[1].onBudgetDays < top.onBudgetDays);
+          if (outright && top.userId == uid) won = true;
         }
-        maxStreak = currentStreak > maxStreak ? currentStreak : maxStreak;
-      } else {
-        currentStreak = 0;
       }
-
-      prevDate = log.date;
-      prevMatched = matched;
-    }
-
-    return maxStreak;
+    } catch (_) {}
+    return (inChallenge: inChallenge, won: won, teamGoal: teamGoal);
   }
-}
-
-class _DailyLogSummary {
-  final DateTime date;
-  final double calories;
-  final double protein;
-  final double carbs;
-
-  _DailyLogSummary({
-    required this.date,
-    required this.calories,
-    required this.protein,
-    required this.carbs,
-  });
 }

@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/components/credit_card.dart';
+import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/add_food_page.dart';
+import 'package:namer_app/pages/coach_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
@@ -1198,7 +1200,28 @@ class _HomePageState extends State<HomePage>
     await _upsertDailyLogForDate(_selectedLogDate);
     await _setDailyLogFinished(_selectedLogDate, true);
     await _fetchDailyLogForDate(_selectedLogDate);
-    await AchievementService.updateAchievementsForUser(_activeUserId);
+    try {
+      final unlocked =
+          await AchievementService.updateAchievementsForUser(_activeUserId);
+      if (unlocked.isNotEmpty && mounted) {
+        final first = unlocked.first;
+        final more = unlocked.length > 1 ? ' (+${unlocked.length - 1} more)' : '';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '${first.emoji} Achievement unlocked: ${first.title}$more'),
+            action: SnackBarAction(
+              label: 'View',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AchievementsPage()),
+              ),
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      // Achievements are re-checked next time.
+    }
     // Update your best streak now, so card designs unlock without having
     // to open Hiscores first.
     try {
@@ -1702,6 +1725,11 @@ class _HomePageState extends State<HomePage>
                       onFinishDay: _handleCardSwipe,
                       onBalanceChanged: _refreshAfterChange,
                     ),
+                  ),
+                if (_isOwnCard && _isSelectedDateToday)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: CoachEntry(),
                   ),
                 const SizedBox(height: 12),
                 // Meals

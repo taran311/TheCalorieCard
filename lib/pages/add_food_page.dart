@@ -12,6 +12,7 @@ import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/achievement_service.dart';
 
 /// A food being looked up: shown as a "pending transaction" until it
 /// settles, and open for a calorie guess while it's pending.
@@ -605,6 +606,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       if (score is int) {
         // A missed score isn't worth interrupting logging for.
         CalorieSense.record(uid, score).catchError((_) {});
+        if (score >= 95) AchievementService.bump(uid, 'bang_on');
       }
     }
   }

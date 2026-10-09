@@ -6,6 +6,7 @@ import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/wrapped_service.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/services/achievement_service.dart';
 
 /// Monthly statement / "Wrapped": your month in review, shareable to chat.
 class WrappedPage extends StatefulWidget {
@@ -81,6 +82,7 @@ class _WrappedPageState extends State<WrappedPage> {
     try {
       if (target == 'copy') {
         await Clipboard.setData(ClipboardData(text: text));
+        AchievementService.bump(_user.uid, 'wrapped_shares');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Copied to clipboard')));
@@ -93,6 +95,7 @@ class _WrappedPageState extends State<WrappedPage> {
           friendName: target.name,
           text: text,
         );
+        AchievementService.bump(_user.uid, 'wrapped_shares');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Sent to ${target.name}')));

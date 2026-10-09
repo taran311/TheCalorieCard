@@ -1,9 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/services/achievement_service.dart';
+import 'package:namer_app/services/achievements.dart';
+import 'package:namer_app/ui/responsive.dart';
 
-class AchievementsPage extends StatelessWidget {
+/// Achievements: grouped by category, with tiers, points and progress.
+///
+/// Your own page re-checks everything when it opens. A friend's page
+/// ([userIdOverride]) shows what they've unlocked and their last progress.
+class AchievementsPage extends StatefulWidget {
   final String? userIdOverride;
   final String? titleOverride;
 
@@ -14,347 +20,287 @@ class AchievementsPage extends StatelessWidget {
   });
 
   @override
+  State<AchievementsPage> createState() => _AchievementsPageState();
+}
+
+enum _Filter { all, unlocked, locked }
+
+class _AchievementsPageState extends State<AchievementsPage> {
+  late final String? _uid =
+      widget.userIdOverride ?? FirebaseAuth.instance.currentUser?.uid;
+  late final bool _isMe = widget.userIdOverride == null ||
+      widget.userIdOverride == FirebaseAuth.instance.currentUser?.uid;
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>>? _stream =
+      _uid == null ? null : AchievementService.streamUserAchievements(_uid!);
+
+  bool _checking = false;
+  List<Achievement> _justUnlocked = const [];
+  _Filter _filter = _Filter.all;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isMe && _uid != null) _check();
+  }
+
+  Future<void> _check() async {
+    setState(() => _checking = true);
+    try {
+      final fresh = await AchievementService.evaluate(_uid!);
+      if (mounted) setState(() => _justUnlocked = fresh);
+    } catch (_) {
+      // Shows the last saved progress instead.
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final userId = userIdOverride ?? FirebaseAuth.instance.currentUser?.uid;
-    final topPadding = MediaQuery.of(context).padding.top;
-
     return Scaffold(
-      body: userId == null
+      backgroundColor: AppColors.canvas,
+      appBar: AppBar(
+        title: Text(widget.titleOverride ?? 'Achievements',
+            style: const TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          if (_isMe)
+            IconButton(
+              tooltip: 'Check again',
+              onPressed: _checking ? null : _check,
+              icon: _checking
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.refresh),
+            ),
+        ],
+      ),
+      body: _stream == null
           ? const Center(child: Text('Not logged in'))
-          : Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.indigo50,
-                    AppColors.indigo50,
-                  ],
-                ),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  children: [
-                    // Header
-                    Container(
-                      padding: EdgeInsets.fromLTRB(8, topPadding + 8, 8, 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(16),
-                          bottomRight: Radius.circular(16),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            onPressed: () {
-                              Navigator.of(context).maybePop();
-                            },
-                            icon: const Icon(Icons.arrow_back),
-                            color: Colors.white,
-                          ),
-                          Expanded(
-                            child: Center(
-                              child: Text(
-                                titleOverride ?? 'Achievements',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 48),
-                        ],
-                      ),
-                    ),
-
-                    Expanded(
-                      child: StreamBuilder(
-                        stream:
-                            AchievementService.streamUserAchievements(userId),
-                        builder: (context, snapshot) {
-                          final data = snapshot.data?.data() ?? {};
-
-                          final achievements = [
-                            _AchievementItem(
-                              id: 'first_time_logger',
-                              title: 'First Time Logger',
-                              description:
-                                  'Log your first food item to unlock this achievement.',
-                              icon: Icons.book,
-                            ),
-                            _AchievementItem(
-                              id: 'keto_novice',
-                              title: 'Keto Novice',
-                              description:
-                                  'Log 1 day of eating with 0g carbs recorded.',
-                              icon: Icons.egg_alt,
-                            ),
-                            _AchievementItem(
-                              id: 'keto_apprentice',
-                              title: 'Keto Apprentice',
-                              description:
-                                  'Log 7 consecutive days of eating 0g carbs recorded.',
-                              icon: Icons.egg_alt,
-                            ),
-                            _AchievementItem(
-                              id: 'keto_expert',
-                              title: 'Keto Expert',
-                              description:
-                                  'Log 30 consecutive days of eating 0g carbs recorded.',
-                              icon: Icons.egg_alt,
-                            ),
-                            _AchievementItem(
-                              id: 'fast_1',
-                              title: '2Fast',
-                              description: 'Log 1 day of eating 0 calories.',
-                              icon: Icons.bolt,
-                            ),
-                            _AchievementItem(
-                              id: 'fast_2',
-                              title: '2Fast2Furious',
-                              description:
-                                  'Log 2 consecutive days of eating 0 calories.',
-                              icon: Icons.bolt,
-                            ),
-                            _AchievementItem(
-                              id: 'fast_4_month',
-                              title: 'FasterThenYou',
-                              description:
-                                  'Log 4 days of eating 0 calories within a month.',
-                              icon: Icons.bolt,
-                            ),
-                            _AchievementItem(
-                              id: 'cultivating_mass',
-                              title: 'Cultivating Mass',
-                              description:
-                                  'Log 7 consecutive days consuming more than 150g of protein each day.',
-                              icon: Icons.fitness_center,
-                            ),
-                            _AchievementItem(
-                              id: 'streak_starter',
-                              title: 'Streak Starter',
-                              description:
-                                  'Log food for 3 days in a row to unlock.',
-                              icon: Icons.local_fire_department,
-                            ),
-                            _AchievementItem(
-                              id: 'macro_master',
-                              title: 'Macro Master',
-                              description:
-                                  'Hit all macro targets in a day to unlock.',
-                              icon: Icons.track_changes,
-                            ),
-                          ];
-
-                          final unlockedCount = achievements
-                              .where((a) => (data[a.id] as bool?) ?? false)
-                              .length;
-
-                          return SingleChildScrollView(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              children: [
-                                // Stats Card
-                                Container(
-                                  padding: const EdgeInsets.all(20),
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [
-                                        AppColors.primary,
-                                        AppColors.violet,
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceAround,
-                                    children: [
-                                      Column(
-                                        children: [
-                                          Text(
-                                            unlockedCount.toString(),
-                                            style: const TextStyle(
-                                              fontSize: 32,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const Text(
-                                            'Unlocked',
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      Container(
-                                        width: 1,
-                                        height: 50,
-                                        color: Colors.white30,
-                                      ),
-                                      Column(
-                                        children: [
-                                          Text(
-                                            achievements.length.toString(),
-                                            style: const TextStyle(
-                                              fontSize: 32,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const Text(
-                                            'Total',
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                                const SizedBox(height: 24),
-
-                                // Grid
-                                GridView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 3,
-                                    mainAxisSpacing: 16,
-                                    crossAxisSpacing: 16,
-                                    childAspectRatio:
-                                        0.75, // FIXED overflow here
-                                  ),
-                                  itemCount: achievements.length,
-                                  itemBuilder: (context, index) {
-                                    final achievement = achievements[index];
-                                    final unlocked =
-                                        (data[achievement.id] as bool?) ??
-                                            false;
-
-                                    return InkWell(
-                                      borderRadius: BorderRadius.circular(16),
-                                      onTap: () {
-                                        _showAchievementDialog(
-                                          context,
-                                          achievement,
-                                          unlocked,
-                                        );
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: unlocked
-                                              ? Colors.white
-                                              : Colors.white70,
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          border: Border.all(
-                                            color: unlocked
-                                                ? AppColors.primary
-                                                : AppColors.gray300,
-                                            width: unlocked ? 2 : 1,
-                                          ),
-                                        ),
-                                        child: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.start,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.center,
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(12),
-                                              decoration: BoxDecoration(
-                                                color: unlocked
-                                                    ? AppColors.primary
-                                                        .withValues(alpha: 0.15)
-                                                    : AppColors.border,
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: Icon(
-                                                achievement.icon,
-                                                size: 32,
-                                                color: unlocked
-                                                    ? AppColors.primary
-                                                    : AppColors.gray400,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Expanded(
-                                              child: Center(
-                                                child: Text(
-                                                  achievement.title,
-                                                  textAlign: TextAlign.center,
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: unlocked
-                                                        ? FontWeight.w700
-                                                        : FontWeight.w500,
-                                                    color: unlocked
-                                                        ? AppColors.ink
-                                                        : AppColors.muted,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            if (unlocked)
-                                              const Icon(
-                                                Icons.check_circle,
-                                                size: 14,
-                                                color: AppColors.green,
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: _stream,
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return const Center(
+                      child: Text("Couldn't load achievements."));
+                }
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return _buildList(snap.data!.data() ?? const {});
+              },
             ),
     );
   }
 
-  void _showAchievementDialog(
-    BuildContext context,
-    _AchievementItem achievement,
-    bool unlocked,
+  Widget _buildList(Map<String, dynamic> data) {
+    bool isUnlocked(Achievement a) => data[a.id] == true;
+    final progress = (data['progress'] as Map?) ?? const {};
+    int progressOf(Achievement a) {
+      final v = progress[a.id];
+      return v is num ? v.round() : 0;
+    }
+
+    DateTime? unlockedAt(Achievement a) {
+      final v = data['${a.id}_unlocked_at'];
+      return v is Timestamp ? v.toDate() : null;
+    }
+
+    final unlocked = Achievements.all.where(isUnlocked).toList();
+    final points = unlocked.fold<int>(0, (s, a) => s + a.tier.points);
+
+    bool show(Achievement a) => switch (_filter) {
+          _Filter.all => true,
+          _Filter.unlocked => isUnlocked(a),
+          _Filter.locked => !isUnlocked(a),
+        };
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: Breakpoints.contentMaxWidth),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          children: [
+            _Summary(
+              unlocked: unlocked.length,
+              total: Achievements.all.length,
+              points: points,
+              totalPoints: Achievements.totalPoints,
+              tierCounts: {
+                for (final t in AchievementTier.values)
+                  t: unlocked.where((a) => a.tier == t).length
+              },
+            ),
+            if (_justUnlocked.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _JustUnlocked(achievements: _justUnlocked),
+            ],
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final f in _Filter.values)
+                  ChoiceChip(
+                    label: Text(switch (f) {
+                      _Filter.all => 'All',
+                      _Filter.unlocked => 'Unlocked',
+                      _Filter.locked => 'To do',
+                    }),
+                    selected: _filter == f,
+                    showCheckmark: false,
+                    selectedColor: AppColors.primary,
+                    labelStyle: TextStyle(
+                      color: _filter == f ? Colors.white : AppColors.ink,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    onSelected: (_) => setState(() => _filter = f),
+                  ),
+              ],
+            ),
+            for (final category in AchievementCategory.values)
+              ..._section(category, show, isUnlocked, progressOf, unlockedAt),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// One category: a header with its count, then its achievements.
+  List<Widget> _section(
+    AchievementCategory category,
+    bool Function(Achievement) show,
+    bool Function(Achievement) isUnlocked,
+    int Function(Achievement) progressOf,
+    DateTime? Function(Achievement) unlockedAt,
   ) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(achievement.title),
-        content: Text(achievement.description),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+    final all = Achievements.all.where((a) => a.category == category).toList();
+    final items = all.where(show).toList();
+    if (items.isEmpty) return const <Widget>[];
+    final done = all.where(isUnlocked).length;
+    return <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+        child: Row(
+          children: [
+            Text('${category.emoji}  ${category.label}',
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.ink)),
+            const Spacer(),
+            Text('$done / ${all.length}',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, color: AppColors.muted)),
+          ],
+        ),
+      ),
+      for (final a in items)
+        _AchievementTile(
+          achievement: a,
+          unlocked: isUnlocked(a),
+          progress: progressOf(a),
+          unlockedAt: unlockedAt(a),
+        ),
+    ];
+  }
+}
+
+class _Summary extends StatelessWidget {
+  final int unlocked;
+  final int total;
+  final int points;
+  final int totalPoints;
+  final Map<AchievementTier, int> tierCounts;
+
+  const _Summary({
+    required this.unlocked,
+    required this.total,
+    required this.points,
+    required this.totalPoints,
+    required this.tierCounts,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: AppColors.brandGradient,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('$unlocked',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.w800,
+                      height: 1)),
+              Text(' / $total unlocked',
+                  style: const TextStyle(color: Colors.white70, fontSize: 15)),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('$points',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800)),
+                  Text('of $totalPoints pts',
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: total == 0 ? 0 : unlocked / total,
+              minHeight: 8,
+              backgroundColor: Colors.white.withValues(alpha: 0.25),
+              valueColor: const AlwaysStoppedAnimation(Colors.white),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              for (final t in AchievementTier.values)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                            color: t.color, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('${t.label} ${tierCounts[t] ?? 0}',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -362,16 +308,194 @@ class AchievementsPage extends StatelessWidget {
   }
 }
 
-class _AchievementItem {
-  final String id;
-  final String title;
-  final String description;
-  final IconData icon;
+class _JustUnlocked extends StatelessWidget {
+  final List<Achievement> achievements;
 
-  const _AchievementItem({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.icon,
+  const _JustUnlocked({required this.achievements});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.amber50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.amber300),
+      ),
+      child: Row(
+        children: [
+          const Text('🎉', style: TextStyle(fontSize: 26)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              achievements.length == 1
+                  ? 'New: ${achievements.first.title}!'
+                  : 'New: ${achievements.map((a) => a.title).join(', ')}!',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w700, color: AppColors.amber700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AchievementTile extends StatelessWidget {
+  final Achievement achievement;
+  final bool unlocked;
+  final int progress;
+  final DateTime? unlockedAt;
+
+  const _AchievementTile({
+    required this.achievement,
+    required this.unlocked,
+    required this.progress,
+    required this.unlockedAt,
   });
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
+  String _date(DateTime d) => '${d.day} ${_months[d.month - 1]} ${d.year}';
+
+  @override
+  Widget build(BuildContext context) {
+    final a = achievement;
+    final tierColor = a.tier.color;
+    final shown = progress > a.target ? a.target : progress;
+    final fraction = a.target <= 0 ? 0.0 : shown / a.target;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: unlocked ? Colors.white : AppColors.gray50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: unlocked ? tierColor.withValues(alpha: 0.6) : AppColors.border,
+          width: unlocked ? 1.5 : 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: unlocked
+                  ? tierColor.withValues(alpha: 0.14)
+                  : AppColors.border,
+              border: Border.all(
+                color: unlocked ? tierColor : AppColors.gray300,
+                width: 2.5,
+              ),
+            ),
+            child: Opacity(
+              opacity: unlocked ? 1 : 0.35,
+              child: Text(a.emoji, style: const TextStyle(fontSize: 24)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        a.title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: unlocked ? AppColors.ink : AppColors.gray600,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: tierColor.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${a.tier.label} · ${a.tier.points}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: tierColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  a.description,
+                  style: const TextStyle(fontSize: 13, color: AppColors.muted),
+                ),
+                const SizedBox(height: 8),
+                if (unlocked)
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle,
+                          size: 16, color: AppColors.green),
+                      const SizedBox(width: 4),
+                      Text(
+                        unlockedAt == null
+                            ? 'Unlocked'
+                            : 'Unlocked ${_date(unlockedAt!)}',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.emerald600),
+                      ),
+                    ],
+                  )
+                else if (a.target > 1)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: fraction.clamp(0.0, 1.0).toDouble(),
+                            minHeight: 6,
+                            backgroundColor: AppColors.border,
+                            valueColor: AlwaysStoppedAnimation(tierColor),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        '$shown / ${a.target}${a.unit.isEmpty ? '' : ' ${a.unit}'}',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.gray600),
+                      ),
+                    ],
+                  )
+                else
+                  const Text(
+                    'Locked',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.gray400),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

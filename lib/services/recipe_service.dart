@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/achievement_service.dart';
 
 /// One ingredient line in a recipe.
 class RecipeIngredient {
@@ -89,6 +90,7 @@ class RecipeService {
     });
 
     await batch.commit();
+    await AchievementService.bump(uid, 'recipes_created');
     return recipeRef.id;
   }
 

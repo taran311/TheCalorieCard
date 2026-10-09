@@ -65,3 +65,19 @@ Also check these existing rules:
   card design and Calorie Sense on the hiscores.
 - **user_data/{doc}**: pots add the fields `pots_enabled`, `pot`, `pot_week`,
   `pot_spent` and `pot_spent_date` to your own profile.
+
+## Achievements
+
+Achievements are saved on `user_achievements/{uid}` (unlocks, progress and a
+few counters). You write your own; friends read it to see your achievements.
+
+```
+match /user_achievements/{uid} {
+  allow read: if signedIn();
+  allow write: if signedIn() && me() == uid;
+}
+```
+
+Working achievements out reads your own `daily_logs` (finished days),
+`users/{uid}`, `user_data`, `direct_debits`, `recipes` and `challenges`, all
+of which your rules already let you read.

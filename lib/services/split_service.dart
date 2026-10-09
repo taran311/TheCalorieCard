@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/achievement_service.dart';
 
 /// A shared meal split between friends, like splitting a bill.
 ///
@@ -132,6 +133,7 @@ class SplitService {
       } catch (_) {}
       rethrow;
     }
+    await AchievementService.bump(uid, 'splits');
     return ref.id;
   }
 

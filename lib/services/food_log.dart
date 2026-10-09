@@ -89,7 +89,7 @@ class FoodLog {
       }
     ]);
 
-    await _afterLogging(uid);
+    await _afterLogging(uid, foods: 1);
   }
 
   /// Logs individual foods to [meal] and charges the card. Each item needs
@@ -119,7 +119,11 @@ class FoodLog {
         }
     ];
     await BalanceService.logEntries(uid, entries);
-    await _afterLogging(uid);
+    await _afterLogging(
+      uid,
+      foods: entries.length,
+      scans: items.where((i) => i['source'] == 'barcode').length,
+    );
   }
 
   /// Removes a logged food and refunds the card if it was today's.
@@ -128,13 +132,12 @@ class FoodLog {
     notifyChanged();
   }
 
-  static Future<void> _afterLogging(String uid) async {
+  static Future<void> _afterLogging(String uid,
+      {int foods = 1, int scans = 0}) async {
     notifyChanged();
     // Achievements are a bonus: the food is already logged, so a failure
     // here must not look like the logging failed (that invites a retry
-    // and a duplicate entry).
-    try {
-      await AchievementService.markFirstTimeLogger(uid);
-    } catch (_) {}
+    // and a duplicate entry). recordLogging never throws.
+    await AchievementService.recordLogging(uid, foods: foods, scans: scans);
   }
 }
