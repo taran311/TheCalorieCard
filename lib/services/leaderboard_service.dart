@@ -35,7 +35,7 @@ class PlayerStats {
 class LeaderboardService {
   LeaderboardService._();
 
-  static final _db = FirebaseFirestore.instance;
+  static FirebaseFirestore get _db => BalanceService.db;
 
   /// How far back we look for streaks.
   static const _streakLookbackDays = 40;
@@ -55,22 +55,22 @@ class LeaderboardService {
   }
 
   static Future<PlayerStats> _loadOne(String userId, bool isMe) async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final now = BalanceService.now();
+    final today = BalanceService.startOfDay(now);
     final monthStart = DateTime(now.year, now.month, 1);
-    final weekStart = today.subtract(Duration(days: today.weekday - 1));
+    final weekStart = BalanceService.addDays(today, -(today.weekday - 1));
 
-    final lookback = today.difference(monthStart).inDays + 1 >
-            _streakLookbackDays
-        ? today.difference(monthStart).inDays + 1
-        : _streakLookbackDays;
+    // Days so far this month (today.day), or the streak window if longer.
+    final lookback =
+        now.day > _streakLookbackDays ? now.day : _streakLookbackDays;
     final days = [
-      for (var i = 0; i < lookback; i++) today.subtract(Duration(days: i)),
+      for (var i = 0; i < lookback; i++) BalanceService.addDays(today, -i),
     ];
 
     final userFuture = _db.collection('users').doc(userId).get();
-    final foodFuture =
-        _db.collection('user_food').where('user_id', isEqualTo: userId).get();
+    // Only this week's food is needed (for protein), not the whole history.
+    final foodFuture = BalanceService.entriesBetween(
+        userId, weekStart, BalanceService.addDays(today, 1));
     final logFutures = [
       for (final d in days)
         _db
@@ -121,13 +121,8 @@ class LeaderboardService {
     double protein = 0;
     try {
       final food = await foodFuture;
-      for (final doc in food.docs) {
-        final data = doc.data();
-        if (data['foodCategory'] == BalanceService.recipeCategory) continue;
-        final t = BalanceService.entryDate(data);
-        if (t == null || t.isBefore(weekStart)) continue;
-        final p = data['food_protein'];
-        if (p is num) protein += p.toDouble();
+      for (final doc in food) {
+        protein += BalanceService.number(doc.data()['food_protein']) ?? 0;
       }
     } catch (_) {
       // Leave protein at 0 if this friend's food can't be read.

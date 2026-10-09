@@ -2,21 +2,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/responsive.dart';
-import 'package:provider/provider.dart';
-import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/recipe_service.dart';
 import 'package:namer_app/components/mini_game.dart';
 
 class AddRecipePage extends StatefulWidget {
-  final bool addToHome;
-  final String? homeCategory;
   final String? recipeId; // if provided, page works in edit mode
 
   const AddRecipePage({
     super.key,
-    this.addToHome = false,
-    this.homeCategory,
     this.recipeId,
   });
 
@@ -305,9 +301,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
                               if (v == null || v.trim().isEmpty) {
                                 return 'Enter a number';
                               }
-                              if (double.tryParse(v) == null) {
+                              final n = double.tryParse(v.trim());
+                              if (n == null || !n.isFinite) {
                                 return 'Enter a valid number';
                               }
+                              if (n <= 0) return 'Must be more than 0';
                               return null;
                             },
                           ),
@@ -563,12 +561,22 @@ class _AddRecipePageState extends State<AddRecipePage> {
                     GestureDetector(
                       onTap: () async {
                         final newPortion = double.tryParse(
-                                _ingredientPortionController.text) ??
-                            1.0;
+                            _ingredientPortionController.text.trim());
+                        if (newPortion == null ||
+                            !newPortion.isFinite ||
+                            newPortion <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    'Enter an amount more than 0.')),
+                          );
+                          return;
+                        }
                         final portionUnit = _extractPortionUnit(ing.portion);
+                        final amount = FoodLog.formatAmount(newPortion);
                         final newPortionDisplay = portionUnit.isNotEmpty
-                            ? '$newPortion $portionUnit'
-                            : '$newPortion';
+                            ? '$amount $portionUnit'
+                            : amount;
 
                         // Calculate adjusted macros based on portion ratio
                         final adjustedMacros =
@@ -660,7 +668,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       final firestore = FirebaseFirestore.instance;
       final recipeSnap =
           await firestore.collection('recipes').doc(recipeId).get();
-      if (!recipeSnap.exists) return;
+      if (!recipeSnap.exists || !mounted) return;
       final data = recipeSnap.data()!;
 
       // Name
@@ -673,6 +681,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       // Ingredients (authoritative list from user_food with foodCategory 'Recipe')
       final ingSnap = await firestore
           .collection('user_food')
+          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
           .where('recipe_id', isEqualTo: recipeId)
           .where('foodCategory', isEqualTo: 'Recipe')
           .get();
@@ -689,6 +698,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
           portion: (d['food_portion'] as String?) ?? '',
         ));
       }
+      if (!mounted) return;
       setState(() {
         _ingredients
           ..clear()
@@ -723,194 +733,94 @@ class _AddRecipePageState extends State<AddRecipePage> {
     }
   }
 
+  /// Serving size as saved on the recipe, e.g. "Per 2 Servings" or "450 g".
+  String _servingSizeDisplay() {
+    final value = double.tryParse(_servingSizeController.text.trim());
+    final amount = value != null && value.isFinite && value > 0 ? value : 1.0;
+    return FoodLog.servingLabel(amount, grams: _servingUnit == 'g');
+  }
+
+  /// Checks the form; explains what's missing instead of doing nothing.
+  bool _readyToSave() {
+    if (!_formKey.currentState!.validate()) return false;
+    if (_ingredients.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one ingredient first.')),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  List<RecipeIngredient> get _recipeIngredients => [
+        for (final ing in _ingredients)
+          RecipeIngredient(
+            name: ing.name,
+            macros: Macros(
+              calories: ing.calories,
+              protein: ing.protein,
+              carbs: ing.carbs,
+              fat: ing.fat,
+            ),
+            portion: ing.portion,
+          ),
+      ];
+
   Future<void> _updateRecipe() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_ingredients.isEmpty) return;
-    if (widget.recipeId == null) return;
+    if (_saving || widget.recipeId == null) return;
+    if (!_readyToSave()) return;
 
     setState(() => _saving = true);
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final firestore = FirebaseFirestore.instance;
-
-    // Recompute totals
-    num totalCalories = 0;
-    double totalProtein = 0;
-    double totalCarbs = 0;
-    double totalFat = 0;
-    for (final ing in _ingredients) {
-      totalCalories += ing.calories;
-      totalProtein += ing.protein;
-      totalCarbs += ing.carbs;
-      totalFat += ing.fat;
-    }
-
-    final servingSizeValue = double.tryParse(_servingSizeController.text) ?? 1;
-    final servingSizeDisplay = _servingUnit == 'g'
-        ? '$servingSizeValue g'
-        : 'Per $servingSizeValue $_servingUnit${servingSizeValue != 1 ? 's' : ''}';
-
-    final batch = firestore.batch();
-
-    // Delete old ingredient docs (authoritative list) for this recipe
-    final existing = await firestore
-        .collection('user_food')
-        .where('recipe_id', isEqualTo: widget.recipeId)
-        .where('foodCategory', isEqualTo: 'Recipe')
-        .get();
-    for (final doc in existing.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Create new ingredient docs
-    final ingredientIds = <String>[];
-    for (final ing in _ingredients) {
-      final docRef = firestore.collection('user_food').doc();
-      ingredientIds.add(docRef.id);
-      batch.set(docRef, {
-        'user_id': uid,
-        'food_description': ing.name,
-        'food_calories': ing.calories,
-        'food_protein': ing.protein,
-        'food_carbs': ing.carbs,
-        'food_fat': ing.fat,
-        'food_portion': ing.portion,
-        'foodCategory': 'Recipe',
-        'created_at': FieldValue.serverTimestamp(),
-        'recipe_id': widget.recipeId,
-      });
-    }
-
-    // Update the recipe document
-    batch.update(firestore.collection('recipes').doc(widget.recipeId), {
-      'user_id': uid,
-      'name': _nameController.text.trim(),
-      'serving_size': servingSizeDisplay,
-      'food_item_ids': ingredientIds,
-      'total_calories': totalCalories,
-      'total_protein': totalProtein,
-      'total_carbs': totalCarbs,
-      'total_fat': totalFat,
-    });
-
     try {
-      await batch.commit();
+      // Food already logged from this recipe keeps its own numbers, so
+      // past days and today's balance don't change when a recipe is edited.
+      await RecipeService.update(
+        FirebaseAuth.instance.currentUser!.uid,
+        widget.recipeId!,
+        name: _nameController.text,
+        servingSize: _servingSizeDisplay(),
+        ingredients: _recipeIngredients,
+      );
       if (!mounted) return;
       Navigator.pop(context, widget.recipeId);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update recipe: $e')),
+          SnackBar(
+            content: Text(e is StateError
+                ? e.message
+                : "Couldn't save your changes. Please try again."),
+          ),
         );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
+
   Future<void> _saveRecipe() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_ingredients.isEmpty) return;
+    if (_saving) return;
+    if (!_readyToSave()) return;
 
     setState(() => _saving = true);
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final firestore = FirebaseFirestore.instance;
-    final batch = firestore.batch();
-
-    final ingredientIds = <String>[];
-    num totalCalories = 0;
-    double totalProtein = 0;
-    double totalCarbs = 0;
-    double totalFat = 0;
-
-    for (final ing in _ingredients) {
-      final docRef = firestore.collection('user_food').doc();
-      final calories = ing.calories;
-      final protein = ing.protein;
-      final carbs = ing.carbs;
-      final fat = ing.fat;
-
-      totalCalories += calories;
-      totalProtein += protein;
-      totalCarbs += carbs;
-      totalFat += fat;
-
-      batch.set(docRef, {
-        'user_id': uid,
-        'food_description': ing.name,
-        'food_calories': calories,
-        'food_protein': protein,
-        'food_carbs': carbs,
-        'food_fat': fat,
-        'foodCategory': 'Recipe',
-        'created_at': FieldValue.serverTimestamp(),
-        'recipe_id': 'pending',
-      });
-
-      ingredientIds.add(docRef.id);
-    }
-
-    final recipeRef = firestore.collection('recipes').doc();
-    final servingSizeValue = double.tryParse(_servingSizeController.text) ?? 1;
-    final servingSizeDisplay = _servingUnit == 'g'
-        ? '$servingSizeValue g'
-        : 'Per $servingSizeValue $_servingUnit${servingSizeValue != 1 ? 's' : ''}';
-    batch.set(recipeRef, {
-      'user_id': uid,
-      'name': _nameController.text.trim(),
-      'serving_size': servingSizeDisplay,
-      'created_at': FieldValue.serverTimestamp(),
-      'food_item_ids': ingredientIds,
-      'total_calories': totalCalories,
-      'total_protein': totalProtein,
-      'total_carbs': totalCarbs,
-      'total_fat': totalFat,
-    });
-
-    // Optionally add a rolled-up recipe entry to home
-    if (widget.addToHome) {
-      final category = widget.homeCategory ??
-          Provider.of<CategoryService>(context, listen: false).selectedCategory;
-      final rolledRef = firestore.collection('user_food').doc();
-      batch.set(rolledRef, {
-        'user_id': uid,
-        'food_description': 'Recipe: ${_nameController.text.trim()}',
-        'food_calories': totalCalories,
-        'food_protein': totalProtein,
-        'food_carbs': totalCarbs,
-        'food_fat': totalFat,
-        'food_portion': servingSizeDisplay,
-        'foodCategory': category,
-        'recipe_id': recipeRef.id,
-        'created_at': FieldValue.serverTimestamp(),
-        'is_recipe': true,
-      });
-
-      // Spend from the card in the same atomic write.
-      await BalanceService.ensureDailyReset(uid);
-      final userDataDoc = await BalanceService.userDataDoc(uid);
-      if (userDataDoc != null) {
-        batch.update(
-          userDataDoc.reference,
-          BalanceService.spendUpdate(
-            calories: totalCalories.toDouble(),
-            protein: totalProtein,
-            carbs: totalCarbs,
-            fat: totalFat,
-          ),
+    try {
+      final recipeId = await RecipeService.create(
+        FirebaseAuth.instance.currentUser!.uid,
+        name: _nameController.text,
+        servingSize: _servingSizeDisplay(),
+        ingredients: _recipeIngredients,
+      );
+      if (!mounted) return;
+      Navigator.pop(context, recipeId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Couldn't save the recipe. Please try again.")),
         );
+        setState(() => _saving = false);
       }
     }
-
-    // Update ingredient docs with the recipe_id now that we have it
-    for (final id in ingredientIds) {
-      batch.update(firestore.collection('user_food').doc(id), {
-        'recipe_id': recipeRef.id,
-      });
-    }
-
-    await batch.commit();
-
-    if (!mounted) return;
-    Navigator.pop(context, recipeRef.id);
   }
 
   Map<String, double> _calculateAdjustedIngredientMacros(
@@ -932,7 +842,9 @@ class _AddRecipePageState extends State<AddRecipePage> {
     if (portion.isEmpty) return 1.0;
     final regex = RegExp(r'^(\d+(?:\.\d+)?)');
     final match = regex.firstMatch(portion);
-    return match != null ? double.parse(match.group(1)!) : 1.0;
+    final value = match != null ? double.tryParse(match.group(1)!) : null;
+    // Never 0: it's divided by when scaling an ingredient.
+    return value != null && value > 0 ? value : 1.0;
   }
 
   /// Moves finished items from the text box into the list. With [all],

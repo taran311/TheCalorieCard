@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/balance_service.dart';
@@ -75,11 +74,7 @@ class _CreditCardWidgetState extends State<CreditCard>
     super.dispose();
   }
 
-  double? _num(dynamic v) {
-    if (v is num) return v.toDouble();
-    if (v is String) return double.tryParse(v);
-    return null;
-  }
+  double? _num(dynamic v) => BalanceService.number(v);
 
   Future<void> _load() async {
     try {
@@ -89,28 +84,41 @@ class _CreditCardWidgetState extends State<CreditCard>
         if (mounted) setState(() => _loading = false);
         return;
       }
-      final snap = await FirebaseFirestore.instance
-          .collection('user_data')
-          .where('user_id', isEqualTo: userId)
-          .limit(1)
-          .get(const GetOptions(source: Source.server));
+      final doc = await BalanceService.userDataDoc(userId);
       if (!mounted) return;
-      if (snap.docs.isEmpty) {
+      if (doc == null) {
         setState(() => _loading = false);
         return;
       }
-      final data = snap.docs.first.data();
+      final data = doc.data() ?? {};
+
+      // A balance saved on an earlier day hasn't been reset yet (e.g. a
+      // friend who hasn't opened the app today). Show today's real
+      // balance: goals minus what's been logged today.
+      Macros? live;
+      final goals = BalanceService.goalsFrom(data);
+      if (!widget.skipFetch &&
+          goals != null &&
+          data['balance_date'] != BalanceService.dateKey(BalanceService.now())) {
+        live = goals - await BalanceService.todaysTotals(userId);
+        if (!mounted) return;
+      }
+
       setState(() {
         _proteinGoal = _num(data['protein_goal']);
         _carbsGoal = _num(data['carbs_goal']);
         _fatsGoal = _num(data['fats_goal']);
         if (!widget.skipFetch) {
-          _calories = _num(data['calories'])?.round() ??
+          _calories = live?.calories.round() ??
+              _num(data['calories'])?.round() ??
               widget.initialCalories ??
               (BalanceService.calorieGoalFrom(data)?.round() ?? 0);
-          _protein = _num(data['protein_balance']) ?? _proteinGoal ?? 0;
-          _carbs = _num(data['carbs_balance']) ?? _carbsGoal ?? 0;
-          _fats = _num(data['fats_balance']) ?? _fatsGoal ?? 0;
+          _protein = live?.protein ??
+              _num(data['protein_balance']) ??
+              _proteinGoal ??
+              0;
+          _carbs = live?.carbs ?? _num(data['carbs_balance']) ?? _carbsGoal ?? 0;
+          _fats = live?.fat ?? _num(data['fats_balance']) ?? _fatsGoal ?? 0;
         }
         _loading = false;
       });
@@ -132,7 +140,7 @@ class _CreditCardWidgetState extends State<CreditCard>
   bool get _isToday {
     final d = widget.validThruDate;
     if (d == null) return true;
-    final now = DateTime.now();
+    final now = BalanceService.now();
     return d == '${now.day}/${now.month}/${now.year}';
   }
 

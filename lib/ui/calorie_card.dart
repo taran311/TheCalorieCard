@@ -31,6 +31,8 @@ String cardholderFromEmail(String email) {
 }
 
 String formatCardKcal(num value) {
+  // round() throws on NaN/infinity; never let a bad number crash the card.
+  if (!value.isFinite) return '0';
   final n = value.round().abs().toString();
   final b = StringBuffer();
   for (var i = 0; i < n.length; i++) {

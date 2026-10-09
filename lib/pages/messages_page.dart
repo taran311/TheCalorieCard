@@ -769,7 +769,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   static String _dayLabel(DateTime d) {
     final now = DateTime.now();
     if (_sameDay(d, now)) return 'Today';
-    if (_sameDay(d, now.subtract(const Duration(days: 1)))) return 'Yesterday';
+    if (_sameDay(d, BalanceService.addDays(now, -1))) return 'Yesterday';
     const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'

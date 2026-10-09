@@ -9,6 +9,7 @@ import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/food_log.dart';
 import 'dart:convert';
 
 class UserSettingsPage extends StatefulWidget {
@@ -126,129 +127,114 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       TextEditingController();
   int? _manualCalorieGoal;
 
-  Future<Map<String, double>> _getCurrentIntakeTotals() {
-    final userId = FirebaseAuth.instance.currentUser!.uid;
-    return BalanceService.todaysTotals(userId);
-  }
-
+  /// AI targets per goal ('lose', 'maintain', 'gain'), from the last
+  /// estimate, so switching goal keeps the AI's macros.
+  Map<String, dynamic>? _aiTargets;
 
   Future<void> _clearAllTodaysFoodItems() async {
     try {
       final userId = FirebaseAuth.instance.currentUser!.uid;
-      final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
-
-      final snapshot = await FirebaseFirestore.instance
-          .collection('user_food')
-          .where('user_id', isEqualTo: userId)
-          .get(const GetOptions(source: Source.server));
-
-      final batch = FirebaseFirestore.instance.batch();
-      int count = 0;
-
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        DateTime? docDate;
-        final timeAdded = data['time_added'];
-        final createdAt = data['created_at'];
-
-        if (timeAdded is Timestamp) {
-          docDate = timeAdded.toDate();
-        } else if (timeAdded is DateTime) {
-          docDate = timeAdded;
-        } else if (createdAt is Timestamp) {
-          docDate = createdAt.toDate();
-        } else if (createdAt is DateTime) {
-          docDate = createdAt;
-        }
-
-        if (docDate != null &&
-            !docDate.isBefore(startOfDay) &&
-            docDate.isBefore(endOfDay)) {
-          batch.delete(doc.reference);
-          count++;
-        }
-      }
-
-      await batch.commit();
+      // Removes today's food (recipes you've saved are kept) and puts the
+      // card back to your full daily goals.
+      final count = await BalanceService.clearToday(userId);
+      FoodLog.notifyChanged();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cleared $count food items from today')),
+          SnackBar(
+              content: Text(count == 0
+                  ? 'Nothing logged today'
+                  : 'Cleared $count food item${count == 1 ? '' : 's'} from today')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing food items: $e')),
+          const SnackBar(
+              content: Text("Couldn't clear today's food. Please try again.")),
         );
       }
     }
   }
 
-  Future<void> saveData() async {
+  /// The calorie goal that Save will store.
+  double get _goalToSave {
+    if (_selectedTabIndex == 1 && _manualCalorieGoal != null) {
+      return _manualCalorieGoal!.toDouble();
+    }
+    return (cardActiveCalories ??
+            calorieMaintenance ??
+            calorieDeficit ??
+            calorieSurplus ??
+            0)
+        .toDouble();
+  }
+
+  /// Saves the profile and goals. Today's card becomes the new goal minus
+  /// what's already been eaten today. Returns an error message, or null
+  /// when saved.
+  Future<String?> saveData() async {
+    final goal = _goalToSave;
+    if (goal < 500 || goal > 10000) {
+      return 'Set a daily calorie goal between 500 and 10,000 first.';
+    }
+    if (_proteinGoal == null || _carbsGoal == null || _fatsGoal == null) {
+      return 'Fill in protein, carbs and fat (0 is fine).';
+    }
+    if (_proteinGoal! < 0 || _carbsGoal! < 0 || _fatsGoal! < 0) {
+      return "Macros can't be negative.";
+    }
+
     try {
       final userId = FirebaseAuth.instance.currentUser!.uid;
-
-      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
-          .collection('user_data')
-          .where('user_id', isEqualTo: userId)
-          .get(const GetOptions(source: Source.server));
-
-      if (querySnapshot.docs.isNotEmpty) {
-        // Get the document ID
-        final docId = querySnapshot.docs.first.id;
-
-        // Create a reference to the document
-        final docRef =
-            FirebaseFirestore.instance.collection('user_data').doc(docId);
-
-        final totals = await _getCurrentIntakeTotals();
-
-        final double selectedCalories = (cardActiveCalories ??
-                calorieMaintenance ??
-                calorieDeficit ??
-                calorieSurplus ??
-                0)
-            .toDouble();
-
-        final int proteinGoal = _proteinGoal ?? 0;
-        final int carbsGoal = _carbsGoal ?? 0;
-        final int fatsGoal = _fatsGoal ?? 0;
-
-        // Use manual calorie goal if set, otherwise use AI calculated
-        final double baseCalorieGoal =
-            _selectedTabIndex == 1 && _manualCalorieGoal != null
-                ? _manualCalorieGoal!.toDouble()
-                : selectedCalories;
-
-        // Update the document
-        await docRef.update({
+      await BalanceService.applyGoals(
+        userId,
+        goals: Macros(
+          calories: goal,
+          protein: _proteinGoal!.toDouble(),
+          carbs: _carbsGoal!.toDouble(),
+          fat: _fatsGoal!.toDouble(),
+        ),
+        extra: {
           'age': _selectedAge,
           'height': _selectedHeight,
           'weight': _selectedWeight,
           'exercise_level': _exerciseLevel,
           'gender': genderSelections.first ? 'male' : 'female',
           'calorie_mode': calorieMode,
-          'calorie_goal': baseCalorieGoal, // Store base calorie goal
-          'calories': baseCalorieGoal - (totals['calories'] ?? 0),
-          'protein_goal': proteinGoal,
-          'carbs_goal': carbsGoal,
-          'fats_goal': fatsGoal,
-          // balances now subtract current intake so card reflects remaining
-          'protein_balance': proteinGoal - (totals['protein'] ?? 0),
-          'carbs_balance': carbsGoal - (totals['carbs'] ?? 0),
-          'fats_balance': fatsGoal - (totals['fats'] ?? 0),
-          'balance_date': BalanceService.dateKey(DateTime.now()),
-        });
-
-        // Wait a moment to ensure Firestore write propagates to server
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
+          // Reopening Settings shows the tab these goals came from.
+          'goal_source': _selectedTabIndex == 1 ? 'manual' : 'calculated',
+        },
+      );
+      FoodLog.notifyChanged();
+      return null;
     } catch (e) {
-      // Error updating user data
+      return "Couldn't save your changes. Check your connection and try again.";
     }
+  }
+
+  Future<void> _onSavePressed() async {
+    if (_isSaving) return;
+    setState(() {
+      _isSaving = true;
+    });
+    final error = await saveData();
+    if (!mounted) return;
+    setState(() {
+      _isSaving = false;
+    });
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: AppColors.red700),
+      );
+      return;
+    }
+    await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (context) => const MainShell(initialIndex: 1),
+      ),
+      (route) => false,
+    );
   }
 
   Future<void> populateData() async {
@@ -260,7 +246,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('user_data')
           .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-          .get(const GetOptions(source: Source.server));
+          .get();
 
       if (querySnapshot.docs.isNotEmpty) {
         Map<String, dynamic> userData =
@@ -305,15 +291,15 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             calorieMode = 'lose';
           }
 
-          _proteinGoal = (userData['protein_goal'] as num?)?.toInt();
-          _carbsGoal = (userData['carbs_goal'] as num?)?.toInt();
-          _fatsGoal = (userData['fats_goal'] as num?)?.toInt();
+          _proteinGoal = asInt(userData['protein_goal']);
+          _carbsGoal = asInt(userData['carbs_goal']);
+          _fatsGoal = asInt(userData['fats_goal']);
           _proteinController.text = _proteinGoal?.toString() ?? '';
           _carbsController.text = _carbsGoal?.toString() ?? '';
           _fatsController.text = _fatsGoal?.toString() ?? '';
 
           // Load calorie_goal for manual input
-          final calorieGoal = (userData['calorie_goal'] as num?)?.toInt();
+          final calorieGoal = asInt(userData['calorie_goal']);
           if (calorieGoal != null) {
             _manualCalorieGoal = calorieGoal;
             _manualCalorieController.text = calorieGoal.toString();
@@ -321,6 +307,20 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
           updateCalories();
           updateCardActiveCalories();
+
+          // Show what's saved, not a fresh estimate: opening Settings and
+          // pressing Save must not change your goals.
+          final storedGoal = BalanceService.calorieGoalFrom(userData)?.round();
+          if (storedGoal != null && storedGoal > 0) {
+            cardActiveCalories = storedGoal;
+          }
+          _proteinGoal = asInt(userData['protein_goal']);
+          _carbsGoal = asInt(userData['carbs_goal']);
+          _fatsGoal = asInt(userData['fats_goal']);
+          _proteinController.text = _proteinGoal?.toString() ?? '';
+          _carbsController.text = _carbsGoal?.toString() ?? '';
+          _fatsController.text = _fatsGoal?.toString() ?? '';
+          if (userData['goal_source'] == 'manual') _selectedTabIndex = 1;
         });
       }
     } catch (e) {
@@ -345,9 +345,26 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       selectedCalories = calorieSurplus;
     }
 
+    final mode = calorieSelections[0]
+        ? 'lose'
+        : calorieSelections[1]
+            ? 'maintain'
+            : 'gain';
+    final aiTarget = _aiTargets?[mode];
+
     setState(() {
       cardActiveCalories = selectedCalories;
-      _prefillMacrosFromCalories(selectedCalories);
+      if (aiTarget is Map && aiTarget['protein_g'] != null) {
+        // Keep the AI's macros for this goal rather than a generic split.
+        _proteinGoal = asInt(aiTarget['protein_g']);
+        _carbsGoal = asInt(aiTarget['carbs_g']);
+        _fatsGoal = asInt(aiTarget['fat_g']);
+        _proteinController.text = _proteinGoal?.toString() ?? '';
+        _carbsController.text = _carbsGoal?.toString() ?? '';
+        _fatsController.text = _fatsGoal?.toString() ?? '';
+      } else {
+        _prefillMacrosFromCalories(selectedCalories);
+      }
     });
   }
 
@@ -440,9 +457,10 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
           if (targets != null) {
             setState(() {
-              calorieDeficit = targets['lose']?['calories'];
-              calorieMaintenance = targets['maintain']?['calories'];
-              calorieSurplus = targets['gain']?['calories'];
+              _aiTargets = Map<String, dynamic>.from(targets as Map);
+              calorieDeficit = asInt(targets['lose']?['calories']);
+              calorieMaintenance = asInt(targets['maintain']?['calories']);
+              calorieSurplus = asInt(targets['gain']?['calories']);
 
               // Set macros based on selected goal
               final selectedTarget = calorieSelections[0]
@@ -451,9 +469,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                       ? targets['maintain']
                       : targets['gain'];
 
-              _proteinGoal = selectedTarget?['protein_g'];
-              _carbsGoal = selectedTarget?['carbs_g'];
-              _fatsGoal = selectedTarget?['fat_g'];
+              _proteinGoal = asInt(selectedTarget?['protein_g']);
+              _carbsGoal = asInt(selectedTarget?['carbs_g']);
+              _fatsGoal = asInt(selectedTarget?['fat_g']);
 
               _proteinController.text = _proteinGoal?.toString() ?? '0';
               _carbsController.text = _carbsGoal?.toString() ?? '0';
@@ -542,6 +560,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
   Future<void> updateCalories() async {
     _markFieldsChanged();
+    _aiTargets = null;
     var genderAdjustment = genderSelections.first ? 5 : -161;
     double activityMultiplier = 0;
 
@@ -751,26 +770,30 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           ),
           const SizedBox(height: 24),
           // Credit Card Preview
-          AnimatedBuilder(
-            animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
-            builder: (context, child) {
-              return Transform.rotate(
-                angle: _jiggleAnimation?.value ?? 0.0,
-                child: child,
-              );
-            },
-            child: CreditCard(
-              key: ValueKey(
-                  '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
-              initialCalories: cardActiveCalories ?? 0,
-              caloriesOverride: cardActiveCalories ?? 0,
-              proteinOverride: (_proteinGoal ?? 0).toDouble(),
-              carbsOverride: (_carbsGoal ?? 0).toDouble(),
-              fatsOverride: (_fatsGoal ?? 0).toDouble(),
-              skipFetch: true,
-              onToggleMacros: (showMacros) {
-                _jiggleAnimationController?.forward(from: 0);
+          Center(
+            // Keep the card at its natural size; the stretch column
+            // would otherwise pull it to full width.
+            child: AnimatedBuilder(
+              animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
+              builder: (context, child) {
+                return Transform.rotate(
+                  angle: _jiggleAnimation?.value ?? 0.0,
+                  child: child,
+                );
               },
+              child: CreditCard(
+                key: ValueKey(
+                    '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
+                initialCalories: cardActiveCalories ?? 0,
+                caloriesOverride: cardActiveCalories ?? 0,
+                proteinOverride: (_proteinGoal ?? 0).toDouble(),
+                carbsOverride: (_carbsGoal ?? 0).toDouble(),
+                fatsOverride: (_fatsGoal ?? 0).toDouble(),
+                skipFetch: true,
+                onToggleMacros: (showMacros) {
+                  _jiggleAnimationController?.forward(from: 0);
+                },
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -830,23 +853,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             child: ElevatedButton(
               onPressed: _isSaving
                   ? null
-                  : () async {
-                      setState(() {
-                        _isSaving = true;
-                      });
-                      await saveData();
-                      if (!mounted) return;
-                      setState(() {
-                        _isSaving = false;
-                      });
-                      await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const MainShell(initialIndex: 1),
-                        ),
-                        (route) => false,
-                      );
-                    },
+                  : _onSavePressed,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.green,
                 foregroundColor: Colors.white,
@@ -1239,26 +1246,30 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         const SizedBox(height: 20),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 0),
-          child: AnimatedBuilder(
-            animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
-            builder: (context, child) {
-              return Transform.rotate(
-                angle: _jiggleAnimation?.value ?? 0.0,
-                child: child,
-              );
-            },
-            child: CreditCard(
-              key: ValueKey(
-                  '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
-              initialCalories: cardActiveCalories ?? 0,
-              caloriesOverride: cardActiveCalories ?? 0,
-              proteinOverride: (_proteinGoal ?? 0).toDouble(),
-              carbsOverride: (_carbsGoal ?? 0).toDouble(),
-              fatsOverride: (_fatsGoal ?? 0).toDouble(),
-              skipFetch: true,
-              onToggleMacros: (showMacros) {
-                _jiggleAnimationController?.forward(from: 0);
+          child: Center(
+            // Keep the card at its natural size; the stretch column
+            // would otherwise pull it to full width.
+            child: AnimatedBuilder(
+              animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
+              builder: (context, child) {
+                return Transform.rotate(
+                  angle: _jiggleAnimation?.value ?? 0.0,
+                  child: child,
+                );
               },
+              child: CreditCard(
+                key: ValueKey(
+                    '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
+                initialCalories: cardActiveCalories ?? 0,
+                caloriesOverride: cardActiveCalories ?? 0,
+                proteinOverride: (_proteinGoal ?? 0).toDouble(),
+                carbsOverride: (_carbsGoal ?? 0).toDouble(),
+                fatsOverride: (_fatsGoal ?? 0).toDouble(),
+                skipFetch: true,
+                onToggleMacros: (showMacros) {
+                  _jiggleAnimationController?.forward(from: 0);
+                },
+              ),
             ),
           ),
         ),
@@ -1309,22 +1320,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           child: ElevatedButton(
             onPressed: _isSaving
                 ? null
-                : () async {
-                    setState(() {
-                      _isSaving = true;
-                    });
-                    await saveData();
-                    if (!mounted) return;
-                    setState(() {
-                      _isSaving = false;
-                    });
-                    await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                        builder: (context) => const MainShell(initialIndex: 1),
-                      ),
-                      (route) => false,
-                    );
-                  },
+                : _onSavePressed,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.green,
               foregroundColor: Colors.white,
@@ -1554,6 +1550,10 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                             onTap: () {
                                               setState(() {
                                                 _selectedTabIndex = 1;
+                                                if (_manualCalorieGoal != null) {
+                                                  cardActiveCalories =
+                                                      _manualCalorieGoal;
+                                                }
                                               });
                                             },
                                             child: AnimatedContainer(

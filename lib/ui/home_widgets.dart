@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/services/balance_service.dart';
 
 const _months = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -27,7 +28,7 @@ class DayStepper extends StatelessWidget {
   String _label(DateTime d) {
     final now = DateTime.now();
     if (_sameDay(d, now)) return 'Today';
-    if (_sameDay(d, now.subtract(const Duration(days: 1)))) {
+    if (_sameDay(d, BalanceService.addDays(now, -1))) {
       return 'Yesterday';
     }
     final year = d.year == now.year ? '' : ' ${d.year}';
@@ -45,7 +46,7 @@ class DayStepper extends StatelessWidget {
         IconButton(
           tooltip: tip,
           onPressed: enabled
-              ? () => onChanged(day.add(Duration(days: delta)))
+              ? () => onChanged(BalanceService.addDays(day, delta))
               : null,
           icon: Icon(icon),
           color: AppColors.primary,

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/pages/achievements_page.dart';
@@ -497,15 +498,14 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
       return Stream.value([]);
     }
 
-    // Listen to all user_food changes for all members
-    return FirebaseFirestore.instance
-        .collection('user_food')
-        .where('user_id', whereIn: memberIds)
-        .snapshots()
+    // Listen to today's food for all members (not their whole history).
+    final dayStart = BalanceService.startOfDay(BalanceService.now());
+    return BalanceService.entrySnapshotsBetween(memberIds.take(30).toList(),
+            dayStart, BalanceService.addDays(dayStart, 1))
         .asyncMap((snapshot) async {
-      final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
+      final today = BalanceService.now();
+      final startOfDay = BalanceService.startOfDay(today);
+      final endOfDay = BalanceService.addDays(startOfDay, 1);
 
       // Group food items by user
       Map<String, List<QueryDocumentSnapshot>> userFoodMap = {};
@@ -529,8 +529,9 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
             docDate = createdAt;
           }
 
-          // Only include items from today
-          if (docDate != null &&
+          // Only food eaten today (recipe ingredient rows aren't eaten)
+          if (BalanceService.isLogEntry(data) &&
+              docDate != null &&
               !docDate.isBefore(startOfDay) &&
               docDate.isBefore(endOfDay)) {
             userFoodMap.putIfAbsent(userId, () => []).add(doc);

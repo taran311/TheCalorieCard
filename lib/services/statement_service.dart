@@ -56,7 +56,7 @@ class Statement {
   /// within budget.
   int get daysUnderBudget {
     if (dailyBudget == null) return 0;
-    final today = BalanceService.dateKey(DateTime.now());
+    final today = BalanceService.dateKey(BalanceService.now());
     return days
         .where((d) =>
             BalanceService.dateKey(d.day) != today &&
@@ -83,26 +83,25 @@ class StatementService {
 
   /// Builds a statement for the last [days] days (including today).
   static Future<Statement> load(String userId, {int days = 7}) async {
-    final db = FirebaseFirestore.instance;
+    final today = BalanceService.startOfDay(BalanceService.now());
+    final start = BalanceService.addDays(today, -(days - 1));
+    final end = BalanceService.addDays(today, 1);
 
+    // Only the days on the statement are fetched, not the whole history.
     final results = await Future.wait<Object?>([
-      db.collection('user_food').where('user_id', isEqualTo: userId).get(),
+      BalanceService.entriesBetween(userId, start, end),
       BalanceService.userDataDoc(userId),
     ]);
 
-    final foodSnap = results[0] as QuerySnapshot<Map<String, dynamic>>;
+    final foodDocs =
+        results[0] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
     final userDoc = results[1] as DocumentSnapshot<Map<String, dynamic>>?;
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final start = today.subtract(Duration(days: days - 1));
-
     final byDay = <String, List<CardTransaction>>{};
-    for (final doc in foodSnap.docs) {
+    for (final doc in foodDocs) {
       final data = doc.data();
-      if (data['foodCategory'] == BalanceService.recipeCategory) continue;
       final time = BalanceService.entryDate(data);
-      if (time == null || time.isBefore(start)) continue;
+      if (time == null) continue;
 
       byDay.putIfAbsent(BalanceService.dateKey(time), () => []).add(
             CardTransaction(
@@ -121,7 +120,7 @@ class StatementService {
 
     final summaries = <DaySummary>[];
     for (var i = 0; i < days; i++) {
-      final day = start.add(Duration(days: i));
+      final day = BalanceService.addDays(start, i);
       final list = byDay[BalanceService.dateKey(day)] ?? <CardTransaction>[];
       list.sort((a, b) => b.time.compareTo(a.time));
       summaries.add(DaySummary(day, list));

@@ -1,14 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/services/category_service.dart';
-import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/statement_service.dart';
-import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/food_log.dart';
 
 class AddFoodPage extends StatefulWidget {
   const AddFoodPage({Key? key}) : super(key: key);
@@ -517,69 +515,18 @@ class _AddFoodPageState extends State<AddFoodPage> {
   }
 
   Future<void> _saveItems() async {
-    if (_calculatedItems.isEmpty) return;
+    if (_calculatedItems.isEmpty || _saving) return;
 
     setState(() {
       _saving = true;
     });
 
     try {
-      final firestore = FirebaseFirestore.instance;
-      final userId = FirebaseAuth.instance.currentUser!.uid;
-      final categoryService =
-          Provider.of<CategoryService>(context, listen: false);
-      final category = categoryService.selectedCategory;
+      final category =
+          Provider.of<CategoryService>(context, listen: false).selectedCategory;
 
-      // Make sure the card is on today's balance before spending from it.
-      await BalanceService.ensureDailyReset(userId);
-      final userDataDoc = await BalanceService.userDataDoc(userId);
-
-      // Create a batch to add all items
-      final batch = firestore.batch();
-
-      double totalCaloriesConsumed = 0;
-      double totalProteinConsumed = 0;
-      double totalCarbsConsumed = 0;
-      double totalFatConsumed = 0;
-
-      for (final item in _calculatedItems) {
-        final docRef = firestore.collection('user_food').doc();
-
-        batch.set(docRef, {
-          'user_id': userId,
-          'food_description': item['name'],
-          'food_portion': item['portion'],
-          'food_calories': item['calories'].round(),
-          'food_protein': item['protein'],
-          'food_carbs': item['carbs'],
-          'food_fat': item['fat'],
-          'foodCategory': category,
-          'time_added': DateTime.now(),
-        });
-
-        totalCaloriesConsumed += item['calories'];
-        totalProteinConsumed += item['protein'];
-        totalCarbsConsumed += item['carbs'];
-        totalFatConsumed += item['fat'];
-      }
-
-      // Spend from the card in the same atomic write as the food entries.
-      if (userDataDoc != null) {
-        batch.update(
-          userDataDoc.reference,
-          BalanceService.spendUpdate(
-            calories: totalCaloriesConsumed,
-            protein: totalProteinConsumed,
-            carbs: totalCarbsConsumed,
-            fat: totalFatConsumed,
-          ),
-        );
-      }
-
-      await batch.commit();
-
-      // Mark first time logger achievement
-      await AchievementService.markFirstTimeLogger(userId);
+      // One write logs every item and charges the card for them.
+      await FoodLog.logFoods(items: _calculatedItems, meal: category);
 
       if (mounted) {
         Navigator.pop(context, true);
@@ -587,7 +534,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving items: $e')),
+          const SnackBar(
+              content: Text("Couldn't save your food. Please try again.")),
         );
         setState(() {
           _saving = false;

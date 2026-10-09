@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -159,8 +161,10 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
         final recipes = snapshot.data!.docs;
         // Sort by created_at descending (client-side)
         recipes.sort((a, b) {
-          final timeA = a['created_at'] as Timestamp?;
-          final timeB = b['created_at'] as Timestamp?;
+          // data()[...] rather than doc[...]: older recipes may be missing
+          // fields, and doc[...] throws for those.
+          final timeA = (a.data() as Map)['created_at'] as Timestamp?;
+          final timeB = (b.data() as Map)['created_at'] as Timestamp?;
           if (timeA == null || timeB == null) return 0;
           return timeB.compareTo(timeA);
         });
@@ -169,22 +173,19 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
           itemCount: recipes.length,
           itemBuilder: (context, index) {
             final recipe = recipes[index];
-            final calories = recipe['total_calories'] as num? ?? 0;
-            final protein = (recipe['total_protein'] as num?)?.toDouble() ?? 0;
-            final carbs = (recipe['total_carbs'] as num?)?.toDouble() ?? 0;
-            final fat = (recipe['total_fat'] as num?)?.toDouble() ?? 0;
+            final r = recipe.data() as Map<String, dynamic>;
+            final calories = BalanceService.number(r['total_calories']) ?? 0;
+            final protein = BalanceService.number(r['total_protein']) ?? 0;
+            final carbs = BalanceService.number(r['total_carbs']) ?? 0;
+            final fat = BalanceService.number(r['total_fat']) ?? 0;
             final servingSize =
-                recipe['serving_size'] as String? ?? 'Per 1 Serving';
+                (r['serving_size'] as String?) ?? 'Per 1 Serving';
             final isEditing = _editingRecipeIndex == index;
 
             // Parse serving size to determine unit and value
             final isGrams = servingSize.contains('g') &&
                 !servingSize.toLowerCase().contains('serving');
-            final servingMatch =
-                RegExp(r'(\d+(?:\.\d+)?)').firstMatch(servingSize);
-            final originalServingValue = servingMatch != null
-                ? double.parse(servingMatch.group(1)!)
-                : 1.0;
+            final originalServingValue = FoodLog.servingAmount(servingSize);
             final unit = isGrams
                 ? 'g'
                 : 'Serving${originalServingValue != 1 ? 's' : ''}';
@@ -192,7 +193,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
             return Column(
               children: [
                 ListTile(
-                  title: Text(recipe['name'] ?? 'Recipe'),
+                  title: Text((r['name'] ?? 'Recipe').toString()),
                   subtitle: Text(
                       '${calories.toStringAsFixed(0)} kcal ($servingSize)'),
                   trailing: const Icon(Icons.add_circle_outline,
@@ -201,14 +202,14 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                     setState(() {
                       _editingRecipeIndex = index;
                       _portionController.text =
-                          originalServingValue.toStringAsFixed(isGrams ? 0 : 1);
+                          FoodLog.formatAmount(originalServingValue);
                     });
                   },
                 ),
                 if (isEditing)
                   _buildExpandedPortionView(
                     recipe.id,
-                    recipe.data() as Map<String, dynamic>,
+                    r,
                     calories,
                     protein,
                     carbs,
@@ -264,22 +265,20 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                 final item = recipes[index];
                 final recipe = item['recipe'] as Map<String, dynamic>;
                 final recipeId = item['recipe_id'] as String;
-                final calories = recipe['total_calories'] as num? ?? 0;
+                final calories =
+                    BalanceService.number(recipe['total_calories']) ?? 0;
                 final protein =
-                    (recipe['total_protein'] as num?)?.toDouble() ?? 0;
-                final carbs = (recipe['total_carbs'] as num?)?.toDouble() ?? 0;
-                final fat = (recipe['total_fat'] as num?)?.toDouble() ?? 0;
+                    BalanceService.number(recipe['total_protein']) ?? 0;
+                final carbs = BalanceService.number(recipe['total_carbs']) ?? 0;
+                final fat = BalanceService.number(recipe['total_fat']) ?? 0;
                 final servingSize =
                     recipe['serving_size'] as String? ?? 'Per 1 Serving';
                 final isEditing = _editingRecipeIndex == index;
 
                 final isGrams = servingSize.contains('g') &&
                     !servingSize.toLowerCase().contains('serving');
-                final servingMatch =
-                    RegExp(r'(\d+(?:\.\d+)?)').firstMatch(servingSize);
-                final originalServingValue = servingMatch != null
-                    ? double.parse(servingMatch.group(1)!)
-                    : 1.0;
+                final originalServingValue =
+                    FoodLog.servingAmount(servingSize);
                 final unit = isGrams
                     ? 'g'
                     : 'Serving${originalServingValue != 1 ? 's' : ''}';
@@ -296,8 +295,8 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                       onTap: () {
                         setState(() {
                           _editingRecipeIndex = index;
-                          _portionController.text = originalServingValue
-                              .toStringAsFixed(isGrams ? 0 : 1);
+                          _portionController.text =
+                              FoodLog.formatAmount(originalServingValue);
                         });
                       },
                     ),
@@ -394,6 +393,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                   ),
+                  onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => setState(() {}),
                   onTapOutside: (_) {
                     FocusScope.of(context).unfocus();
@@ -414,10 +414,14 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
           const SizedBox(height: 16),
           Builder(
             builder: (context) {
-              final newPortion = double.tryParse(_portionController.text) ??
-                  originalServingValue;
+              final typed = double.tryParse(_portionController.text.trim());
+              // Only amounts above zero can be logged; anything else would
+              // log nothing or credit the card.
+              final validPortion =
+                  typed != null && typed.isFinite && typed > 0;
+              final newPortion = validPortion ? typed! : originalServingValue;
               final ratio = newPortion / originalServingValue;
-              final adjustedCalories = (calories * ratio).toInt();
+              final adjustedCalories = (calories * ratio).round();
               final adjustedProtein = protein * ratio;
               final adjustedCarbs = carbs * ratio;
               final adjustedFat = fat * ratio;
@@ -597,7 +601,9 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton(
-                        onPressed: () {
+                        onPressed: !validPortion
+                            ? null
+                            : () {
                           final multiplier = ratio;
                           Navigator.pop(context, {
                             'recipeId': recipeId,
@@ -639,7 +645,8 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
 
         final userDoc =
             await firestore.collection('users').doc(sharedByUserId).get();
-        final sharedByEmail = userDoc['email'] as String? ?? 'Unknown';
+        final sharedByEmail =
+            userDoc.data()?['email'] as String? ?? 'Unknown';
 
         results.add({
           'recipe_id': recipeId,
@@ -655,10 +662,34 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
   }
 }
 
-class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+class _HomePageState extends State<HomePage>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   String get _activeUserId =>
       widget.userIdOverride ?? FirebaseAuth.instance.currentUser!.uid;
-  List<QueryDocumentSnapshot> _foodDocs = [];
+
+  /// Your own card (not a friend's): the only one we ever write to.
+  bool get _isOwnCard => !widget.readOnly && widget.userIdOverride == null;
+
+  /// Food can be added or removed only on today's card, and only until the
+  /// day is finished. Past days are a statement: read-only.
+  bool get _canEditSelectedDay =>
+      _isOwnCard && _isSelectedDateToday && !_isDayFinished;
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _foodDocs = [];
+
+  /// Everything eaten on the selected day, all meals.
+  Macros _dayTotals = Macros.zero;
+
+  // Guards against slow, out-of-order loads (fast tab or day switching).
+  int _foodLoadToken = 0;
+  int _dailyLogLoadToken = 0;
+
+  // Day rollover while the app stays open.
+  DateTime _lastKnownToday = BalanceService.now();
+  Timer? _midnightTimer;
+
+  Future<void>? _refreshing;
+  bool _refreshAgain = false;
   final List<String> _tabs = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
   int _creditCardRefreshKey = 0;
   bool _isLoading = true;
@@ -681,7 +712,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   double _totalProtein = 0.0;
   double _totalCarbs = 0.0;
   double _totalFat = 0.0;
-  String? _lastFetchedCategory;
 
   // Individual food item macro visibility tracking
   Map<String, bool> _foodMacrosVisibility = {};
@@ -749,21 +779,46 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
 
     _initializeHome();
-    FoodLog.changed.addListener(_onFoodLoggedElsewhere);
+    FoodLog.changed.addListener(_onFoodLogChanged);
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleMidnightCheck();
   }
 
-  /// Food was logged from another screen (e.g. Recipes): refresh the card.
-  void _onFoodLoggedElsewhere() {
-    if (!mounted || widget.readOnly || widget.userIdOverride != null) return;
-    _refreshAfterExternalChange();
+  /// Food was logged or removed (here or on another screen): refresh.
+  void _onFoodLogChanged() {
+    if (!mounted || !_isOwnCard) return;
+    _refreshAfterChange();
   }
 
-  Future<void> _refreshAfterExternalChange() async {
+  /// Reloads the food list, totals, the day's history snapshot and the
+  /// card. Calls that arrive while a refresh is running are merged into
+  /// one follow-up refresh.
+  Future<void> _refreshAfterChange() {
+    final running = _refreshing;
+    if (running != null) {
+      _refreshAgain = true;
+      return running;
+    }
+    final future = _doRefresh().whenComplete(() {
+      _refreshing = null;
+      if (_refreshAgain && mounted) {
+        _refreshAgain = false;
+        _refreshAfterChange();
+      }
+    });
+    _refreshing = future;
+    return future;
+  }
+
+  Future<void> _doRefresh() async {
     await populateFoodItems();
     if (!mounted) return;
-    final categoryService =
-        Provider.of<CategoryService>(context, listen: false);
-    await _fetchCategoryTotals(categoryService.selectedCategory);
+    if (_isOwnCard && _isSelectedDateToday) {
+      // Keep today's history snapshot current, so this day shows the right
+      // balance once it's in the past.
+      await _upsertDailyLogForDate(_selectedLogDate);
+      await _fetchDailyLogForDate(_selectedLogDate);
+    }
     if (!mounted) return;
     setState(() {
       _creditCardRefreshKey++;
@@ -771,8 +826,49 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkForNewDay();
+  }
+
+  void _scheduleMidnightCheck() {
+    _midnightTimer?.cancel();
+    final now = BalanceService.now();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    _midnightTimer = Timer(
+      nextMidnight.difference(now) + const Duration(seconds: 2),
+      () {
+        _checkForNewDay();
+        _scheduleMidnightCheck();
+      },
+    );
+  }
+
+  /// The date changed while the app was open: if you were looking at
+  /// "today", move to the new today and start the new day's balance.
+  Future<void> _checkForNewDay() async {
+    if (!mounted) return;
+    final now = BalanceService.now();
+    if (BalanceService.sameDay(now, _lastKnownToday)) return;
+    final wasOnToday = _isSameDay(_selectedLogDate, _lastKnownToday);
+    _lastKnownToday = now;
+    if (_isOwnCard) {
+      try {
+        await BalanceService.ensureDailyReset(_activeUserId);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    if (wasOnToday) {
+      await _changeDay(now);
+    } else {
+      setState(() => _creditCardRefreshKey++);
+    }
+  }
+
+  @override
   void dispose() {
-    FoodLog.changed.removeListener(_onFoodLoggedElsewhere);
+    FoodLog.changed.removeListener(_onFoodLogChanged);
+    WidgetsBinding.instance.removeObserver(this);
+    _midnightTimer?.cancel();
     _jiggleAnimationController?.dispose();
     _cardDragResetController?.dispose();
     _reactionFadeController?.dispose();
@@ -802,6 +898,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     // Only for your own card — never write to a friend's data.
     if (!widget.readOnly && widget.userIdOverride == null) {
       try {
+        // One-off: give old entries a time_added so date-range reads see them.
+        await BalanceService.backfillEntryTimes(_activeUserId);
+      } catch (_) {
+        // Tried again next launch.
+      }
+      try {
         final didReset = await BalanceService.ensureDailyReset(_activeUserId);
         if (didReset && mounted) {
           setState(() {
@@ -812,13 +914,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         // Card still shows the stored balance; next load will retry.
       }
     }
+    await _fetchUserGoals();
     await populateFoodItems();
     await _fetchDailyLogForDate(_selectedLogDate);
-    if (!mounted) return;
-    // Fetch category totals on initial load
-    final categoryService =
-        Provider.of<CategoryService>(context, listen: false);
-    await _fetchCategoryTotals(categoryService.selectedCategory);
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -831,22 +929,21 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       _selectedLogDate = day;
       _deleteMode = false;
     });
-    await populateFoodItems();
-    await _fetchDailyLogForDate(day);
+    await Future.wait([
+      populateFoodItems(),
+      _fetchDailyLogForDate(day),
+    ]);
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  bool get _isSelectedDateToday => _isSameDay(_selectedLogDate, DateTime.now());
+  bool get _isSelectedDateToday =>
+      _isSameDay(_selectedLogDate, BalanceService.now());
 
-  bool _hasLoggedFoodForSelectedDate() {
-    if (_selectedDailyLog == null) return false;
-    final foodEntries = _selectedDailyLog?['food_entries'] as List?;
-    return foodEntries != null && foodEntries.isNotEmpty;
-  }
   Future<void> _fetchDailyLogForDate(DateTime date) async {
+    final token = ++_dailyLogLoadToken;
     try {
       final userId = _activeUserId;
       final key = _dateKey(date);
@@ -854,31 +951,49 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           .collection('daily_logs')
           .doc('${userId}_$key');
       final doc = await docRef.get();
-      if (!mounted) return;
+      if (!mounted || token != _dailyLogLoadToken) return;
       final data = doc.data();
-
-      // If no daily log exists for this date, fetch user goals for display
-      if (data == null && !_isSameDay(date, DateTime.now())) {
-        await _fetchUserGoals();
-      }
 
       setState(() {
         _selectedDailyLog = data;
       });
       await _loadDailyLogStatusForSelectedDate(data);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || token != _dailyLogLoadToken) return;
       setState(() {
         _selectedDailyLog = null;
         _isDayFinished = false;
       });
-
-      // Fetch user goals for unlogged days
-      if (!_isSameDay(_selectedLogDate, DateTime.now())) {
-        await _fetchUserGoals();
-      }
     }
   }
+
+  /// The goals that applied on the selected day: from that day's saved
+  /// history when there is one, otherwise today's goals.
+  Macros get _goalsForSelectedDay {
+    final log = _selectedDailyLog;
+    final goals = (log?['goals'] as Map?) ?? const {};
+    final balances = (log?['balances'] as Map?) ?? const {};
+    final totals = (log?['totals'] as Map?) ?? const {};
+    double? n(dynamic v) => BalanceService.number(v);
+
+    var calories = n(goals['calorie_goal']);
+    if (calories == null) {
+      // Older history: balance left + amount eaten = the day's goal.
+      final left = n(balances['calories']);
+      final eaten = n(totals['calories']);
+      if (left != null && eaten != null) calories = left + eaten;
+    }
+    return Macros(
+      calories: calories ?? (_userCalorieGoal ?? 0).toDouble(),
+      protein: n(goals['protein_goal']) ?? _userProteinGoal ?? 0,
+      carbs: n(goals['carbs_goal']) ?? _userCarbsGoal ?? 0,
+      fat: n(goals['fats_goal']) ?? _userFatsGoal ?? 0,
+    );
+  }
+
+  /// What was left on the card at the end of the selected (past) day,
+  /// worked out from the food actually logged that day.
+  Macros get _selectedDayBalance => _goalsForSelectedDay - _dayTotals;
 
   String _dateKey(DateTime date) {
     final y = date.year.toString();
@@ -894,16 +1009,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           .collection('user_data')
           .where('user_id', isEqualTo: userId)
           .limit(1)
-          .get(const GetOptions(source: Source.server));
+          .get();
 
       if (userDataSnapshot.docs.isNotEmpty) {
         final userData = userDataSnapshot.docs.first.data();
         if (mounted) {
           setState(() {
-            _userCalorieGoal = (userData['calorie_goal'] as num?)?.toInt();
-            _userProteinGoal = (userData['protein_goal'] as num?)?.toDouble();
-            _userCarbsGoal = (userData['carbs_goal'] as num?)?.toDouble();
-            _userFatsGoal = (userData['fats_goal'] as num?)?.toDouble();
+            _userCalorieGoal =
+                BalanceService.calorieGoalFrom(userData)?.round();
+            _userProteinGoal = BalanceService.number(userData['protein_goal']);
+            _userCarbsGoal = BalanceService.number(userData['carbs_goal']);
+            _userFatsGoal = BalanceService.number(userData['fats_goal']);
           });
         }
       }
@@ -944,76 +1060,25 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Future<void> _upsertDailyLogForDate(DateTime date) async {
-    if (_isUpdatingDailyLog) return;
+    if (!_isOwnCard || _isUpdatingDailyLog) return;
     setState(() {
       _isUpdatingDailyLog = true;
     });
 
     try {
       final userId = _activeUserId;
-
       final firestore = FirebaseFirestore.instance;
       final key = _dateKey(date);
 
-      final foodSnapshot = await firestore
-          .collection('user_food')
-          .where('user_id', isEqualTo: userId)
-          .get();
+      final docs = await BalanceService.entriesOn(userId, date);
+      final foodEntries = [
+        for (final doc in docs) {'id': doc.id, ...doc.data()}
+      ];
+      final totals = BalanceService.totalOf(docs.map((d) => d.data()));
 
-      final startOfDay = DateTime(date.year, date.month, date.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
-
-      DateTime? extractDocDate(QueryDocumentSnapshot doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        final timeAdded = data['time_added'];
-        final createdAt = data['created_at'];
-
-        if (timeAdded is Timestamp) return timeAdded.toDate();
-        if (timeAdded is DateTime) return timeAdded;
-        if (createdAt is Timestamp) return createdAt.toDate();
-        if (createdAt is DateTime) return createdAt;
-        return null;
-      }
-
-      final filteredDocs = foodSnapshot.docs.where((doc) {
-        // Skip recipe ingredient docs; they aren't food eaten that day.
-        if (doc.data()['foodCategory'] == BalanceService.recipeCategory) {
-          return false;
-        }
-        final docDate = extractDocDate(doc);
-        if (docDate == null) return false;
-        return !docDate.isBefore(startOfDay) && docDate.isBefore(endOfDay);
-      }).toList();
-
-      final foodEntries = filteredDocs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          ...data,
-        };
-      }).toList();
-
-      double totalCalories = 0;
-      double totalProtein = 0;
-      double totalCarbs = 0;
-      double totalFat = 0;
-
-      for (final entry in foodEntries) {
-        totalCalories += (entry['food_calories'] as num?)?.toDouble() ?? 0;
-        totalProtein += (entry['food_protein'] as num?)?.toDouble() ?? 0;
-        totalCarbs += (entry['food_carbs'] as num?)?.toDouble() ?? 0;
-        totalFat += (entry['food_fat'] as num?)?.toDouble() ?? 0;
-      }
-
-      final userDataSnapshot = await firestore
-          .collection('user_data')
-          .where('user_id', isEqualTo: userId)
-          .limit(1)
-          .get();
-
-      final userData = userDataSnapshot.docs.isNotEmpty
-          ? userDataSnapshot.docs.first.data()
-          : <String, dynamic>{};
+      final userDoc = await BalanceService.userDataDoc(userId);
+      final userData = userDoc?.data() ?? <String, dynamic>{};
+      double? n(String k) => BalanceService.number(userData[k]);
 
       final docRef = firestore.collection('daily_logs').doc('${userId}_$key');
       final existingDoc = await docRef.get();
@@ -1025,27 +1090,28 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         'date': Timestamp.fromDate(date),
         'food_entries': foodEntries,
         'totals': {
-          'calories': totalCalories,
-          'protein': totalProtein,
-          'carbs': totalCarbs,
-          'fat': totalFat,
+          'calories': totals.calories,
+          'protein': totals.protein,
+          'carbs': totals.carbs,
+          'fat': totals.fat,
         },
         'balances': {
-          'calories': (userData['calories'] as num?)?.toDouble(),
-          'protein_balance': (userData['protein_balance'] as num?)?.toDouble(),
-          'carbs_balance': (userData['carbs_balance'] as num?)?.toDouble(),
-          'fats_balance': (userData['fats_balance'] as num?)?.toDouble(),
+          'calories': n('calories'),
+          'protein_balance': n('protein_balance'),
+          'carbs_balance': n('carbs_balance'),
+          'fats_balance': n('fats_balance'),
         },
         'goals': {
-          'protein_goal': (userData['protein_goal'] as num?)?.toDouble(),
-          'carbs_goal': (userData['carbs_goal'] as num?)?.toDouble(),
-          'fats_goal': (userData['fats_goal'] as num?)?.toDouble(),
+          'calorie_goal': BalanceService.calorieGoalFrom(userData),
+          'protein_goal': n('protein_goal'),
+          'carbs_goal': n('carbs_goal'),
+          'fats_goal': n('fats_goal'),
         },
         'finished': existingFinished,
         'updated_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (_) {
-      // ignore
+      // History is rebuilt on the next change.
     } finally {
       if (mounted) {
         setState(() {
@@ -1086,7 +1152,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Future<void> _handleCardSwipe() async {
     if (_isUpdatingDailyLog) return;
-    if (!_isSelectedDateToday || widget.readOnly) return;
+    if (!_isSelectedDateToday || !_isOwnCard) return;
     if (_isDayFinished) {
       final confirm = await _showConfirmDialog(
         title: 'Continue logging',
@@ -1117,69 +1183,52 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     await AchievementService.updateAchievementsForUser(_activeUserId);
   }
 
+  /// Loads the selected day's food: the list for the selected meal, that
+  /// meal's totals, and the whole day's totals (for past days' cards).
   Future<void> populateFoodItems() async {
+    final token = ++_foodLoadToken;
     try {
-      final categoryService =
-          Provider.of<CategoryService>(context, listen: false);
-      final selectedDate = _selectedLogDate;
-      final startOfDay =
-          DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
+      final meal =
+          Provider.of<CategoryService>(context, listen: false).selectedCategory;
+      final day = _selectedLogDate;
 
-      DateTime? extractDocDate(QueryDocumentSnapshot doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        final timeAdded = data['time_added'];
-        final createdAt = data['created_at'];
+      final dayDocs = await BalanceService.entriesOn(_activeUserId, day);
+      if (!mounted || token != _foodLoadToken) return;
 
-        if (timeAdded is Timestamp) return timeAdded.toDate();
-        if (timeAdded is DateTime) return timeAdded;
-        if (createdAt is Timestamp) return createdAt.toDate();
-        if (createdAt is DateTime) return createdAt;
-        return null;
-      }
-
-      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
-          .collection('user_food')
-          .where('user_id', isEqualTo: _activeUserId)
-          .get(const GetOptions(source: Source.server));
-
-      if (querySnapshot.docs.isNotEmpty) {
-        final filteredDocs = querySnapshot.docs.where((doc) {
-          final categoryMatches = (doc['foodCategory'] ?? 'Brekkie') ==
-              categoryService.selectedCategory;
-          if (!categoryMatches) return false;
-          final docDate = extractDocDate(doc);
-          if (docDate == null) return false;
-          return !docDate.isBefore(startOfDay) && docDate.isBefore(endOfDay);
-        }).toList();
-
-        if (mounted) {
-          setState(() {
-            _foodDocs = filteredDocs;
-            // Reset individual food macro visibility when category changes
-            _foodMacrosVisibility.clear();
-            for (var doc in filteredDocs) {
-              _foodMacrosVisibility[doc.id] = false;
-            }
-          });
-          // Fetch reactions for all food items
-          await _fetchReactionsForFoodItems();
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _foodDocs = [];
-            _foodMacrosVisibility.clear();
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _foodDocs = [];
-          _foodMacrosVisibility.clear();
+      final mealDocs = dayDocs
+          .where((d) => (d.data()['foodCategory'] ?? 'Brekkie') == meal)
+          .toList()
+        ..sort((a, b) {
+          final ta = BalanceService.entryDate(a.data());
+          final tb = BalanceService.entryDate(b.data());
+          if (ta == null || tb == null) return 0;
+          return ta.compareTo(tb);
         });
-      }
+      final mealTotals = BalanceService.totalOf(mealDocs.map((d) => d.data()));
+
+      setState(() {
+        _foodDocs = mealDocs;
+        _dayTotals = BalanceService.totalOf(dayDocs.map((d) => d.data()));
+        _totalCalories = mealTotals.calories.round();
+        _totalProtein = mealTotals.protein;
+        _totalCarbs = mealTotals.carbs;
+        _totalFat = mealTotals.fat;
+        _foodMacrosVisibility
+          ..clear()
+          ..addEntries(mealDocs.map((d) => MapEntry(d.id, _showMacrosTotal)));
+      });
+      await _fetchReactionsForFoodItems();
+    } catch (e) {
+      if (!mounted || token != _foodLoadToken) return;
+      setState(() {
+        _foodDocs = [];
+        _dayTotals = Macros.zero;
+        _totalCalories = 0;
+        _totalProtein = 0;
+        _totalCarbs = 0;
+        _totalFat = 0;
+        _foodMacrosVisibility.clear();
+      });
     }
   }
 
@@ -1312,284 +1361,70 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
   Future<void> _deleteFoodItem(String docId) async {
-    if (_isDeletingItem) return; // Prevent multiple deletions
+    if (_isDeletingItem || !_canEditSelectedDay) return;
 
     setState(() {
       _isDeletingItem = true;
     });
 
     try {
-      final firestore = FirebaseFirestore.instance;
-      final userId = FirebaseAuth.instance.currentUser!.uid;
-      final categoryService =
-          Provider.of<CategoryService>(context, listen: false);
-      final currentCategory = categoryService.selectedCategory;
-
-      // Get the food item data before deleting it
-      final foodDocSnapshot = await firestore
-          .collection('user_food')
-          .doc(docId)
-          .get(const GetOptions(source: Source.server));
-
-      if (!foodDocSnapshot.exists) {
-        throw Exception('Food item not found');
-      }
-
-      final foodData = foodDocSnapshot.data() as Map<String, dynamic>;
-      final calories = (foodData['food_calories'] as num?)?.toDouble() ?? 0;
-      final protein = (foodData['food_protein'] as num?)?.toDouble() ?? 0;
-      final carbs = (foodData['food_carbs'] as num?)?.toDouble() ?? 0;
-      final fat = (foodData['food_fat'] as num?)?.toDouble() ?? 0;
-
-      // Delete the food item
-      await firestore.collection('user_food').doc(docId).delete();
-
-      // Refund the card. Only today's food affects today's balance; deleting
-      // an older entry must not inflate today's card.
-      if (BalanceService.isToday(BalanceService.entryDate(foodData))) {
-        await BalanceService.refund(
-          userId,
-          calories: calories,
-          protein: protein,
-          carbs: carbs,
-          fat: fat,
-        );
-      }
-
-      // Update category totals
-      final categoryTotalDocRef = firestore
-          .collection('category_totals')
-          .doc('${userId}_$currentCategory');
-      final categoryTotalSnapshot = await categoryTotalDocRef
-          .get(const GetOptions(source: Source.server));
-
-      if (categoryTotalSnapshot.exists) {
-        await categoryTotalDocRef.update({
-          'total_calories':
-              (categoryTotalSnapshot['total_calories'] as num? ?? 0) - calories,
-          'total_protein':
-              (categoryTotalSnapshot['total_protein'] as num? ?? 0) - protein,
-          'total_carbs':
-              (categoryTotalSnapshot['total_carbs'] as num? ?? 0) - carbs,
-          'total_fat': (categoryTotalSnapshot['total_fat'] as num? ?? 0) - fat,
-        });
-      }
-
-      // Refresh the UI
-      await populateFoodItems();
-      await _fetchCategoryTotals(currentCategory);
-
-      if (_isSelectedDateToday) {
-        await _upsertDailyLogForDate(_selectedLogDate);
-        await _fetchDailyLogForDate(_selectedLogDate);
-      }
-
+      // One write removes the food and refunds today's card.
+      await FoodLog.remove(docId);
+      // The change signal has already started a refresh; wait for it.
+      await (_refreshing ?? _refreshAfterChange());
       if (mounted) {
-        setState(() {
-          _creditCardRefreshKey++;
-          _isDeletingItem = false;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Food item removed')),
         );
       }
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Couldn't remove that food. Please try again.")),
+        );
+      }
+    } finally {
+      if (mounted) {
         setState(() {
           _isDeletingItem = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting food item: $e')),
-        );
       }
     }
   }
 
   Future<void> _addRecipeToHome(String recipeId, String category,
       {double multiplier = 1.0}) async {
-    final firestore = FirebaseFirestore.instance;
-    final userId = FirebaseAuth.instance.currentUser!.uid;
-    final recipeDoc = await firestore.collection('recipes').doc(recipeId).get();
-    if (!recipeDoc.exists) return;
-    final data = recipeDoc.data()!;
-
-    // Get serving size from recipe, default to "1 Serving" if not present
-    final servingSize = data['serving_size'] as String? ?? 'Per 1 Serving';
-
-    // Apply multiplier to calculate adjusted values
-    final baseCalories = (data['total_calories'] as num?)?.toDouble() ?? 0;
-    final baseProtein = (data['total_protein'] as num?)?.toDouble() ?? 0;
-    final baseCarbs = (data['total_carbs'] as num?)?.toDouble() ?? 0;
-    final baseFat = (data['total_fat'] as num?)?.toDouble() ?? 0;
-
-    final adjustedCalories = baseCalories * multiplier;
-    final adjustedProtein = baseProtein * multiplier;
-    final adjustedCarbs = baseCarbs * multiplier;
-    final adjustedFat = baseFat * multiplier;
-
-    // Calculate adjusted portion display
-    final servingMatch = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(servingSize);
-    final originalValue =
-        servingMatch != null ? double.parse(servingMatch.group(1)!) : 1.0;
-    final newValue = originalValue * multiplier;
-    final isGrams = servingSize.contains('g') &&
-        !servingSize.toLowerCase().contains('serving');
-    final adjustedPortion = isGrams
-        ? '${newValue.toStringAsFixed(0)} g'
-        : 'Per ${newValue.toStringAsFixed(1)} Serving${newValue != 1 ? 's' : ''}';
-
-    await firestore.collection('user_food').add({
-      'user_id': userId,
-      'food_description': 'Recipe: ${data['name'] ?? ''}',
-      'food_calories': adjustedCalories,
-      'food_protein': adjustedProtein,
-      'food_carbs': adjustedCarbs,
-      'food_fat': adjustedFat,
-      'food_portion': adjustedPortion,
-      'foodCategory': category,
-      'recipe_id': recipeId,
-      'is_recipe': true,
-      'time_added': DateTime.now(),
-      'created_at': FieldValue.serverTimestamp(),
-    });
-
-    // Apply to user balances (subtract when adding)
-    await _applyRecipeToUserBalances(
-      calories: adjustedCalories,
-      protein: adjustedProtein,
-      carbs: adjustedCarbs,
-      fat: adjustedFat,
-    );
-
-    // Update category totals
-    final docRef =
-        firestore.collection('category_totals').doc('${userId}_$category');
-    final docSnapshot = await docRef.get();
-
-    if (docSnapshot.exists) {
-      await docRef.update({
-        'total_calories':
-            (docSnapshot['total_calories'] as num? ?? 0) + adjustedCalories,
-        'total_protein':
-            (docSnapshot['total_protein'] as num? ?? 0) + adjustedProtein,
-        'total_carbs':
-            (docSnapshot['total_carbs'] as num? ?? 0) + adjustedCarbs,
-        'total_fat': (docSnapshot['total_fat'] as num? ?? 0) + adjustedFat,
-      });
-    } else {
-      await docRef.set({
-        'total_calories': adjustedCalories,
-        'total_protein': adjustedProtein,
-        'total_carbs': adjustedCarbs,
-        'total_fat': adjustedFat,
-      });
-    }
-
-    // Refresh displayed totals
-    await _fetchCategoryTotals(category);
-    setState(() {
-      _creditCardRefreshKey++;
-    });
-  }
-
-  Future<void> _applyRecipeToUserBalances({
-    required double calories,
-    required double protein,
-    required double carbs,
-    required double fat,
-  }) async {
     try {
-      final userId = FirebaseAuth.instance.currentUser!.uid;
-      await BalanceService.spend(
-        userId,
-        calories: calories,
-        protein: protein,
-        carbs: carbs,
-        fat: fat,
+      final recipeDoc = await FirebaseFirestore.instance
+          .collection('recipes')
+          .doc(recipeId)
+          .get();
+      final data = recipeDoc.data();
+      if (data == null) {
+        throw StateError('That recipe no longer exists.');
+      }
+      // Logs it and charges the card in one write; the change signal then
+      // refreshes this screen.
+      await FoodLog.logRecipe(
+        recipeId: recipeId,
+        recipe: data,
+        meal: category,
+        multiplier: multiplier,
       );
+      await (_refreshing ?? _refreshAfterChange());
     } catch (e) {
-      // Error applying recipe balances
-    }
-  }
-
-  Future<void> _fetchCategoryTotals(String category) async {
-    try {
-      final userId = _activeUserId;
-
-      // Calculate totals from actual food items instead of trusting stored totals
-      final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
-
-      final foodSnapshot = await FirebaseFirestore.instance
-          .collection('user_food')
-          .where('user_id', isEqualTo: userId)
-          .get(const GetOptions(source: Source.server));
-
-      double totalCalories = 0;
-      double totalProtein = 0;
-      double totalCarbs = 0;
-      double totalFat = 0;
-
-      for (final doc in foodSnapshot.docs) {
-        final data = doc.data();
-
-        // Check if food is in the selected category
-        final foodCategory = data['foodCategory'] ?? 'Brekkie';
-        if (foodCategory != category) continue;
-
-        // Extract date from time_added or created_at
-        DateTime? docDate;
-        final timeAdded = data['time_added'];
-        final createdAt = data['created_at'];
-
-        if (timeAdded is Timestamp) {
-          docDate = timeAdded.toDate();
-        } else if (timeAdded is DateTime) {
-          docDate = timeAdded;
-        } else if (createdAt is Timestamp) {
-          docDate = createdAt.toDate();
-        } else if (createdAt is DateTime) {
-          docDate = createdAt;
-        }
-
-        // Only include items from today
-        if (docDate != null &&
-            !docDate.isBefore(startOfDay) &&
-            docDate.isBefore(endOfDay)) {
-          totalCalories += (data['food_calories'] as num?)?.toDouble() ?? 0;
-          totalProtein += (data['food_protein'] as num?)?.toDouble() ?? 0;
-          totalCarbs += (data['food_carbs'] as num?)?.toDouble() ?? 0;
-          totalFat += (data['food_fat'] as num?)?.toDouble() ?? 0;
-        }
-      }
-
-      // Update the stored totals to match reality
-      final docRef = FirebaseFirestore.instance
-          .collection('category_totals')
-          .doc('${userId}_$category');
-
-      await docRef.set({
-        'total_calories': totalCalories,
-        'total_protein': totalProtein,
-        'total_carbs': totalCarbs,
-        'total_fat': totalFat,
-      });
-
       if (mounted) {
-        setState(() {
-          _totalCalories = totalCalories.toInt();
-          _totalProtein = totalProtein;
-          _totalCarbs = totalCarbs;
-          _totalFat = totalFat;
-          _lastFetchedCategory = category;
-        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e is StateError
+                ? e.message
+                : "Couldn't add that recipe. Please try again."),
+          ),
+        );
       }
-    } catch (e) {
-      // Error fetching category totals
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -1729,32 +1564,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                       '$_creditCardRefreshKey-${_selectedLogDate.toIso8601String()}'),
                                   skipFetch: true,
                                   caloriesOverride:
-                                      _hasLoggedFoodForSelectedDate()
-                                          ? ((_selectedDailyLog?['balances']
-                                                      ?['calories'] as num?)
-                                                  ?.toInt() ??
-                                              0)
-                                          : (_userCalorieGoal ?? 0),
-                                  proteinOverride:
-                                      _hasLoggedFoodForSelectedDate()
-                                          ? ((_selectedDailyLog?['balances']
-                                                          ?['protein_balance']
-                                                      as num?)
-                                                  ?.toDouble() ??
-                                              0)
-                                          : (_userProteinGoal ?? 0),
-                                  carbsOverride: _hasLoggedFoodForSelectedDate()
-                                      ? ((_selectedDailyLog?['balances']
-                                                  ?['carbs_balance'] as num?)
-                                              ?.toDouble() ??
-                                          0)
-                                      : (_userCarbsGoal ?? 0),
-                                  fatsOverride: _hasLoggedFoodForSelectedDate()
-                                      ? ((_selectedDailyLog?['balances']
-                                                  ?['fats_balance'] as num?)
-                                              ?.toDouble() ??
-                                          0)
-                                      : (_userFatsGoal ?? 0),
+                                      _selectedDayBalance.calories.round(),
+                                  proteinOverride: _selectedDayBalance.protein,
+                                  carbsOverride: _selectedDayBalance.carbs,
+                                  fatsOverride: _selectedDayBalance.fat,
                                   userIdOverride: widget.userIdOverride,
                                   cardUserNameOverride: widget.bannerTitle,
                                   validThruDate:
@@ -1855,18 +1668,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                         }
                                       });
                                     },
-                                    child: Consumer<CategoryService>(
-                                      builder: (context, categoryService, _) {
-                                        // Fetch totals when category changes
-                                        if (_lastFetchedCategory !=
-                                            categoryService.selectedCategory) {
-                                          WidgetsBinding.instance
-                                              .addPostFrameCallback((_) {
-                                            _fetchCategoryTotals(categoryService
-                                                .selectedCategory);
-                                          });
-                                        }
-
+                                    child: Builder(
+                                      builder: (context) {
                                         return Padding(
                                           padding:
                                               const EdgeInsets.only(bottom: 12),
@@ -1945,6 +1748,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                           itemCount: _foodDocs.length,
                                           itemBuilder: (context, index) {
                                             final doc = _foodDocs[index];
+                                            final data = doc.data();
+                                            final portion =
+                                                (data['food_portion'] ?? '')
+                                                    .toString();
                                             return Container(
                                               margin:
                                                   const EdgeInsets.symmetric(
@@ -1985,7 +1792,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                             MainAxisSize.min,
                                                         children: [
                                                           Text(
-                                                            doc["food_description"],
+                                                            (data['food_description'] ??
+                                                                    'Food')
+                                                                .toString(),
                                                             maxLines: 1,
                                                             overflow:
                                                                 TextOverflow
@@ -1999,13 +1808,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                                       .w500,
                                                             ),
                                                           ),
-                                                          if (doc["food_portion"] !=
-                                                                  null &&
-                                                              (doc["food_portion"]
-                                                                      as String)
-                                                                  .isNotEmpty)
+                                                          if (portion
+                                                              .isNotEmpty)
                                                             Text(
-                                                              '(${doc["food_portion"]})',
+                                                              '($portion)',
                                                               style: TextStyle(
                                                                 color: Colors
                                                                     .grey
@@ -2026,7 +1832,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                                 .center,
                                                         children: [
                                                           if (_deleteMode &&
-                                                              !_isDayFinished)
+                                                              _canEditSelectedDay)
                                                             GestureDetector(
                                                               onTap: () async {
                                                                 await _deleteFoodItem(
@@ -2082,7 +1888,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                                               .min,
                                                                       children: [
                                                                         Text(
-                                                                          '${_roundMacro(doc["food_protein"])}g Protein',
+                                                                          '${_roundMacro(data['food_protein'])}g Protein',
                                                                           style:
                                                                               const TextStyle(
                                                                             color:
@@ -2096,7 +1902,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                                           ),
                                                                         ),
                                                                         Text(
-                                                                          '${_roundMacro(doc["food_carbs"])}g Carbs',
+                                                                          '${_roundMacro(data['food_carbs'])}g Carbs',
                                                                           style:
                                                                               const TextStyle(
                                                                             color:
@@ -2110,7 +1916,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                                           ),
                                                                         ),
                                                                         Text(
-                                                                          '${_roundMacro(doc["food_fat"])}g Fat',
+                                                                          '${_roundMacro(data['food_fat'])}g Fat',
                                                                           style:
                                                                               const TextStyle(
                                                                             color:
@@ -2126,7 +1932,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                                       ],
                                                                     )
                                                                   : Text(
-                                                                      '${_roundMacro(doc["food_calories"])} kcal',
+                                                                      '${_roundMacro(data['food_calories'])} kcal',
                                                                       style:
                                                                           const TextStyle(
                                                                         color: Colors
@@ -2367,46 +2173,43 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                     ),
                                   ),
                                   const SizedBox(height: 16),
-                                  if (!widget.readOnly)
+                                  if (_isOwnCard && !_isSelectedDateToday)
+                                    _PastDayNotice(
+                                      onToday: () =>
+                                          _changeDay(BalanceService.now()),
+                                    )
+                                  else if (_isOwnCard)
                                     Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceEvenly,
                                       children: <Widget>[
                                         FloatingActionButton.extended(
-                                          onPressed: _isDayFinished
+                                          onPressed: !_canEditSelectedDay
                                               ? null
                                               : () async {
-                                                  await Navigator.push(
-                                                    context,
-                                                    MaterialPageRoute(
-                                                      builder: (_) =>
-                                                          AddFoodPage(),
-                                                    ),
-                                                  );
                                                   setState(() {
                                                     _deleteMode = false;
                                                   });
-                                                  await populateFoodItems();
-                                                  if (!context.mounted) return;
-                                                  final categoryService =
-                                                      Provider.of<
-                                                              CategoryService>(
-                                                          context,
-                                                          listen: false);
-                                                  await _fetchCategoryTotals(
-                                                      categoryService
-                                                          .selectedCategory);
-                                                  if (_isSelectedDateToday) {
-                                                    await _upsertDailyLogForDate(
-                                                        _selectedLogDate);
-                                                    await _fetchDailyLogForDate(
-                                                        _selectedLogDate);
+                                                  final saved =
+                                                      await Navigator.push<
+                                                          bool>(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          const AddFoodPage(),
+                                                    ),
+                                                  );
+                                                  // Logging signals a refresh
+                                                  // on its own; this covers
+                                                  // the rest.
+                                                  if (saved == true &&
+                                                      mounted) {
+                                                    await (_refreshing ??
+                                                        _refreshAfterChange());
                                                   }
-                                                  setState(() =>
-                                                      _creditCardRefreshKey++);
                                                 },
                                           heroTag: 'addFood',
-                                          backgroundColor: _isDayFinished
+                                          backgroundColor: !_canEditSelectedDay
                                               ? AppColors.gray400
                                               : AppColors.emerald600,
                                           foregroundColor: Colors.white,
@@ -2414,9 +2217,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                           label: const Text('Food'),
                                         ),
                                         FloatingActionButton.extended(
-                                          onPressed: _isDayFinished
+                                          onPressed: !_canEditSelectedDay
                                               ? null
                                               : () async {
+                                                  setState(() {
+                                                    _deleteMode = false;
+                                                  });
                                                   final result =
                                                       await Navigator.push<
                                                           Map<String, dynamic>>(
@@ -2426,47 +2232,26 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                           const _SelectExistingRecipePage(),
                                                     ),
                                                   );
-
-                                                  if (result != null) {
-                                                    final recipeId =
-                                                        result['recipeId']
-                                                            as String;
-                                                    final multiplier =
-                                                        result['multiplier']
-                                                            as double;
-                                                    if (!context.mounted) return;
-                                                    final categoryService =
-                                                        Provider.of<
-                                                                CategoryService>(
-                                                            context,
-                                                            listen: false);
-                                                    final category =
-                                                        categoryService
-                                                            .selectedCategory;
-
-                                                    await _addRecipeToHome(
-                                                      recipeId,
-                                                      category,
-                                                      multiplier: multiplier,
-                                                    );
-                                                    setState(() {
-                                                      _deleteMode = false;
-                                                    });
-                                                    await populateFoodItems();
-                                                    await _fetchCategoryTotals(
-                                                        category);
-                                                    if (_isSelectedDateToday) {
-                                                      await _upsertDailyLogForDate(
-                                                          _selectedLogDate);
-                                                      await _fetchDailyLogForDate(
-                                                          _selectedLogDate);
-                                                    }
-                                                    setState(() =>
-                                                        _creditCardRefreshKey++);
+                                                  if (result == null ||
+                                                      !context.mounted) {
+                                                    return;
                                                   }
+                                                  final category = Provider.of<
+                                                              CategoryService>(
+                                                          context,
+                                                          listen: false)
+                                                      .selectedCategory;
+                                                  await _addRecipeToHome(
+                                                    result['recipeId']
+                                                        as String,
+                                                    category,
+                                                    multiplier:
+                                                        result['multiplier']
+                                                            as double,
+                                                  );
                                                 },
                                           heroTag: 'addRecipe',
-                                          backgroundColor: _isDayFinished
+                                          backgroundColor: !_canEditSelectedDay
                                               ? AppColors.gray400
                                               : AppColors.violet600,
                                           foregroundColor: Colors.white,
@@ -2474,7 +2259,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                           label: const Text('Recipe'),
                                         ),
                                         FloatingActionButton(
-                                          onPressed: _isDayFinished
+                                          onPressed: !_canEditSelectedDay ||
+                                                  _foodDocs.isEmpty
                                               ? null
                                               : () {
                                                   setState(() {
@@ -2482,10 +2268,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                   });
                                                 },
                                           heroTag: 'delete',
-                                          backgroundColor: _isDayFinished
+                                          tooltip: _deleteMode
+                                              ? 'Done removing'
+                                              : 'Remove food',
+                                          backgroundColor: !_canEditSelectedDay ||
+                                                  _foodDocs.isEmpty
                                               ? AppColors.gray400
                                               : _deleteMode
-                                                  ? const Color(0xFFB91C1C)
+                                                  ? AppColors.red700
                                                   : AppColors.red600,
                                           foregroundColor: Colors.white,
                                           child: Icon(_deleteMode
@@ -2506,6 +2296,44 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 const SizedBox(height: 16),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown instead of the add/remove buttons on a past day.
+class _PastDayNotice extends StatelessWidget {
+  final VoidCallback onToday;
+
+  const _PastDayNotice({required this.onToday});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_clock, color: Colors.white70, size: 20),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Past days are read-only. Food you add goes on today.',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+          TextButton(
+            onPressed: onToday,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.white.withValues(alpha: 0.18),
+            ),
+            child: const Text('Go to today'),
           ),
         ],
       ),

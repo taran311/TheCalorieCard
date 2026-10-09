@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:namer_app/services/balance_service.dart';
 
 class AchievementService {
   static Future<void> markFirstTimeLogger(String userId) async {
     final docRef =
-        FirebaseFirestore.instance.collection('user_achievements').doc(userId);
+        BalanceService.db.collection('user_achievements').doc(userId);
     await docRef.set({
       'first_time_logger': true,
       'first_time_logger_unlocked_at': FieldValue.serverTimestamp(),
@@ -12,14 +13,14 @@ class AchievementService {
 
   static Stream<DocumentSnapshot<Map<String, dynamic>>> streamUserAchievements(
       String userId) {
-    return FirebaseFirestore.instance
+    return BalanceService.db
         .collection('user_achievements')
         .doc(userId)
         .snapshots();
   }
 
   static Future<void> updateAchievementsForUser(String userId) async {
-    final logsSnapshot = await FirebaseFirestore.instance
+    final logsSnapshot = await BalanceService.db
         .collection('daily_logs')
         .where('user_id', isEqualTo: userId)
         .where('finished', isEqualTo: true)
@@ -93,7 +94,7 @@ class AchievementService {
     }
 
     if (updates.isNotEmpty) {
-      final docRef = FirebaseFirestore.instance
+      final docRef = BalanceService.db
           .collection('user_achievements')
           .doc(userId);
       await docRef.set(updates, SetOptions(merge: true));

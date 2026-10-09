@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/recipe_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/pages/add_recipe_page.dart';
 import 'package:namer_app/ui/log_recipe_sheet.dart';
@@ -50,28 +51,10 @@ class _RecipesPageState extends State<RecipesPage> {
     if (confirmed != true) return;
 
     try {
-      final firestore = FirebaseFirestore.instance;
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-
-      await firestore.collection('recipes').doc(recipeId).delete();
-
-      // Tidy up the recipe's ingredient rows. Logged entries (in meal
-      // categories) are kept so history and balances stay correct.
-      try {
-        final ingredients = await firestore
-            .collection('user_food')
-            .where('user_id', isEqualTo: uid)
-            .where('recipe_id', isEqualTo: recipeId)
-            .where('foodCategory', isEqualTo: 'Recipe')
-            .get();
-        final batch = firestore.batch();
-        for (final doc in ingredients.docs) {
-          batch.delete(doc.reference);
-        }
-        if (ingredients.docs.isNotEmpty) await batch.commit();
-      } catch (_) {
-        // Not critical: leftovers are ignored everywhere.
-      }
+      // Removes the recipe and its ingredient rows in one write. Food
+      // already logged from it is kept, so balances don't change.
+      await RecipeService.delete(
+          FirebaseAuth.instance.currentUser!.uid, recipeId);
 
       if (mounted) {
         setState(() {
@@ -264,12 +247,14 @@ class _RecipesPageState extends State<RecipesPage> {
       // Get all ingredients of the original recipe
       final ingredients = await firestore
           .collection('user_food')
+          .where('user_id', isEqualTo: data['user_id'])
           .where('recipe_id', isEqualTo: recipeId)
           .where('foodCategory', isEqualTo: 'Recipe')
           .get();
 
       final batch = firestore.batch();
       final ingredientIds = <String>[];
+      final newRecipeRef = firestore.collection('recipes').doc();
 
       // Create new ingredient documents for the current user
       for (final ing in ingredients.docs) {
@@ -284,14 +269,14 @@ class _RecipesPageState extends State<RecipesPage> {
           'food_protein': ingData['food_protein'],
           'food_carbs': ingData['food_carbs'],
           'food_fat': ingData['food_fat'],
+          'food_portion': ingData['food_portion'] ?? '',
           'foodCategory': 'Recipe',
           'created_at': FieldValue.serverTimestamp(),
-          'recipe_id': 'pending',
+          'recipe_id': newRecipeRef.id,
         });
       }
 
       // Create new recipe document
-      final newRecipeRef = firestore.collection('recipes').doc();
       batch.set(newRecipeRef, {
         'user_id': uid,
         'name': '${data['name']} (Copy)',
@@ -303,13 +288,6 @@ class _RecipesPageState extends State<RecipesPage> {
         'total_fat': data['total_fat'],
         'created_at': FieldValue.serverTimestamp(),
       });
-
-      // Update ingredient docs with recipe_id
-      for (final id in ingredientIds) {
-        batch.update(firestore.collection('user_food').doc(id), {
-          'recipe_id': newRecipeRef.id,
-        });
-      }
 
       await batch.commit();
 

@@ -111,7 +111,18 @@ class _GetStartedPageState extends State<GetStartedPage> {
         ? _manualCalorieGoal
         : cardActiveCalories;
 
-    await FirebaseFirestore.instance.collection('user_data').add({
+    if (finalCalories == null || finalCalories <= 0) {
+      throw StateError('No calorie goal set');
+    }
+
+    // One profile per user. If a previous attempt got as far as creating
+    // it, update that one instead of adding a duplicate (two profiles
+    // would split the balance between them).
+    final existing = await BalanceService.userDataDoc(userId);
+    final profileRef = existing?.reference ??
+        FirebaseFirestore.instance.collection('user_data').doc(userId);
+
+    await profileRef.set({
       'user_id': userId,
       'age': _selectedAge,
       'gender': genderSelections.first ? 'male' : 'female',
