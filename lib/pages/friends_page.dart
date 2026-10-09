@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/friend_group_page.dart';
@@ -516,7 +517,7 @@ class _FriendsPageState extends State<FriendsPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1),
+                  color: AppColors.primary,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -595,11 +596,11 @@ class _FriendsPageState extends State<FriendsPage> {
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.indigo.shade50,
+                                color: AppColors.indigo50,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   color:
-                                      const Color(0xFF6366F1).withValues(alpha: 0.3),
+                                      AppColors.primary.withValues(alpha: 0.3),
                                 ),
                               ),
                               child: Text(
@@ -607,7 +608,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
-                                  color: const Color(0xFF6366F1),
+                                  color: AppColors.primary,
                                 ),
                               ),
                             ),
@@ -653,7 +654,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                 friendEmail,
                                 style: TextStyle(fontSize: 14),
                               ),
-                              activeColor: const Color(0xFF6366F1),
+                              activeColor: AppColors.primary,
                             );
                           },
                         );
@@ -684,7 +685,7 @@ class _FriendsPageState extends State<FriendsPage> {
                             _createFriendGroup();
                           },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6366F1),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
@@ -734,7 +735,7 @@ class _FriendsPageState extends State<FriendsPage> {
                   Container(
                     padding: EdgeInsets.fromLTRB(8, topPadding + 8, 8, 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1),
+                      color: AppColors.primary,
                       borderRadius: const BorderRadius.only(
                         bottomLeft: Radius.circular(16),
                         bottomRight: Radius.circular(16),
@@ -803,14 +804,14 @@ class _FriendsPageState extends State<FriendsPage> {
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                     colors: [
-                                      const Color(0xFF6366F1),
-                                      const Color(0xFF8B5CF6),
+                                      AppColors.primary,
+                                      AppColors.violet,
                                     ],
                                   ),
                                   borderRadius: BorderRadius.circular(16),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFF6366F1)
+                                      color: AppColors.primary
                                           .withValues(alpha: 0.3),
                                       blurRadius: 8,
                                       offset: const Offset(0, 4),
@@ -901,7 +902,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                       'No pending friend requests',
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: Colors.grey,
+                                        color: AppColors.gray400,
                                       ),
                                     ),
                                   );
@@ -949,8 +950,8 @@ class _FriendsPageState extends State<FriendsPage> {
                                                       end:
                                                           Alignment.bottomRight,
                                                       colors: [
-                                                        Colors.green.shade400,
-                                                        Colors.teal.shade600,
+                                                        AppColors.emerald400,
+                                                        AppColors.emerald600,
                                                       ],
                                                     ),
                                                     shape: BoxShape.circle,
@@ -1048,7 +1049,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                     style: OutlinedButton
                                                         .styleFrom(
                                                       foregroundColor:
-                                                          Colors.grey.shade700,
+                                                          AppColors.gray700,
                                                       padding: const EdgeInsets
                                                           .symmetric(
                                                           vertical: 12),
@@ -1152,8 +1153,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                           colors: [
                                                             Colors
                                                                 .blue.shade400,
-                                                            Colors.indigo
-                                                                .shade600,
+                                                            AppColors.primaryDark,
                                                           ],
                                                         ),
                                                         shape: BoxShape.circle,
@@ -1203,8 +1203,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                             'Request pending',
                                                             style: TextStyle(
                                                               fontSize: 12,
-                                                              color: Colors.grey
-                                                                  .shade600,
+                                                              color: AppColors.gray600,
                                                             ),
                                                           ),
                                                         ],
@@ -1225,8 +1224,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                         style: OutlinedButton
                                                             .styleFrom(
                                                           foregroundColor:
-                                                              Colors.grey
-                                                                  .shade700,
+                                                              AppColors.gray700,
                                                           padding:
                                                               const EdgeInsets
                                                                   .symmetric(
@@ -1239,8 +1237,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                                         12),
                                                           ),
                                                           side: BorderSide(
-                                                              color: Colors.grey
-                                                                  .shade300),
+                                                              color: AppColors.gray300),
                                                         ),
                                                         icon: const Icon(
                                                             Icons.close,
@@ -1290,7 +1287,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                       Text(
                                         _errorMessage!,
                                         style: const TextStyle(
-                                          color: Colors.red,
+                                          color: AppColors.red600,
                                           fontSize: 12,
                                         ),
                                       ),
@@ -1309,7 +1306,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                     : _submitFriendRequest,
                                                 style: ElevatedButton.styleFrom(
                                                   backgroundColor:
-                                                      const Color(0xFF10B981),
+                                                      AppColors.green,
                                                   foregroundColor: Colors.white,
                                                 ),
                                                 child: isSubmitting
@@ -1340,7 +1337,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                               _emailController.clear();
                                             },
                                             style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.red,
+                                              backgroundColor: AppColors.red600,
                                               foregroundColor: Colors.white,
                                             ),
                                             child: const Text('Cancel'),
@@ -1394,7 +1391,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                       'No friends yet',
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: Colors.grey,
+                                        color: AppColors.gray400,
                                       ),
                                     ),
                                   );
@@ -1432,7 +1429,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                   bottom: 16),
                                               decoration: BoxDecoration(
                                                 color: isDeleteMode
-                                                    ? Colors.red
+                                                    ? AppColors.red600
                                                         .withValues(alpha: 0.1)
                                                     : Colors.white,
                                                 borderRadius:
@@ -1440,7 +1437,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                 boxShadow: [
                                                   BoxShadow(
                                                     color: isDeleteMode
-                                                        ? Colors.red
+                                                        ? AppColors.red600
                                                             .withValues(alpha: 0.1)
                                                         : Colors.black
                                                             .withValues(alpha: 0.08),
@@ -1530,7 +1527,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                           Icons
                                                               .chat_bubble_outline,
                                                           color:
-                                                              Color(0xFF6366F1),
+                                                              AppColors.primary,
                                                           size: 22,
                                                         ),
                                                         tooltip: 'Chat',
@@ -1556,7 +1553,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                         icon: const Icon(
                                                           Icons.credit_card,
                                                           color:
-                                                              Color(0xFF6366F1),
+                                                              AppColors.primary,
                                                           size: 22,
                                                         ),
                                                         tooltip: 'View card',
@@ -1574,7 +1571,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                         icon: const Icon(
                                                           Icons.trending_up,
                                                           color:
-                                                              Color(0xFF6366F1),
+                                                              AppColors.primary,
                                                           size: 22,
                                                         ),
                                                         tooltip: 'View stats',
@@ -1597,7 +1594,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                     const Icon(
                                                       Icons.arrow_forward_ios,
                                                       size: 16,
-                                                      color: Colors.grey,
+                                                      color: AppColors.gray400,
                                                     ),
                                                   ],
                                                 ),
@@ -1646,7 +1643,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                       'No friend groups yet',
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: Colors.grey,
+                                        color: AppColors.gray400,
                                       ),
                                     ),
                                   );
@@ -1704,8 +1701,8 @@ class _FriendsPageState extends State<FriendsPage> {
                                                     begin: Alignment.topLeft,
                                                     end: Alignment.bottomRight,
                                                     colors: [
-                                                      const Color(0xFF6366F1),
-                                                      const Color(0xFF8B5CF6),
+                                                      AppColors.primary,
+                                                      AppColors.violet,
                                                     ],
                                                   ),
                                                   shape: BoxShape.circle,
@@ -1753,7 +1750,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                 },
                                                 icon: const Icon(
                                                   Icons.chat_bubble_outline,
-                                                  color: Color(0xFF6366F1),
+                                                  color: AppColors.primary,
                                                   size: 22,
                                                 ),
                                                 tooltip: 'Group Chat',
@@ -1761,7 +1758,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                               const Icon(
                                                 Icons.arrow_forward_ios,
                                                 size: 16,
-                                                color: Colors.grey,
+                                                color: AppColors.gray400,
                                               ),
                                             ],
                                           ),
@@ -1809,7 +1806,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                 !_showAddFriendForm.value;
                             _errorMessage = null;
                           },
-                          backgroundColor: Colors.green.shade400,
+                          backgroundColor: AppColors.emerald400,
                           child: Icon(
                             showForm ? Icons.close : Icons.person_add,
                           ),
@@ -1823,7 +1820,7 @@ class _FriendsPageState extends State<FriendsPage> {
                         onPressed: () {
                           _showGroupCreationModal(friendIds);
                         },
-                        backgroundColor: const Color(0xFF6366F1),
+                        backgroundColor: AppColors.primary,
                         child: const Icon(Icons.group_add),
                       ),
                       const SizedBox(width: 12),
@@ -1837,8 +1834,8 @@ class _FriendsPageState extends State<FriendsPage> {
                             _isDeleteMode.value = !_isDeleteMode.value;
                           },
                           backgroundColor: deleteMode
-                              ? Colors.red.shade600
-                              : Colors.red.shade400,
+                              ? AppColors.red600
+                              : AppColors.red400,
                           child: Icon(
                             deleteMode ? Icons.close : Icons.delete_outline,
                           ),
@@ -1882,13 +1879,13 @@ class FriendTodayStatus extends StatelessWidget {
         final Color color;
         if (finished && onBudget) {
           label = 'Finished today · on budget';
-          color = const Color(0xFF10B981);
+          color = AppColors.green;
         } else if (finished) {
           label = 'Finished today';
-          color = const Color(0xFF6366F1);
+          color = AppColors.primary;
         } else {
           label = 'Not finished today';
-          color = Colors.grey.shade500;
+          color = AppColors.muted;
         }
         return Row(
           children: [

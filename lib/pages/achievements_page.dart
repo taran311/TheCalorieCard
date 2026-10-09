@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/services/achievement_service.dart';
 
 class AchievementsPage extends StatelessWidget {
@@ -26,8 +27,8 @@ class AchievementsPage extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.indigo.shade50,
-                    Colors.blue.shade50,
+                    AppColors.indigo50,
+                    AppColors.indigo50,
                   ],
                 ),
               ),
@@ -39,7 +40,7 @@ class AchievementsPage extends StatelessWidget {
                     Container(
                       padding: EdgeInsets.fromLTRB(8, topPadding + 8, 8, 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF6366F1),
+                        color: AppColors.primary,
                         borderRadius: const BorderRadius.only(
                           bottomLeft: Radius.circular(16),
                           bottomRight: Radius.circular(16),
@@ -171,8 +172,8 @@ class AchievementsPage extends StatelessWidget {
                                   decoration: BoxDecoration(
                                     gradient: const LinearGradient(
                                       colors: [
-                                        Color(0xFF6366F1),
-                                        Color(0xFF8B5CF6),
+                                        AppColors.primary,
+                                        AppColors.violet,
                                       ],
                                     ),
                                     borderRadius: BorderRadius.circular(16),
@@ -266,8 +267,8 @@ class AchievementsPage extends StatelessWidget {
                                               BorderRadius.circular(16),
                                           border: Border.all(
                                             color: unlocked
-                                                ? const Color(0xFF6366F1)
-                                                : Colors.grey.shade300,
+                                                ? AppColors.primary
+                                                : AppColors.gray300,
                                             width: unlocked ? 2 : 1,
                                           ),
                                         ),
@@ -281,17 +282,17 @@ class AchievementsPage extends StatelessWidget {
                                               padding: const EdgeInsets.all(12),
                                               decoration: BoxDecoration(
                                                 color: unlocked
-                                                    ? const Color(0xFF6366F1)
+                                                    ? AppColors.primary
                                                         .withValues(alpha: 0.15)
-                                                    : Colors.grey.shade200,
+                                                    : AppColors.border,
                                                 shape: BoxShape.circle,
                                               ),
                                               child: Icon(
                                                 achievement.icon,
                                                 size: 32,
                                                 color: unlocked
-                                                    ? const Color(0xFF6366F1)
-                                                    : Colors.grey,
+                                                    ? AppColors.primary
+                                                    : AppColors.gray400,
                                               ),
                                             ),
                                             const SizedBox(height: 8),
@@ -309,8 +310,8 @@ class AchievementsPage extends StatelessWidget {
                                                         ? FontWeight.w700
                                                         : FontWeight.w500,
                                                     color: unlocked
-                                                        ? Colors.grey.shade900
-                                                        : Colors.grey.shade500,
+                                                        ? AppColors.ink
+                                                        : AppColors.muted,
                                                   ),
                                                 ),
                                               ),
@@ -319,7 +320,7 @@ class AchievementsPage extends StatelessWidget {
                                               const Icon(
                                                 Icons.check_circle,
                                                 size: 14,
-                                                color: Color(0xFF10B981),
+                                                color: AppColors.green,
                                               ),
                                           ],
                                         ),

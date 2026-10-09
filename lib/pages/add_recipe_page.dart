@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/food_resolver.dart';
@@ -233,7 +234,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Tutorial complete! Now try it yourself.'),
-          backgroundColor: Color(0xFF10B981),
+          backgroundColor: AppColors.green,
           duration: Duration(seconds: 2),
         ),
       );
@@ -369,7 +370,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                             ? 'Save Changes'
                             : 'Save Recipe'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6366F1),
+                          backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
@@ -400,7 +401,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF6366F1),
+                    color: AppColors.primary,
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
@@ -475,7 +476,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                       Text(
                         '(${ing.portion})',
                         style: TextStyle(
-                          color: Colors.grey.shade600,
+                          color: AppColors.gray600,
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
                         ),
@@ -489,17 +490,17 @@ class _AddRecipePageState extends State<AddRecipePage> {
                       '${ing.calories.toStringAsFixed(0)} kcal',
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF6366F1),
+                        color: AppColors.primary,
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.edit_outlined, color: Colors.blue),
+                      icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
                       onPressed: () {
                         _startEditingIngredient(idx, ing.portion);
                       },
                     ),
                     IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      icon: const Icon(Icons.delete_outline, color: AppColors.red600),
                       onPressed: () {
                         setState(() {
                           _ingredients.removeAt(idx);
@@ -516,9 +517,9 @@ class _AddRecipePageState extends State<AddRecipePage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: AppColors.indigo50,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade300, width: 1.5),
+                  border: Border.all(color: AppColors.indigo300, width: 1.5),
                 ),
                 child: Row(
                   children: [
@@ -590,7 +591,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                         height: 32,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.green.shade400,
+                          color: AppColors.emerald400,
                         ),
                         child: const Icon(
                           Icons.check,
@@ -611,7 +612,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                         height: 32,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.red.shade400,
+                          color: AppColors.red400,
                         ),
                         child: const Icon(
                           Icons.close,
@@ -992,7 +993,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                     _freeTextIngredients.removeAt(idx);
                   });
                 },
-                backgroundColor: Colors.blue.shade100,
+                backgroundColor: AppColors.indigo100,
               );
             }).toList(),
           ),
@@ -1016,7 +1017,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                   Text(_calculatingAi ? 'Calculating...' : 'Calculate with AI'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                backgroundColor: const Color(0xFF6366F1),
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
               ),
             ),
@@ -1032,7 +1033,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
               icon: const Icon(Icons.sports_esports),
               label: const Text('Play Ping Pong While You Wait'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple.shade600,
+                backgroundColor: AppColors.violet600,
                 foregroundColor: Colors.white,
               ),
             ),

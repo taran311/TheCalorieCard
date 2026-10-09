@@ -403,20 +403,20 @@ class _NoFriends extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.group_off, size: 80, color: Colors.grey.shade400),
+            Icon(Icons.group_off, size: 80, color: AppColors.gray400),
             const SizedBox(height: 16),
             Text(
               'No Friends Yet',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Colors.grey.shade600,
+                color: AppColors.gray600,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               'Add friends to see leaderboards!',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+              style: TextStyle(fontSize: 14, color: AppColors.muted),
               textAlign: TextAlign.center,
             ),
           ],

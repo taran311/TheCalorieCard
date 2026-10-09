@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/pages/add_recipe_page.dart';
 import 'package:namer_app/ui/log_recipe_sheet.dart';
 
@@ -39,7 +40,7 @@ class _RecipesPageState extends State<RecipesPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.red600),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Delete'),
           ),
@@ -162,7 +163,7 @@ class _RecipesPageState extends State<RecipesPage> {
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey,
+                    color: AppColors.gray400,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -220,7 +221,7 @@ class _RecipesPageState extends State<RecipesPage> {
                       }
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
               ),
               child: const Text('Share'),
@@ -342,10 +343,10 @@ class _RecipesPageState extends State<RecipesPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
+                Icon(Icons.error_outline, size: 64, color: AppColors.red300),
                 const SizedBox(height: 16),
                 Text('Error: ${snapshot.error}',
-                    style: TextStyle(color: Colors.grey.shade600)),
+                    style: TextStyle(color: AppColors.gray600)),
               ],
             ),
           );
@@ -355,14 +356,14 @@ class _RecipesPageState extends State<RecipesPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.restaurant, size: 80, color: Colors.grey.shade300),
+                Icon(Icons.restaurant, size: 80, color: AppColors.gray300),
                 const SizedBox(height: 16),
                 Text(
                   'No recipes yet',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade600,
+                    color: AppColors.gray600,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -370,7 +371,7 @@ class _RecipesPageState extends State<RecipesPage> {
                   'Tap + to create your first recipe',
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.grey.shade500,
+                    color: AppColors.muted,
                   ),
                 ),
               ],
@@ -414,7 +415,7 @@ class _RecipesPageState extends State<RecipesPage> {
                   ? Center(
                       child: Text(
                         'No recipes match "${_recipeQuery.trim()}"',
-                        style: TextStyle(color: Colors.grey.shade600),
+                        style: TextStyle(color: AppColors.gray600),
                       ),
                     )
                   : ListView.builder(
@@ -429,11 +430,11 @@ class _RecipesPageState extends State<RecipesPage> {
             final ingredientIds = (recipe['food_item_ids'] as List?) ?? [];
 
             final gradients = [
-              [Colors.purple.shade400, Colors.purple.shade600],
-              [Colors.blue.shade400, Colors.blue.shade600],
-              [Colors.green.shade400, Colors.green.shade600],
-              [Colors.orange.shade400, Colors.orange.shade600],
-              [Colors.pink.shade400, Colors.pink.shade600],
+              [AppColors.violet400, AppColors.violet600],
+              [AppColors.indigo400, AppColors.primaryDark],
+              [AppColors.emerald400, AppColors.emerald600],
+              [AppColors.amber400, AppColors.amber600],
+              [AppColors.rose400, AppColors.rose600],
             ];
             final gradient = gradients[index % gradients.length];
 
@@ -556,10 +557,10 @@ class _RecipesPageState extends State<RecipesPage> {
                                 child: Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: Colors.orange.shade50,
+                                    color: AppColors.amber50,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: Colors.orange.shade200,
+                                      color: AppColors.amber200,
                                       width: 1,
                                     ),
                                   ),
@@ -567,7 +568,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                     children: [
                                       Icon(
                                         Icons.local_fire_department,
-                                        color: Colors.orange.shade600,
+                                        color: AppColors.amber600,
                                         size: 24,
                                       ),
                                       const SizedBox(height: 4),
@@ -576,14 +577,14 @@ class _RecipesPageState extends State<RecipesPage> {
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 20,
-                                          color: Colors.orange.shade700,
+                                          color: AppColors.amber700,
                                         ),
                                       ),
                                       Text(
                                         'kcal',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: Colors.grey.shade600,
+                                          color: AppColors.gray600,
                                         ),
                                       ),
                                     ],
@@ -595,10 +596,10 @@ class _RecipesPageState extends State<RecipesPage> {
                                 child: Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: Colors.grey.shade50,
+                                    color: AppColors.gray50,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: Colors.grey.shade200,
+                                      color: AppColors.border,
                                       width: 1,
                                     ),
                                   ),
@@ -606,7 +607,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                     children: [
                                       Icon(
                                         Icons.fastfood,
-                                        color: Colors.grey.shade600,
+                                        color: AppColors.gray600,
                                         size: 24,
                                       ),
                                       const SizedBox(height: 4),
@@ -615,14 +616,14 @@ class _RecipesPageState extends State<RecipesPage> {
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 20,
-                                          color: Colors.grey.shade700,
+                                          color: AppColors.gray700,
                                         ),
                                       ),
                                       Text(
                                         'items',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: Colors.grey.shade600,
+                                          color: AppColors.gray600,
                                         ),
                                       ),
                                     ],
@@ -637,24 +638,24 @@ class _RecipesPageState extends State<RecipesPage> {
                               Expanded(
                                 child: _buildMacroChip(
                                   'Protein: ${protein.toStringAsFixed(0)}g',
-                                  Colors.blue.shade600,
-                                  Colors.blue.shade50,
+                                  AppColors.primaryDark,
+                                  AppColors.indigo50,
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: _buildMacroChip(
                                   'Carbs: ${carbs.toStringAsFixed(0)}g',
-                                  Colors.green.shade600,
-                                  Colors.green.shade50,
+                                  AppColors.emerald600,
+                                  AppColors.emerald50,
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: _buildMacroChip(
                                   'Fat: ${fats.toStringAsFixed(0)}g',
-                                  Colors.purple.shade600,
-                                  Colors.purple.shade50,
+                                  AppColors.violet600,
+                                  AppColors.violet50,
                                 ),
                               ),
                             ],
@@ -671,7 +672,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                       recipe.data() as Map<String, dynamic>,
                                 ),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF6366F1),
+                                  backgroundColor: AppColors.primary,
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
@@ -728,11 +729,11 @@ class _RecipesPageState extends State<RecipesPage> {
                 isDense: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
+                  borderSide: BorderSide(color: AppColors.gray300),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
+                  borderSide: BorderSide(color: AppColors.gray300),
                 ),
               ),
             ),
@@ -754,7 +755,7 @@ class _RecipesPageState extends State<RecipesPage> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: AppColors.gray300),
               ),
               child: const Icon(Icons.sort),
             ),
@@ -782,10 +783,10 @@ class _RecipesPageState extends State<RecipesPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
+                Icon(Icons.error_outline, size: 64, color: AppColors.red300),
                 const SizedBox(height: 16),
                 Text('Error: ${snapshot.error}',
-                    style: TextStyle(color: Colors.grey.shade600)),
+                    style: TextStyle(color: AppColors.gray600)),
               ],
             ),
           );
@@ -796,14 +797,14 @@ class _RecipesPageState extends State<RecipesPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.card_giftcard,
-                    size: 80, color: Colors.grey.shade300),
+                    size: 80, color: AppColors.gray300),
                 const SizedBox(height: 16),
                 Text(
                   'No recipes shared yet',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade600,
+                    color: AppColors.gray600,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -811,7 +812,7 @@ class _RecipesPageState extends State<RecipesPage> {
                   'Your friends will share recipes here',
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.grey.shade500,
+                    color: AppColors.muted,
                   ),
                 ),
               ],
@@ -832,7 +833,7 @@ class _RecipesPageState extends State<RecipesPage> {
               return Center(
                 child: Text(
                   'No recipes available',
-                  style: TextStyle(color: Colors.grey.shade600),
+                  style: TextStyle(color: AppColors.gray600),
                 ),
               );
             }
@@ -852,11 +853,11 @@ class _RecipesPageState extends State<RecipesPage> {
                 final fats = (recipe['total_fat'] as num?) ?? 0;
 
                 final gradients = [
-                  [Colors.purple.shade400, Colors.purple.shade600],
-                  [Colors.blue.shade400, Colors.blue.shade600],
-                  [Colors.green.shade400, Colors.green.shade600],
-                  [Colors.orange.shade400, Colors.orange.shade600],
-                  [Colors.pink.shade400, Colors.pink.shade600],
+                  [AppColors.violet400, AppColors.violet600],
+                  [AppColors.indigo400, AppColors.primaryDark],
+                  [AppColors.emerald400, AppColors.emerald600],
+                  [AppColors.amber400, AppColors.amber600],
+                  [AppColors.rose400, AppColors.rose600],
                 ];
                 final gradient = gradients[index % gradients.length];
 
@@ -940,10 +941,10 @@ class _RecipesPageState extends State<RecipesPage> {
                                   child: Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      color: Colors.orange.shade50,
+                                      color: AppColors.amber50,
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                        color: Colors.orange.shade200,
+                                        color: AppColors.amber200,
                                         width: 1,
                                       ),
                                     ),
@@ -951,7 +952,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                       children: [
                                         Icon(
                                           Icons.local_fire_department,
-                                          color: Colors.orange.shade600,
+                                          color: AppColors.amber600,
                                           size: 24,
                                         ),
                                         const SizedBox(height: 4),
@@ -960,14 +961,14 @@ class _RecipesPageState extends State<RecipesPage> {
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 20,
-                                            color: Colors.orange.shade700,
+                                            color: AppColors.amber700,
                                           ),
                                         ),
                                         Text(
                                           'kcal',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: Colors.grey.shade600,
+                                            color: AppColors.gray600,
                                           ),
                                         ),
                                       ],
@@ -982,11 +983,11 @@ class _RecipesPageState extends State<RecipesPage> {
                                     child: Container(
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF6366F1)
+                                        color: AppColors.primary
                                             .withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                          color: const Color(0xFF6366F1),
+                                          color: AppColors.primary,
                                           width: 2,
                                         ),
                                       ),
@@ -996,7 +997,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                         children: [
                                           Icon(
                                             Icons.add_circle_outline,
-                                            color: const Color(0xFF6366F1),
+                                            color: AppColors.primary,
                                             size: 24,
                                           ),
                                           const SizedBox(height: 4),
@@ -1005,7 +1006,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 12,
-                                              color: Color(0xFF6366F1),
+                                              color: AppColors.primary,
                                             ),
                                           ),
                                         ],
@@ -1021,24 +1022,24 @@ class _RecipesPageState extends State<RecipesPage> {
                                 Expanded(
                                   child: _buildMacroChip(
                                     'Protein: ${protein.toStringAsFixed(0)}g',
-                                    Colors.blue.shade600,
-                                    Colors.blue.shade50,
+                                    AppColors.primaryDark,
+                                    AppColors.indigo50,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: _buildMacroChip(
                                     'Carbs: ${carbs.toStringAsFixed(0)}g',
-                                    Colors.green.shade600,
-                                    Colors.green.shade50,
+                                    AppColors.emerald600,
+                                    AppColors.emerald50,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: _buildMacroChip(
                                     'Fat: ${fats.toStringAsFixed(0)}g',
-                                    Colors.purple.shade600,
-                                    Colors.purple.shade50,
+                                    AppColors.violet600,
+                                    AppColors.violet50,
                                   ),
                                 ),
                               ],
@@ -1099,7 +1100,7 @@ class _RecipesPageState extends State<RecipesPage> {
     final topPadding = MediaQuery.of(context).padding.top;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.canvas,
       body: SafeArea(
         top: false,
         child: Column(
@@ -1112,8 +1113,8 @@ class _RecipesPageState extends State<RecipesPage> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.purple.shade400,
-                    Colors.purple.shade600,
+                    AppColors.violet400,
+                    AppColors.violet600,
                   ],
                 ),
                 borderRadius: const BorderRadius.only(
@@ -1122,7 +1123,7 @@ class _RecipesPageState extends State<RecipesPage> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.purple.withValues(alpha: 0.3),
+                    color: AppColors.violet.withValues(alpha: 0.3),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -1270,7 +1271,7 @@ class _RecipesPageState extends State<RecipesPage> {
                 });
               }
             },
-            backgroundColor: Colors.green.shade400,
+            backgroundColor: AppColors.emerald400,
             child: const Icon(Icons.add),
           ),
           const SizedBox(width: 12),
@@ -1282,7 +1283,7 @@ class _RecipesPageState extends State<RecipesPage> {
               });
             },
             backgroundColor:
-                _deleteMode ? Colors.red.shade600 : Colors.red.shade400,
+                _deleteMode ? AppColors.red600 : AppColors.red400,
             child: Icon(_deleteMode ? Icons.close : Icons.delete_outline),
           ),
         ],

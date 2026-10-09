@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 
 class PingPongGame extends StatefulWidget {
   const PingPongGame({Key? key}) : super(key: key);
@@ -103,7 +104,7 @@ class _PingPongGameState extends State<PingPongGame> {
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: Color(0xFF6366F1),
+                        color: AppColors.primary,
                       ),
                     ),
                   ],
@@ -144,7 +145,7 @@ class _PingPongGameState extends State<PingPongGame> {
                           width: 60,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF6366F1),
+                            color: AppColors.primary,
                             borderRadius: BorderRadius.circular(5),
                           ),
                         ),
@@ -159,7 +160,7 @@ class _PingPongGameState extends State<PingPongGame> {
                   'Swipe to move paddle',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey,
+                    color: AppColors.gray400,
                   ),
                 ),
               ),

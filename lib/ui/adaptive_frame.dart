@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/responsive.dart';
 
 /// Wraps the whole app (via MaterialApp.builder).
@@ -183,105 +184,24 @@ class _Benefit extends StatelessWidget {
 }
 
 /// A small decorative card so the brand panel shows the core idea.
+/// Same component as the live card on the Card screen.
 class _MiniCard extends StatelessWidget {
   const _MiniCard();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return const SizedBox(
       width: 340,
       height: 200,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1F2937), Color(0xFF111827)],
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black38,
-            blurRadius: 30,
-            offset: Offset(0, 16),
-          ),
+      child: CalorieCardFront(
+        amount: 1840,
+        holder: 'Alex Morgan',
+        validThru: '09/10',
+        macros: [
+          CardMacro(name: 'Protein', remaining: 112, color: CalorieCardColors.protein),
+          CardMacro(name: 'Carbs', remaining: 180, color: CalorieCardColors.carbs),
+          CardMacro(name: 'Fat', remaining: 54, color: CalorieCardColors.fat),
         ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'BALANCE',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 12,
-                  letterSpacing: 2,
-                ),
-              ),
-              Container(
-                width: 38,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFBBF24),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '1,840 kcal',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 32,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const Spacer(),
-          const Row(
-            children: [
-              _MacroPill(label: 'P', value: '112g', color: AppColors.protein),
-              SizedBox(width: 8),
-              _MacroPill(label: 'C', value: '180g', color: AppColors.carbs),
-              SizedBox(width: 8),
-              _MacroPill(label: 'F', value: '54g', color: AppColors.fat),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MacroPill extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-
-  const _MacroPill({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '$label $value',
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
       ),
     );
   }

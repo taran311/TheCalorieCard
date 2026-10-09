@@ -5,13 +5,18 @@ import 'package:flutter/material.dart';
 class CalorieCardColors {
   CalorieCardColors._();
 
-  static const top = Color(0xFF312E81);
-  static const bottom = Color(0xFF1E1B4B);
+  /// Midnight indigo: the brand hue taken dark, so the card reads as part
+  /// of the app (not a neutral black slab) and still stands out on both
+  /// the light canvas and the indigo headers.
+  static const top = Color(0xFF2E2A78);
+  static const bottom = Color(0xFF15133D);
   static const chip = Color(0xFFFBBF24);
   static const overBudget = Color(0xFFFCA5A5);
+
+  // Same macro hues as AppColors, one step lighter for the dark card.
   static const protein = Color(0xFFF87171);
   static const carbs = Color(0xFFFBBF24);
-  static const fat = Color(0xFF60A5FA);
+  static const fat = Color(0xFF38BDF8);
 }
 
 /// Turns "sam.jones@gmail.com" into "Sam Jones" for the card.
@@ -44,7 +49,7 @@ class CalorieCardShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         gradient: const LinearGradient(
@@ -54,9 +59,9 @@ class CalorieCardShell extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: CalorieCardColors.bottom.withValues(alpha: 0.4),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            color: CalorieCardColors.bottom.withValues(alpha: 0.35),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -65,45 +70,60 @@ class CalorieCardShell extends StatelessWidget {
   }
 }
 
-/// Front of the card: chip, balance and cardholder.
+/// Front of the card, laid out like a payment card:
+///
+///   BALANCE                      [chip]
+///   1,840 kcal
+///   (P 112g) (C 180g) (F 54g)
+///   SAM JONES               VALID THRU 09/10
 class CalorieCardFront extends StatelessWidget {
-  /// Small line above the amount, e.g. "Left to spend today".
-  final String label;
-
   /// The balance in kcal. Negative means overspent.
   final num amount;
 
-  /// Name on the card. Empty shows [holderPlaceholder] faded.
-  final String holder;
-  final String holderPlaceholder;
+  /// Small label top-left. Defaults to BALANCE (OVER BUDGET when negative).
+  final String? label;
 
-  /// Small text bottom-right, e.g. the date the balance is for.
-  final String? footnote;
+  /// Remaining macros shown as pills under the balance.
+  final List<CardMacro> macros;
 
-  /// Hint shown top-right (e.g. a flip icon) instead of the contactless mark.
-  final Widget? cornerIcon;
+  /// Cardholder name, shown bottom-left in capitals like a real card.
+  /// Empty shows a faded placeholder; null hides the line.
+  final String? holder;
+
+  /// Bottom-right "valid thru" value, e.g. 09/10 for the day shown.
+  final String? validThru;
 
   const CalorieCardFront({
     super.key,
-    required this.label,
     required this.amount,
-    required this.holder,
-    this.holderPlaceholder = 'Your name here',
-    this.footnote,
-    this.cornerIcon,
+    this.label,
+    this.macros = const [],
+    this.holder,
+    this.validThru,
   });
 
   @override
   Widget build(BuildContext context) {
     final over = amount < 0;
-    final name = holder.trim();
+    final name = (holder ?? '').trim().toUpperCase();
 
     return CalorieCardShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Text(
+                label ?? (over ? 'OVER BUDGET' : 'BALANCE'),
+                style: TextStyle(
+                  color: over
+                      ? CalorieCardColors.overBudget
+                      : Colors.white.withValues(alpha: 0.6),
+                  fontSize: 12,
+                  letterSpacing: 2,
+                ),
+              ),
               Container(
                 width: 38,
                 height: 28,
@@ -112,23 +132,9 @@ class CalorieCardFront extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
-              const Spacer(),
-              cornerIcon ??
-                  Icon(Icons.contactless_outlined,
-                      color: Colors.white.withValues(alpha: 0.7), size: 24),
             ],
           ),
-          const Spacer(),
-          Text(
-            label,
-            style: TextStyle(
-              color: over
-                  ? CalorieCardColors.overBudget
-                  : Colors.white.withValues(alpha: 0.65),
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 6),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
@@ -136,49 +142,112 @@ class CalorieCardFront extends StatelessWidget {
               '${over ? '−' : ''}${formatCardKcal(amount)} kcal',
               style: TextStyle(
                 color: over ? CalorieCardColors.overBudget : Colors.white,
-                fontSize: 30,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          if (macros.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [for (final m in macros) MacroPill(macro: m)],
+            ),
+          ],
+          const Spacer(),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 180),
-                  child: Text(
-                    name.isEmpty ? holderPlaceholder : name,
-                    key: ValueKey(name),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white
-                          .withValues(alpha: name.isEmpty ? 0.5 : 0.95),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
+                child: holder == null
+                    ? const SizedBox.shrink()
+                    : AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        // Keep the name on the left like a real card
+                        // (the default layout centres it).
+                        layoutBuilder: (current, previous) => Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [...previous, if (current != null) current],
+                        ),
+                        child: Text(
+                          name.isEmpty ? 'YOUR NAME' : name,
+                          key: ValueKey(name),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white
+                                .withValues(alpha: name.isEmpty ? 0.4 : 0.9),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.6,
+                          ),
+                        ),
+                      ),
               ),
-              if (footnote != null) ...[
+              if (validThru != null) ...[
                 const SizedBox(width: 12),
-                Text(
-                  footnote!,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.65),
-                    fontSize: 12,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'VALID THRU',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 8,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      validThru!,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.2,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// "P 112g" style pill, tinted with the macro's colour.
+class MacroPill extends StatelessWidget {
+  final CardMacro macro;
+
+  const MacroPill({super.key, required this.macro});
+
+  @override
+  Widget build(BuildContext context) {
+    final over = macro.remaining < 0;
+    final color = over ? CalorieCardColors.overBudget : macro.color;
+    final value = over
+        ? '−${macro.remaining.abs().round()}g'
+        : '${macro.remaining.round()}g';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '${macro.short} $value',
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -194,9 +263,12 @@ class CardMacro {
   const CardMacro({
     required this.name,
     required this.remaining,
-    required this.goal,
+    this.goal,
     required this.color,
   });
+
+  /// "P", "C" or "F" for the pills.
+  String get short => name.isEmpty ? '' : name[0].toUpperCase();
 }
 
 /// Back of the card: what's left of each macro.

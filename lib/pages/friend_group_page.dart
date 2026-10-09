@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/home_page.dart';
@@ -155,7 +156,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
             Container(
               padding: EdgeInsets.fromLTRB(8, topPadding + 8, 8, 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF6366F1),
+                color: AppColors.primary,
                 borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(16),
                   bottomRight: Radius.circular(16),
@@ -309,8 +310,8 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                                   begin: Alignment.topLeft,
                                                   end: Alignment.bottomRight,
                                                   colors: [
-                                                    const Color(0xFF6366F1),
-                                                    const Color(0xFF8B5CF6),
+                                                    AppColors.primary,
+                                                    AppColors.violet,
                                                   ],
                                                 ),
                                                 shape: BoxShape.circle,
@@ -349,7 +350,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                                     style: TextStyle(
                                                       fontSize: 12,
                                                       color:
-                                                          Colors.grey.shade600,
+                                                          AppColors.gray600,
                                                     ),
                                                   ),
                                                 ],
@@ -362,11 +363,11 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                         Container(
                                           padding: const EdgeInsets.all(12),
                                           decoration: BoxDecoration(
-                                            color: Colors.grey.shade50,
+                                            color: AppColors.gray50,
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                             border: Border.all(
-                                              color: Colors.grey.shade200,
+                                              color: AppColors.border,
                                               width: 1,
                                             ),
                                           ),
@@ -376,19 +377,19 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                             children: [
                                               _buildNutritionChip(
                                                 '${calories.toStringAsFixed(0)} cal',
-                                                Colors.orange.shade600,
+                                                AppColors.amber600,
                                               ),
                                               _buildNutritionChip(
                                                 '${protein.toStringAsFixed(0)}g protein',
-                                                Colors.red.shade600,
+                                                AppColors.red600,
                                               ),
                                               _buildNutritionChip(
                                                 '${carbs.toStringAsFixed(0)}g carbs',
-                                                Colors.blue.shade600,
+                                                AppColors.primaryDark,
                                               ),
                                               _buildNutritionChip(
                                                 '${fats.toStringAsFixed(0)}g fat',
-                                                Colors.green.shade600,
+                                                AppColors.emerald600,
                                               ),
                                             ],
                                           ),
@@ -401,7 +402,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                           decoration: BoxDecoration(
                                             border: Border(
                                               top: BorderSide(
-                                                color: Colors.grey.shade200,
+                                                color: AppColors.border,
                                                 width: 1,
                                               ),
                                             ),
@@ -428,7 +429,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                                 },
                                                 icon: const Icon(
                                                   Icons.credit_card,
-                                                  color: Color(0xFF6366F1),
+                                                  color: AppColors.primary,
                                                   size: 24,
                                                 ),
                                                 tooltip: 'View Card',
@@ -450,7 +451,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                                 },
                                                 icon: const Icon(
                                                   Icons.emoji_events,
-                                                  color: Color(0xFFF59E0B),
+                                                  color: AppColors.amber,
                                                   size: 24,
                                                 ),
                                                 tooltip: 'Achievements',
@@ -462,7 +463,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                                 },
                                                 icon: const Icon(
                                                   Icons.chat_bubble_outline,
-                                                  color: Color(0xFF10B981),
+                                                  color: AppColors.green,
                                                   size: 24,
                                                 ),
                                                 tooltip: 'Chat',

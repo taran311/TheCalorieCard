@@ -73,8 +73,8 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                         border: Border(
                           bottom: BorderSide(
                             color: _selectedTabIndex == 0
-                                ? const Color(0xFF6366F1)
-                                : Colors.grey.shade300,
+                                ? AppColors.primary
+                                : AppColors.gray300,
                             width: 3,
                           ),
                         ),
@@ -84,8 +84,8 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: _selectedTabIndex == 0
-                              ? const Color(0xFF6366F1)
-                              : Colors.grey.shade600,
+                              ? AppColors.primary
+                              : AppColors.gray600,
                           fontSize: 14,
                           fontWeight: _selectedTabIndex == 0
                               ? FontWeight.bold
@@ -109,8 +109,8 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                         border: Border(
                           bottom: BorderSide(
                             color: _selectedTabIndex == 1
-                                ? const Color(0xFF6366F1)
-                                : Colors.grey.shade300,
+                                ? AppColors.primary
+                                : AppColors.gray300,
                             width: 3,
                           ),
                         ),
@@ -120,8 +120,8 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: _selectedTabIndex == 1
-                              ? const Color(0xFF6366F1)
-                              : Colors.grey.shade600,
+                              ? AppColors.primary
+                              : AppColors.gray600,
                           fontSize: 14,
                           fontWeight: _selectedTabIndex == 1
                               ? FontWeight.bold
@@ -196,7 +196,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                   subtitle: Text(
                       '${calories.toStringAsFixed(0)} kcal ($servingSize)'),
                   trailing: const Icon(Icons.add_circle_outline,
-                      color: Color(0xFF6366F1)),
+                      color: AppColors.primary),
                   onTap: () {
                     setState(() {
                       _editingRecipeIndex = index;
@@ -292,7 +292,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                           '${calories.toStringAsFixed(0)} kcal ($servingSize)\n${item['sharedByEmail']}'),
                       isThreeLine: true,
                       trailing: const Icon(Icons.add_circle_outline,
-                          color: Color(0xFF6366F1)),
+                          color: AppColors.primary),
                       onTap: () {
                         setState(() {
                           _editingRecipeIndex = index;
@@ -364,9 +364,9 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.indigo.shade50,
+        color: AppColors.indigo50,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.indigo.shade300, width: 1.5),
+        border: Border.all(color: AppColors.indigo300, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,14 +429,14 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Colors.orange.shade400,
-                          Colors.orange.shade600,
+                          AppColors.amber400,
+                          AppColors.amber600,
                         ],
                       ),
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.orange.withValues(alpha: 0.3),
+                          color: AppColors.amber.withValues(alpha: 0.3),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -479,10 +479,10 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                           padding: const EdgeInsets.symmetric(
                               vertical: 10, horizontal: 8),
                           decoration: BoxDecoration(
-                            color: Colors.blue.shade100,
+                            color: AppColors.indigo100,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Colors.blue.shade300,
+                              color: AppColors.indigo300,
                               width: 1,
                             ),
                           ),
@@ -493,7 +493,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.blue.shade800,
+                                  color: AppColors.indigo800,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -502,7 +502,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.blue.shade900,
+                                  color: AppColors.indigo900,
                                 ),
                               ),
                             ],
@@ -515,10 +515,10 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                           padding: const EdgeInsets.symmetric(
                               vertical: 10, horizontal: 8),
                           decoration: BoxDecoration(
-                            color: Colors.green.shade100,
+                            color: AppColors.emerald100,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Colors.green.shade300,
+                              color: AppColors.emerald300,
                               width: 1,
                             ),
                           ),
@@ -529,7 +529,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.green.shade800,
+                                  color: AppColors.emerald800,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -538,7 +538,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.green.shade900,
+                                  color: AppColors.emerald900,
                                 ),
                               ),
                             ],
@@ -551,10 +551,10 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                           padding: const EdgeInsets.symmetric(
                               vertical: 10, horizontal: 8),
                           decoration: BoxDecoration(
-                            color: Colors.purple.shade100,
+                            color: AppColors.violet100,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Colors.purple.shade300,
+                              color: AppColors.violet300,
                               width: 1,
                             ),
                           ),
@@ -565,7 +565,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.purple.shade800,
+                                  color: AppColors.violet800,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -574,7 +574,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.purple.shade900,
+                                  color: AppColors.violet900,
                                 ),
                               ),
                             ],
@@ -605,7 +605,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                           });
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6366F1),
+                          backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
                         ),
                         child: const Text('Add'),
@@ -1621,7 +1621,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       8,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1),
+                      color: AppColors.primary,
                       borderRadius: const BorderRadius.only(
                         bottomLeft: Radius.circular(16),
                         bottomRight: Radius.circular(16),
@@ -1783,7 +1783,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                 padding: const EdgeInsets.all(4),
                                 child: const Icon(
                                   Icons.check_circle,
-                                  color: Color(0xFF10B981),
+                                  color: AppColors.green,
                                   size: 22,
                                 ),
                               ),
@@ -1832,8 +1832,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Color(0xFF4338CA),
-                              Color(0xFF312E81),
+                              AppColors.indigo700,
+                              AppColors.indigo900,
                             ],
                           ),
                         ),
@@ -2330,7 +2330,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                                               child: Text(
                                                                                 reaction['username'] ?? 'Unknown',
                                                                                 style: TextStyle(
-                                                                                  color: Colors.grey.shade700,
+                                                                                  color: AppColors.gray700,
                                                                                   fontWeight: FontWeight.w500,
                                                                                 ),
                                                                               ),
@@ -2407,8 +2407,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                 },
                                           heroTag: 'addFood',
                                           backgroundColor: _isDayFinished
-                                              ? Colors.grey.shade400
-                                              : const Color(0xFF059669),
+                                              ? AppColors.gray400
+                                              : AppColors.emerald600,
                                           foregroundColor: Colors.white,
                                           icon: const Icon(Icons.add),
                                           label: const Text('Food'),
@@ -2467,8 +2467,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                 },
                                           heroTag: 'addRecipe',
                                           backgroundColor: _isDayFinished
-                                              ? Colors.grey.shade400
-                                              : const Color(0xFF7C3AED),
+                                              ? AppColors.gray400
+                                              : AppColors.violet600,
                                           foregroundColor: Colors.white,
                                           icon: const Icon(Icons.add),
                                           label: const Text('Recipe'),
@@ -2483,10 +2483,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                 },
                                           heroTag: 'delete',
                                           backgroundColor: _isDayFinished
-                                              ? Colors.grey.shade400
+                                              ? AppColors.gray400
                                               : _deleteMode
                                                   ? const Color(0xFFB91C1C)
-                                                  : const Color(0xFFDC2626),
+                                                  : AppColors.red600,
                                           foregroundColor: Colors.white,
                                           child: Icon(_deleteMode
                                               ? Icons.close

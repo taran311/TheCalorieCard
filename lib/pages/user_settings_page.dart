@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
@@ -518,7 +519,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               SnackBar(
                 content: Text(userMessage),
                 duration: const Duration(seconds: 5),
-                backgroundColor: Colors.red.shade700,
+                backgroundColor: AppColors.red700,
               ),
             );
           }
@@ -602,8 +603,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
             style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF6366F1),
-              side: const BorderSide(color: Color(0xFF6366F1)),
+              foregroundColor: AppColors.primary,
+              side: const BorderSide(color: AppColors.primary),
               padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -626,9 +627,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               child: ToggleButtons(
                 isSelected: calorieSelections,
                 selectedColor: Colors.white,
-                fillColor: const Color(0xFF6366F1),
-                borderColor: const Color(0xFF6366F1),
-                selectedBorderColor: const Color(0xFF6366F1),
+                fillColor: AppColors.primary,
+                borderColor: AppColors.primary,
+                selectedBorderColor: AppColors.primary,
                 borderRadius: BorderRadius.circular(10),
                 onPressed: (int index) {
                   setState(() {
@@ -792,7 +793,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                       ElevatedButton(
                         onPressed: () => Navigator.pop(context, true),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
+                          backgroundColor: AppColors.red600,
                           foregroundColor: Colors.white,
                         ),
                         child: const Text('Clear All'),
@@ -807,8 +808,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               icon: const Icon(Icons.delete_sweep),
               label: const Text('Clear Today\'s Food'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red,
-                side: const BorderSide(color: Colors.red),
+                foregroundColor: AppColors.red600,
+                side: const BorderSide(color: AppColors.red600),
               ),
             ),
           ),
@@ -820,7 +821,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                  color: AppColors.green.withValues(alpha: 0.3),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -847,14 +848,14 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                       );
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
+                backgroundColor: AppColors.green,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
                 elevation: 0,
                 disabledBackgroundColor:
-                    const Color(0xFF10B981).withValues(alpha: 0.6),
+                    AppColors.green.withValues(alpha: 0.6),
               ),
               child: _isSaving
                   ? const SizedBox(
@@ -925,10 +926,10 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 ),
                 subtitle: ToggleButtons(
                   isSelected: genderSelections,
-                  selectedColor: const Color(0xFF6366F1),
-                  fillColor: const Color(0xFF6366F1).withValues(alpha: 0.2),
-                  borderColor: const Color(0xFF6366F1),
-                  selectedBorderColor: const Color(0xFF6366F1),
+                  selectedColor: AppColors.primary,
+                  fillColor: AppColors.primary.withValues(alpha: 0.2),
+                  borderColor: AppColors.primary,
+                  selectedBorderColor: AppColors.primary,
                   onPressed: (int index) {
                     setState(() {
                       for (int i = 0; i < genderSelections.length; i++) {
@@ -1002,8 +1003,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           max: 4,
           divisions: 4,
           label: _getExerciseLevelText(),
-          activeColor: const Color(0xFF6366F1),
-          inactiveColor: Colors.grey.shade300,
+          activeColor: AppColors.primary,
+          inactiveColor: AppColors.gray300,
           onChanged: (double value) {
             setState(() {
               _exerciseLevel = value;
@@ -1014,7 +1015,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         Text(
           _getExerciseLevelText(),
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 14, color: Colors.grey),
+          style: const TextStyle(fontSize: 14, color: AppColors.gray400),
         ),
         const SizedBox(height: 20),
         SizedBox(
@@ -1032,7 +1033,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 ? 'Estimated!'
                 : 'Estimate Via AI'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6366F1),
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               minimumSize: const Size(double.infinity, 48),
               shape: RoundedRectangleBorder(
@@ -1050,7 +1051,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Colors.grey.shade200,
+                color: AppColors.border,
                 width: 1,
               ),
             ),
@@ -1059,7 +1060,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 Icon(
                   Icons.auto_awesome,
                   size: 48,
-                  color: Color(0xFF6366F1).withValues(alpha: 0.3),
+                  color: AppColors.primary.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -1067,7 +1068,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade800,
+                    color: AppColors.gray800,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1076,7 +1077,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.grey.shade600,
+                    color: AppColors.gray600,
                   ),
                 ),
               ],
@@ -1091,9 +1092,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: AppColors.gray100,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: AppColors.gray300),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1102,7 +1103,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             label,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey.shade600,
+              color: AppColors.gray600,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -1281,7 +1282,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                     ElevatedButton(
                       onPressed: () => Navigator.pop(context, true),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
+                        backgroundColor: AppColors.red600,
                         foregroundColor: Colors.white,
                       ),
                       child: const Text('Clear All'),
@@ -1296,8 +1297,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             icon: const Icon(Icons.delete_sweep),
             label: const Text('Clear Today\'s Food'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.red,
-              side: const BorderSide(color: Colors.red),
+              foregroundColor: AppColors.red600,
+              side: const BorderSide(color: AppColors.red600),
             ),
           ),
         ),
@@ -1325,7 +1326,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                     );
                   },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
+              backgroundColor: AppColors.green,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1368,8 +1369,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFF6366F1),
-                  const Color(0xFF8B5CF6),
+                  AppColors.primary,
+                  AppColors.violet,
                 ],
               ),
             ),
@@ -1460,7 +1461,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                           Container(
                             margin: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade50,
+                              color: AppColors.gray50,
                               borderRadius: BorderRadius.circular(24),
                               boxShadow: [
                                 BoxShadow(
@@ -1479,7 +1480,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                   Container(
                                     padding: const EdgeInsets.all(4),
                                     decoration: BoxDecoration(
-                                      color: Colors.grey.shade200,
+                                      color: AppColors.border,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Row(
@@ -1499,7 +1500,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                       vertical: 14),
                                               decoration: BoxDecoration(
                                                 color: _selectedTabIndex == 0
-                                                    ? const Color(0xFF6366F1)
+                                                    ? AppColors.primary
                                                     : Colors.transparent,
                                                 borderRadius:
                                                     BorderRadius.circular(10),
@@ -1527,7 +1528,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                     color: _selectedTabIndex ==
                                                             0
                                                         ? Colors.white
-                                                        : Colors.grey.shade600,
+                                                        : AppColors.gray600,
                                                   ),
                                                   const SizedBox(width: 6),
                                                   Text(
@@ -1537,8 +1538,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                       color:
                                                           _selectedTabIndex == 0
                                                               ? Colors.white
-                                                              : Colors.grey
-                                                                  .shade700,
+                                                              : AppColors.gray700,
                                                       fontWeight:
                                                           FontWeight.w700,
                                                       fontSize: 15,
@@ -1564,7 +1564,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                       vertical: 14),
                                               decoration: BoxDecoration(
                                                 color: _selectedTabIndex == 1
-                                                    ? const Color(0xFF6366F1)
+                                                    ? AppColors.primary
                                                     : Colors.transparent,
                                                 borderRadius:
                                                     BorderRadius.circular(10),
@@ -1592,7 +1592,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                     color: _selectedTabIndex ==
                                                             1
                                                         ? Colors.white
-                                                        : Colors.grey.shade600,
+                                                        : AppColors.gray600,
                                                   ),
                                                   const SizedBox(width: 6),
                                                   Text(
@@ -1602,8 +1602,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                       color:
                                                           _selectedTabIndex == 1
                                                               ? Colors.white
-                                                              : Colors.grey
-                                                                  .shade700,
+                                                              : AppColors.gray700,
                                                       fontWeight:
                                                           FontWeight.w700,
                                                       fontSize: 15,
@@ -1649,7 +1648,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                       children: [
                         const CircularProgressIndicator(
                           valueColor:
-                              AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                              AlwaysStoppedAnimation<Color>(AppColors.primary),
                         ),
                         const SizedBox(height: 16),
                         const Text(
@@ -1670,7 +1669,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                           icon: const Icon(Icons.sports_esports, size: 18),
                           label: const Text('Play Solo Ping Pong'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6366F1),
+                            backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
                           ),
                         ),

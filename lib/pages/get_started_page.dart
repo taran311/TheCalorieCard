@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
 import 'package:namer_app/components/mini_game.dart';
@@ -339,8 +340,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                const Color(0xFF6366F1),
-                const Color(0xFF8B5CF6),
+                AppColors.primary,
+                AppColors.violet,
               ],
             ),
             borderRadius: BorderRadius.circular(12),
@@ -361,14 +362,14 @@ class _GetStartedPageState extends State<GetStartedPage> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade900,
+                  color: AppColors.ink,
                 ),
               ),
               Text(
                 subtitle,
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.grey.shade600,
+                  color: AppColors.gray600,
                 ),
               ),
             ],
@@ -389,8 +390,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFF6366F1),
-                  const Color(0xFF8B5CF6),
+                  AppColors.primary,
+                  AppColors.violet,
                 ],
               ),
             ),
@@ -457,7 +458,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
+                        color: AppColors.gray50,
                         borderRadius: const BorderRadius.only(
                           topLeft: Radius.circular(32),
                           topRight: Radius.circular(32),
@@ -530,12 +531,12 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                           ),
                                           subtitle: ToggleButtons(
                                             isSelected: genderSelections,
-                                            selectedColor: Color(0xFF6366F1),
-                                            fillColor: Color(0xFF6366F1)
+                                            selectedColor: AppColors.primary,
+                                            fillColor: AppColors.primary
                                                 .withValues(alpha: 0.2),
-                                            borderColor: Color(0xFF6366F1),
+                                            borderColor: AppColors.primary,
                                             selectedBorderColor:
-                                                Color(0xFF6366F1),
+                                                AppColors.primary,
                                             onPressed: (int index) {
                                               setState(() {
                                                 for (int i = 0;
@@ -652,7 +653,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                         min: 0,
                                         max: 4,
                                         divisions: 4,
-                                        activeColor: Color(0xFF6366F1),
+                                        activeColor: AppColors.primary,
                                         onChanged: (double value) {
                                           setState(
                                             () {
@@ -683,7 +684,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w500,
-                                            color: const Color(0xFF6366F1),
+                                            color: AppColors.primary,
                                           ),
                                         ),
                                       ),
@@ -750,7 +751,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                             ),
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor:
-                                                  const Color(0xFF6366F1),
+                                                  AppColors.primary,
                                               foregroundColor: Colors.white,
                                               shape: RoundedRectangleBorder(
                                                 borderRadius:
@@ -783,9 +784,9 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                             ),
                                             style: OutlinedButton.styleFrom(
                                               foregroundColor:
-                                                  const Color(0xFF6366F1),
+                                                  AppColors.primary,
                                               side: const BorderSide(
-                                                  color: Color(0xFF6366F1)),
+                                                  color: AppColors.primary),
                                               shape: RoundedRectangleBorder(
                                                 borderRadius:
                                                     BorderRadius.circular(12),
@@ -820,9 +821,9 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                           ),
                                           style: OutlinedButton.styleFrom(
                                             foregroundColor:
-                                                const Color(0xFF6366F1),
+                                                AppColors.primary,
                                             side: const BorderSide(
-                                                color: Color(0xFF6366F1)),
+                                                color: AppColors.primary),
                                             padding: const EdgeInsets.symmetric(
                                                 vertical: 12),
                                             shape: RoundedRectangleBorder(
@@ -921,10 +922,10 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                               ToggleButtons(
                                                 isSelected: calorieSelections,
                                                 selectedColor: Colors.white,
-                                                fillColor: Color(0xFF6366F1),
-                                                borderColor: Color(0xFF6366F1),
+                                                fillColor: AppColors.primary,
+                                                borderColor: AppColors.primary,
                                                 selectedBorderColor:
-                                                    Color(0xFF6366F1),
+                                                    AppColors.primary,
                                                 borderRadius:
                                                     BorderRadius.circular(10),
                                                 onPressed: (int index) {
@@ -1164,7 +1165,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                       borderRadius: BorderRadius.circular(16),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Color(0xFF10B981)
+                                          color: AppColors.green
                                               .withValues(alpha: 0.3),
                                           blurRadius: 12,
                                           offset: const Offset(0, 4),
@@ -1202,7 +1203,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                         );
                                       },
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: Color(0xFF10B981),
+                                        backgroundColor: AppColors.green,
                                         foregroundColor: Colors.white,
                                         shape: RoundedRectangleBorder(
                                           borderRadius:
@@ -1256,7 +1257,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                       children: [
                         const CircularProgressIndicator(
                           valueColor:
-                              AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                              AlwaysStoppedAnimation<Color>(AppColors.primary),
                         ),
                         const SizedBox(height: 16),
                         const Text(
@@ -1277,7 +1278,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                           icon: const Icon(Icons.sports_esports, size: 18),
                           label: const Text('Play Solo Ping Pong'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6366F1),
+                            backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
                           ),
                         ),

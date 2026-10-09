@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/services/category_service.dart';
@@ -169,7 +170,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
               ),
               if ((item['portion'] ?? '').toString().isNotEmpty)
                 Text('Portion: ${item['portion']}',
-                    style: TextStyle(color: Colors.grey.shade600)),
+                    style: TextStyle(color: AppColors.gray600)),
               const SizedBox(height: 16),
               const Text('How much did you have?',
                   style: TextStyle(fontWeight: FontWeight.w700)),
@@ -225,7 +226,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: review ? Colors.orange.shade300 : Colors.grey.shade200,
+          color: review ? AppColors.amber300 : AppColors.border,
         ),
       ),
       child: InkWell(
@@ -246,7 +247,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
-                        color: Color(0xFF111827),
+                        color: AppColors.ink,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -256,7 +257,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         'P ${g('protein')}g · C ${g('carbs')}g · F ${g('fat')}g',
                       ].join('  ·  '),
                       style:
-                          TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          TextStyle(fontSize: 12, color: AppColors.gray600),
                     ),
                     const SizedBox(height: 6),
                     Wrap(
@@ -264,16 +265,16 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       runSpacing: 4,
                       children: [
                         if (source == 'fatsecret')
-                          badge('Database match', const Color(0xFF10B981),
+                          badge('Database match', AppColors.green,
                               Icons.verified_outlined),
                         if (source == 'ai')
-                          badge('AI estimate', const Color(0xFF6366F1),
+                          badge('AI estimate', AppColors.primary,
                               Icons.auto_awesome),
                         if (source == 'recent')
-                          badge('From your history', const Color(0xFF0EA5E9),
+                          badge('From your history', AppColors.sky,
                               Icons.history),
                         if (review)
-                          badge('Check this', Colors.orange.shade700,
+                          badge('Check this', AppColors.amber700,
                               Icons.warning_amber_rounded),
                       ],
                     ),
@@ -288,12 +289,12 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF111827),
+                      color: AppColors.ink,
                     ),
                   ),
                   Text('kcal',
                       style:
-                          TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                          TextStyle(fontSize: 11, color: AppColors.gray600)),
                 ],
               ),
               IconButton(
@@ -302,7 +303,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   _calculated = _calculatedItems.isNotEmpty;
                 }),
                 icon: const Icon(Icons.close),
-                color: Colors.grey.shade500,
+                color: AppColors.muted,
                 iconSize: 20,
                 tooltip: 'Remove item',
               ),
@@ -454,7 +455,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Tutorial complete! Now try it yourself.'),
-          backgroundColor: Color(0xFF10B981),
+          backgroundColor: AppColors.green,
           duration: Duration(seconds: 2),
         ),
       );
@@ -600,7 +601,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Add Food Items'),
-        backgroundColor: const Color(0xFF6366F1),
+        backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -625,7 +626,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF6366F1),
+                      color: AppColors.primary,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -634,7 +635,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       'Recent',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: Colors.grey.shade700,
+                        color: AppColors.gray700,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -700,7 +701,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                               _calculated = false;
                             });
                           },
-                          backgroundColor: Colors.green.shade100,
+                          backgroundColor: AppColors.emerald100,
                         );
                       }).toList(),
                     ),
@@ -714,7 +715,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
-                        color: Color(0xFF10B981),
+                        color: AppColors.green,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -723,22 +724,22 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     Text(
                       'Tap an item to change how much you had.',
                       style:
-                          TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          TextStyle(fontSize: 12, color: AppColors.gray600),
                     ),
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
+                        color: AppColors.amber50,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.shade300),
+                        border: Border.all(color: AppColors.amber300),
                       ),
                       child: Text(
                         'Total: ${_totalCalories.round()} kcal  ·  P ${_totalProtein.round()}g  C ${_totalCarbs.round()}g  F ${_totalFat.round()}g',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: Colors.orange.shade700,
+                          color: AppColors.amber700,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -775,7 +776,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                           ),
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            backgroundColor: const Color(0xFF6366F1),
+                            backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -815,8 +816,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
                             backgroundColor: (!_calculated ||
                                     _saving ||
                                     _calculatedItems.isEmpty)
-                                ? Colors.grey.shade300
-                                : const Color(0xFF10B981),
+                                ? AppColors.gray300
+                                : AppColors.green,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -842,7 +843,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       icon: const Icon(Icons.sports_esports),
                       label: const Text('Play Ping Pong While You Wait'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.purple.shade600,
+                        backgroundColor: AppColors.violet600,
                         foregroundColor: Colors.white,
                       ),
                     ),
@@ -862,7 +863,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF6366F1),
+                    color: AppColors.primary,
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(

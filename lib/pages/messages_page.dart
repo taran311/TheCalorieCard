@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -39,13 +40,13 @@ class MessagesPage extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.error_outline,
-                      size: 64, color: Colors.red.shade400),
+                      size: 64, color: AppColors.red400),
                   const SizedBox(height: 16),
                   Text(
                     'Error loading conversations',
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.grey.shade600,
+                      color: AppColors.gray600,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -53,7 +54,7 @@ class MessagesPage extends StatelessWidget {
                     'Please check your connection',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey.shade500,
+                      color: AppColors.muted,
                     ),
                   ),
                 ],
@@ -67,13 +68,13 @@ class MessagesPage extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.chat_bubble_outline,
-                      size: 64, color: Colors.grey.shade400),
+                      size: 64, color: AppColors.gray400),
                   const SizedBox(height: 16),
                   Text(
                     'No conversations yet',
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.grey.shade600,
+                      color: AppColors.gray600,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -81,7 +82,7 @@ class MessagesPage extends StatelessWidget {
                     'Start a chat from Friends or Groups',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey.shade500,
+                      color: AppColors.muted,
                     ),
                   ),
                 ],
@@ -168,7 +169,7 @@ class MessagesPage extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showNewChatDialog(context, currentUserId),
-        backgroundColor: const Color(0xFF6366F1),
+        backgroundColor: AppColors.primary,
         child: const Icon(Icons.add_comment, color: Colors.white),
       ),
     );
@@ -185,7 +186,7 @@ class MessagesPage extends StatelessWidget {
   ) {
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: const Color(0xFF6366F1),
+        backgroundColor: AppColors.primary,
         child: Icon(
           isGroup ? Icons.group : Icons.person,
           color: Colors.white,
@@ -206,7 +207,7 @@ class MessagesPage extends StatelessWidget {
               timeago.format(lastMessageTime.toDate()),
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey.shade600,
+                color: AppColors.gray600,
               ),
             ),
         ],
@@ -221,7 +222,7 @@ class MessagesPage extends StatelessWidget {
               style: TextStyle(
                 fontWeight:
                     unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
-                color: unreadCount > 0 ? Colors.black87 : Colors.grey.shade600,
+                color: unreadCount > 0 ? Colors.black87 : AppColors.gray600,
               ),
             ),
           ),
@@ -233,7 +234,7 @@ class MessagesPage extends StatelessWidget {
                 vertical: 2,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFF6366F1),
+                color: AppColors.primary,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -285,7 +286,7 @@ class MessagesPage extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: AppColors.gray300,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -305,9 +306,9 @@ class MessagesPage extends StatelessWidget {
                   child: Column(
                     children: [
                       TabBar(
-                        labelColor: const Color(0xFF6366F1),
-                        unselectedLabelColor: Colors.grey,
-                        indicatorColor: const Color(0xFF6366F1),
+                        labelColor: AppColors.primary,
+                        unselectedLabelColor: AppColors.gray400,
+                        indicatorColor: AppColors.primary,
                         tabs: const [
                           Tab(text: 'Friends'),
                           Tab(text: 'Groups'),
@@ -351,7 +352,7 @@ class MessagesPage extends StatelessWidget {
           return Center(
             child: Text(
               'No friends yet',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(color: AppColors.gray400),
             ),
           );
         }
@@ -374,7 +375,7 @@ class MessagesPage extends StatelessWidget {
 
                 return ListTile(
                   leading: const CircleAvatar(
-                    backgroundColor: Color(0xFF6366F1),
+                    backgroundColor: AppColors.primary,
                     child: Icon(Icons.person, color: Colors.white),
                   ),
                   title: Text(
@@ -410,7 +411,7 @@ class MessagesPage extends StatelessWidget {
           return Center(
             child: Text(
               'No groups yet',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(color: AppColors.gray400),
             ),
           );
         }
@@ -426,7 +427,7 @@ class MessagesPage extends StatelessWidget {
 
             return ListTile(
               leading: const CircleAvatar(
-                backgroundColor: Color(0xFF6366F1),
+                backgroundColor: AppColors.primary,
                 child: Icon(Icons.group, color: Colors.white),
               ),
               title: Text(
@@ -435,7 +436,7 @@ class MessagesPage extends StatelessWidget {
               ),
               subtitle: Text(
                 '${memberIds.length} members',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: AppColors.gray400),
               ),
               onTap: () async {
                 Navigator.pop(context);
@@ -784,7 +785,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F8),
+      backgroundColor: AppColors.canvas,
       appBar: AppBar(
         title: Row(
           children: [
@@ -829,7 +830,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                       return Center(
                         child: Text(
                           'No messages yet. Say hi! 👋',
-                          style: TextStyle(color: Colors.grey.shade600),
+                          style: TextStyle(color: AppColors.gray600),
                         ),
                       );
                     }
@@ -908,7 +909,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+                border: Border(top: BorderSide(color: AppColors.border)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -923,7 +924,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.credit_card),
-                    color: const Color(0xFF6366F1),
+                    color: AppColors.primary,
                   ),
                   Expanded(
                     child: Focus(
@@ -961,7 +962,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                         onPressed: canSend ? () => _sendMessage() : null,
                         icon: const Icon(Icons.send_rounded, size: 20),
                         style: IconButton.styleFrom(
-                          backgroundColor: const Color(0xFF6366F1),
+                          backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
                         ),
                       );
@@ -991,7 +992,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           Icon(
             Icons.done_all,
             size: 14,
-            color: Colors.lightGreenAccent.shade400,
+            color: AppColors.emerald300,
           ),
         ];
       } else if (allDelivered) {
@@ -1024,7 +1025,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           Icon(
             Icons.done_all,
             size: 14,
-            color: Colors.lightGreenAccent.shade400,
+            color: AppColors.emerald300,
           ),
         ];
       } else if (status == 'delivered') {
@@ -1067,14 +1068,14 @@ class _DaySeparator extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Text(
             label,
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF6B7280),
+              color: AppColors.muted,
             ),
           ),
         ),
@@ -1115,7 +1116,7 @@ class _MessageBubble extends StatelessWidget {
           timeLabel,
           style: TextStyle(
             fontSize: 10,
-            color: isMe ? Colors.white70 : Colors.grey.shade600,
+            color: isMe ? Colors.white70 : AppColors.gray600,
           ),
         ),
         ...status,
@@ -1129,14 +1130,14 @@ class _MessageBubble extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
         constraints: BoxConstraints(maxWidth: maxWidth),
         decoration: BoxDecoration(
-          color: isMe ? const Color(0xFF6366F1) : Colors.white,
+          color: isMe ? AppColors.primary : Colors.white,
           borderRadius: BorderRadius.only(
             topLeft: radius,
             topRight: radius,
             bottomLeft: isMe ? radius : tight,
             bottomRight: isMe ? tight : radius,
           ),
-          border: isMe ? null : Border.all(color: const Color(0xFFE5E7EB)),
+          border: isMe ? null : Border.all(color: AppColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -1152,7 +1153,7 @@ class _MessageBubble extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF6366F1),
+                      color: AppColors.primary,
                     ),
                   ),
                 ),
@@ -1167,7 +1168,7 @@ class _MessageBubble extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 15,
                     height: 1.3,
-                    color: isMe ? Colors.white : const Color(0xFF111827),
+                    color: isMe ? Colors.white : AppColors.ink,
                   ),
                 ),
               ),
@@ -1204,7 +1205,7 @@ class _SharedCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1F2937), Color(0xFF111827)],
+          colors: [Color(0xFF1F2937), AppColors.ink],
         ),
       ),
       child: Column(
@@ -1242,7 +1243,7 @@ class _SharedCard extends StatelessWidget {
               minHeight: 5,
               backgroundColor: Colors.white12,
               valueColor: AlwaysStoppedAnimation(
-                over ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                over ? AppColors.red : AppColors.green,
               ),
             ),
           ),

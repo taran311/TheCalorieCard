@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/pages/auth_page.dart';
@@ -88,7 +89,7 @@ class MenuPage extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade900,
+                          color: AppColors.ink,
                         ),
                       ),
                       if (badge != null) ...[
@@ -99,7 +100,7 @@ class MenuPage extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.red,
+                            color: AppColors.red600,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
@@ -119,7 +120,7 @@ class MenuPage extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       fontSize: 13,
-                      color: Colors.grey.shade600,
+                      color: AppColors.gray600,
                     ),
                   ),
                 ],
@@ -128,7 +129,7 @@ class MenuPage extends StatelessWidget {
             Icon(
               Icons.arrow_forward_ios,
               size: 16,
-              color: Colors.grey.shade400,
+              color: AppColors.gray400,
             ),
           ],
         ),
@@ -142,7 +143,7 @@ class MenuPage extends StatelessWidget {
     final topPadding = MediaQuery.of(context).padding.top;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.canvas,
       body: SafeArea(
         top: false,
         child: Column(
@@ -155,8 +156,8 @@ class MenuPage extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    const Color(0xFF6366F1),
-                    const Color(0xFF8B5CF6),
+                    AppColors.primary,
+                    AppColors.violet,
                   ],
                 ),
                 borderRadius: const BorderRadius.only(
@@ -165,7 +166,7 @@ class MenuPage extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                    color: AppColors.primary.withValues(alpha: 0.3),
                     blurRadius: 15,
                     offset: const Offset(0, 6),
                   ),
@@ -234,7 +235,7 @@ class MenuPage extends StatelessWidget {
                   // Edit Profile
                   _buildMenuCard(
                     icon: Icons.edit,
-                    iconColor: const Color(0xFF10B981),
+                    iconColor: AppColors.green,
                     title: 'Edit Profile',
                     subtitle: 'Update your personal settings',
                     onTap: () async {
@@ -261,7 +262,7 @@ class MenuPage extends StatelessWidget {
 
                       return _buildMenuCard(
                         icon: Icons.people,
-                        iconColor: const Color(0xFF6366F1),
+                        iconColor: AppColors.primary,
                         title: 'Friends',
                         subtitle: 'Manage your friend connections',
                         badge: pendingCount > 0 ? pendingCount : null,
@@ -280,7 +281,7 @@ class MenuPage extends StatelessWidget {
                   // Statement
                   _buildMenuCard(
                     icon: Icons.receipt_long,
-                    iconColor: const Color(0xFF0EA5E9),
+                    iconColor: AppColors.sky,
                     title: 'Statement',
                     subtitle: 'Your spending, day by day',
                     onTap: () async {
@@ -300,7 +301,7 @@ class MenuPage extends StatelessWidget {
                   // Hiscores
                   _buildMenuCard(
                     icon: Icons.leaderboard,
-                    iconColor: const Color(0xFFEC4899),
+                    iconColor: AppColors.rose600,
                     title: 'Hiscores',
                     subtitle: 'See how you rank against friends',
                     onTap: () async {
@@ -320,7 +321,7 @@ class MenuPage extends StatelessWidget {
                   // Achievements
                   _buildMenuCard(
                     icon: Icons.emoji_events,
-                    iconColor: const Color(0xFFF59E0B),
+                    iconColor: AppColors.amber,
                     title: 'Achievements',
                     subtitle: 'View your unlocked achievements',
                     onTap: () async {
@@ -336,7 +337,7 @@ class MenuPage extends StatelessWidget {
                   // Logout
                   _buildMenuCard(
                     icon: Icons.logout,
-                    iconColor: Colors.red.shade400,
+                    iconColor: AppColors.red400,
                     title: 'Logout',
                     subtitle: 'Sign out of your account',
                     onTap: () async {

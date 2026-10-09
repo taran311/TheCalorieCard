@@ -136,7 +136,22 @@ class _CreditCardWidgetState extends State<CreditCard>
     return d == '${now.day}/${now.month}/${now.year}';
   }
 
-  /// "9 Oct" style date for the card corner.
+  /// 09/10 style date for the card's "valid thru" spot.
+  String _validThru() {
+    final parts = (widget.validThruDate ?? '').split('/');
+    DateTime d = DateTime.now();
+    if (parts.length == 3) {
+      final day = int.tryParse(parts[0]);
+      final month = int.tryParse(parts[1]);
+      final year = int.tryParse(parts[2]);
+      if (day != null && month != null && year != null) {
+        d = DateTime(year, month, day);
+      }
+    }
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  }
+
+  /// "9 Oct" style date for the back of the card.
   String _shortDate() {
     const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -184,48 +199,42 @@ class _CreditCardWidgetState extends State<CreditCard>
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = math.min(constraints.maxWidth - 32, 380.0);
-        final height = width / 1.8;
+        // Real-card proportions, with a floor so name, pills and date
+        // always fit on narrow phones.
+        final height = math.max(width / 1.7, 190.0);
 
         Widget sized(Widget child) =>
             SizedBox(width: width, height: height, child: child);
 
         if (_loading) return sized(const CalorieCardSkeleton());
 
-        final front = CalorieCardFront(
-          label: label,
-          amount: calories,
-          holder: holder,
-          holderPlaceholder: 'Calorie Card',
-          footnote: _shortDate(),
-          cornerIcon: Icon(
-            Icons.flip_rounded,
-            color: Colors.white.withValues(alpha: 0.55),
-            size: 20,
+        final macros = [
+          CardMacro(
+            name: 'Protein',
+            remaining: protein,
+            goal: _proteinGoal,
+            color: CalorieCardColors.protein,
           ),
+          CardMacro(
+            name: 'Carbs',
+            remaining: carbs,
+            goal: _carbsGoal,
+            color: CalorieCardColors.carbs,
+          ),
+          CardMacro(
+            name: 'Fat',
+            remaining: fats,
+            goal: _fatsGoal,
+            color: CalorieCardColors.fat,
+          ),
+        ];
+        final front = CalorieCardFront(
+          amount: calories,
+          macros: macros,
+          holder: holder,
+          validThru: _validThru(),
         );
-        final back = CalorieCardBack(
-          footnote: _shortDate(),
-          macros: [
-            CardMacro(
-              name: 'Protein',
-              remaining: protein,
-              goal: _proteinGoal,
-              color: CalorieCardColors.protein,
-            ),
-            CardMacro(
-              name: 'Carbs',
-              remaining: carbs,
-              goal: _carbsGoal,
-              color: CalorieCardColors.carbs,
-            ),
-            CardMacro(
-              name: 'Fat',
-              remaining: fats,
-              goal: _fatsGoal,
-              color: CalorieCardColors.fat,
-            ),
-          ],
-        );
+        final back = CalorieCardBack(footnote: _shortDate(), macros: macros);
 
         return Semantics(
           button: true,

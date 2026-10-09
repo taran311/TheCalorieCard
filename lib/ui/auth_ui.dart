@@ -234,11 +234,15 @@ class CalorieCardPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
-      aspectRatio: 1.75,
+      aspectRatio: 1.6,
       child: CalorieCardFront(
-        label: 'Daily balance',
         amount: 2000,
         holder: cardholder ?? '',
+        macros: const [
+          CardMacro(name: 'Protein', remaining: 150, color: CalorieCardColors.protein),
+          CardMacro(name: 'Carbs', remaining: 220, color: CalorieCardColors.carbs),
+          CardMacro(name: 'Fat', remaining: 65, color: CalorieCardColors.fat),
+        ],
       ),
     );
   }
