@@ -2,13 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/pages/add_recipe_page.dart';
-import 'package:namer_app/pages/home_page.dart';
-import 'package:namer_app/pages/menu_page.dart';
+import 'package:namer_app/ui/log_recipe_sheet.dart';
 
 class RecipesPage extends StatefulWidget {
-  final bool hideNav;
 
-  const RecipesPage({super.key, this.hideNav = false});
+  const RecipesPage({super.key});
 
   @override
   State<RecipesPage> createState() => _RecipesPageState();
@@ -17,13 +15,62 @@ class RecipesPage extends StatefulWidget {
 class _RecipesPageState extends State<RecipesPage> {
   bool _deleteMode = false;
   int _selectedTabIndex = 0; // 0 = My Recipes, 1 = Shared with Me
+  String _recipeQuery = '';
+  String _recipeSort = 'newest'; // newest | name | kcal_low | kcal_high
+  final TextEditingController _recipeSearchController =
+      TextEditingController();
+
+  @override
+  void dispose() {
+    _recipeSearchController.dispose();
+    super.dispose();
+  }
 
   Future<void> _deleteRecipe(String recipeId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete recipe?'),
+        content: const Text(
+            "This removes the recipe. Food you've already logged from it stays in your history."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     try {
       final firestore = FirebaseFirestore.instance;
+      final uid = FirebaseAuth.instance.currentUser!.uid;
 
-      // Delete the recipe itself from the recipes collection
       await firestore.collection('recipes').doc(recipeId).delete();
+
+      // Tidy up the recipe's ingredient rows. Logged entries (in meal
+      // categories) are kept so history and balances stay correct.
+      try {
+        final ingredients = await firestore
+            .collection('user_food')
+            .where('user_id', isEqualTo: uid)
+            .where('recipe_id', isEqualTo: recipeId)
+            .where('foodCategory', isEqualTo: 'Recipe')
+            .get();
+        final batch = firestore.batch();
+        for (final doc in ingredients.docs) {
+          batch.delete(doc.reference);
+        }
+        if (ingredients.docs.isNotEmpty) await batch.commit();
+      } catch (_) {
+        // Not critical: leftovers are ignored everywhere.
+      }
 
       if (mounted) {
         setState(() {
@@ -161,7 +208,7 @@ class _RecipesPageState extends State<RecipesPage> {
                   ? null
                   : () async {
                       await _performShare(recipeId, selectedFriends);
-                      if (mounted) {
+                      if (context.mounted) {
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -339,11 +386,42 @@ class _RecipesPageState extends State<RecipesPage> {
           return timeB.compareTo(timeA);
         });
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: recipes.length,
+        num kcalOf(QueryDocumentSnapshot r) =>
+            ((r.data() as Map<String, dynamic>)['total_calories'] as num?) ??
+            0;
+        String nameOf(QueryDocumentSnapshot r) =>
+            ((r.data() as Map<String, dynamic>)['name'] ?? '').toString();
+
+        final q = _recipeQuery.trim().toLowerCase();
+        final visible = recipes
+            .where((r) => q.isEmpty || nameOf(r).toLowerCase().contains(q))
+            .toList();
+        switch (_recipeSort) {
+          case 'name':
+            visible.sort((a, b) =>
+                nameOf(a).toLowerCase().compareTo(nameOf(b).toLowerCase()));
+          case 'kcal_low':
+            visible.sort((a, b) => kcalOf(a).compareTo(kcalOf(b)));
+          case 'kcal_high':
+            visible.sort((a, b) => kcalOf(b).compareTo(kcalOf(a)));
+        }
+
+        return Column(
+          children: [
+            _buildRecipeSearchBar(),
+            Expanded(
+              child: visible.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No recipes match "${_recipeQuery.trim()}"',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    )
+                  : ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          itemCount: visible.length,
           itemBuilder: (context, index) {
-            final recipe = recipes[index];
+            final recipe = visible[index];
             final totalCalories = (recipe['total_calories'] as num?) ?? 0;
             final protein = (recipe['total_protein'] as num?) ?? 0;
             final carbs = (recipe['total_carbs'] as num?) ?? 0;
@@ -380,7 +458,7 @@ class _RecipesPageState extends State<RecipesPage> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -407,7 +485,7 @@ class _RecipesPageState extends State<RecipesPage> {
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(
@@ -435,7 +513,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                   Text(
                                     recipe['serving_size'],
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.9),
+                                      color: Colors.white.withValues(alpha: 0.9),
                                       fontSize: 13,
                                     ),
                                   ),
@@ -494,7 +572,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        '${totalCalories.toStringAsFixed(0)}',
+                                        totalCalories.toStringAsFixed(0),
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 20,
@@ -581,6 +659,33 @@ class _RecipesPageState extends State<RecipesPage> {
                               ),
                             ],
                           ),
+                          if (!_deleteMode) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: () => showLogRecipeSheet(
+                                  context,
+                                  recipeId: recipe.id,
+                                  recipe:
+                                      recipe.data() as Map<String, dynamic>,
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF6366F1),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.credit_card, size: 18),
+                                label: const Text(
+                                  'Log to today',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -589,8 +694,73 @@ class _RecipesPageState extends State<RecipesPage> {
               ),
             );
           },
+        ),
+            ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _buildRecipeSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _recipeSearchController,
+              onChanged: (v) => setState(() => _recipeQuery = v),
+              decoration: InputDecoration(
+                hintText: 'Search recipes',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _recipeQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() {
+                          _recipeSearchController.clear();
+                          _recipeQuery = '';
+                        }),
+                      ),
+                filled: true,
+                fillColor: Colors.white,
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          PopupMenuButton<String>(
+            tooltip: 'Sort',
+            initialValue: _recipeSort,
+            onSelected: (v) => setState(() => _recipeSort = v),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'newest', child: Text('Newest first')),
+              PopupMenuItem(value: 'name', child: Text('Name (A–Z)')),
+              PopupMenuItem(value: 'kcal_low', child: Text('Lowest kcal')),
+              PopupMenuItem(value: 'kcal_high', child: Text('Highest kcal')),
+            ],
+            child: Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: const Icon(Icons.sort),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -697,7 +867,7 @@ class _RecipesPageState extends State<RecipesPage> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
+                        color: Colors.black.withValues(alpha: 0.08),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -724,7 +894,7 @@ class _RecipesPageState extends State<RecipesPage> {
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
+                                color: Colors.white.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Icon(
@@ -749,7 +919,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                   Text(
                                     'Shared by $sharedByEmail',
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.85),
+                                      color: Colors.white.withValues(alpha: 0.85),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -786,7 +956,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          '${totalCalories.toStringAsFixed(0)}',
+                                          totalCalories.toStringAsFixed(0),
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 20,
@@ -813,7 +983,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF6366F1)
-                                            .withOpacity(0.1),
+                                            .withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
                                           color: const Color(0xFF6366F1),
@@ -952,7 +1122,7 @@ class _RecipesPageState extends State<RecipesPage> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.purple.withOpacity(0.3),
+                    color: Colors.purple.withValues(alpha: 0.3),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -966,7 +1136,7 @@ class _RecipesPageState extends State<RecipesPage> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
@@ -1018,7 +1188,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                 bottom: BorderSide(
                                   color: _selectedTabIndex == 0
                                       ? Colors.white
-                                      : Colors.white.withOpacity(0.3),
+                                      : Colors.white.withValues(alpha: 0.3),
                                   width: 3,
                                 ),
                               ),
@@ -1052,7 +1222,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                 bottom: BorderSide(
                                   color: _selectedTabIndex == 1
                                       ? Colors.white
-                                      : Colors.white.withOpacity(0.3),
+                                      : Colors.white.withValues(alpha: 0.3),
                                   width: 3,
                                 ),
                               ),
@@ -1117,70 +1287,6 @@ class _RecipesPageState extends State<RecipesPage> {
           ),
         ],
       ),
-      bottomNavigationBar: widget.hideNav
-          ? null
-          : Container(
-              color: Colors.white,
-              height: 56,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const MenuPage(),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border(
-                            right: BorderSide(
-                                color: Colors.grey.shade200, width: 1),
-                          ),
-                        ),
-                        child: const Center(
-                          child: Icon(Icons.person, size: 24),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const HomePage()),
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border(
-                            right: BorderSide(
-                                color: Colors.grey.shade200, width: 1),
-                          ),
-                        ),
-                        child: const Center(
-                          child: Icon(Icons.credit_card, size: 24),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      child: const Center(
-                        child: Icon(Icons.restaurant,
-                            size: 24, color: Color(0xFF6366F1)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
     );
   }
 }

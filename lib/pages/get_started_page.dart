@@ -61,9 +61,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
   bool _isEstimatingWithAI = false;
   bool _showMiniGame = false;
   bool _canEstimateWithAI = false;
-  bool _macrosFromAI = false;
   Map<String, dynamic>? _lastAIData;
-  bool _showAIResults = false; // Toggle between inputs and results in AI tab
 
   // Flow state: 'input' = entering personal data, 'calculation' = choosing method, 'results' = confirming values
   String _flowState = 'input'; // 'input', 'calculation', 'results'
@@ -102,7 +100,9 @@ class _GetStartedPageState extends State<GetStartedPage> {
 
   final date = DateTime.now().add(const Duration(days: 31));
 
-  void saveData() async {
+  bool _finishingSetup = false;
+
+  Future<void> saveData() async {
     final userId = FirebaseAuth.instance.currentUser!.uid;
 
     // Use manual calorie goal if no AI data (manual input path), otherwise use AI calculated
@@ -257,9 +257,6 @@ class _GetStartedPageState extends State<GetStartedPage> {
             _fatsController.text = _fatsGoal?.toString() ?? '0';
 
             updateCardActiveCalories();
-
-            _macrosFromAI = true;
-            _showAIResults = true; // Show results view after estimation
             _canEstimateWithAI = false;
             _lastAIData = {
               'age': _selectedAge,
@@ -409,10 +406,10 @@ class _GetStartedPageState extends State<GetStartedPage> {
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(24),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
+                              color: Colors.white.withValues(alpha: 0.3),
                               width: 2,
                             ),
                           ),
@@ -440,7 +437,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
+                            color: Colors.white.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Text(
@@ -448,7 +445,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 15,
-                              color: Colors.white.withOpacity(0.95),
+                              color: Colors.white.withValues(alpha: 0.95),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -494,7 +491,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                     borderRadius: BorderRadius.circular(16),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.04),
+                                        color: Colors.black.withValues(alpha: 0.04),
                                         blurRadius: 10,
                                         offset: const Offset(0, 2),
                                       ),
@@ -535,7 +532,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                             isSelected: genderSelections,
                                             selectedColor: Color(0xFF6366F1),
                                             fillColor: Color(0xFF6366F1)
-                                                .withOpacity(0.2),
+                                                .withValues(alpha: 0.2),
                                             borderColor: Color(0xFF6366F1),
                                             selectedBorderColor:
                                                 Color(0xFF6366F1),
@@ -579,7 +576,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                     borderRadius: BorderRadius.circular(16),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.04),
+                                        color: Colors.black.withValues(alpha: 0.04),
                                         blurRadius: 10,
                                         offset: const Offset(0, 2),
                                       ),
@@ -633,7 +630,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                     borderRadius: BorderRadius.circular(16),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.04),
+                                        color: Colors.black.withValues(alpha: 0.04),
                                         blurRadius: 10,
                                         offset: const Offset(0, 2),
                                       ),
@@ -709,7 +706,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                       borderRadius: BorderRadius.circular(16),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.04),
+                                          color: Colors.black.withValues(alpha: 0.04),
                                           blurRadius: 10,
                                           offset: const Offset(0, 2),
                                         ),
@@ -812,7 +809,6 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                           onPressed: () {
                                             setState(() {
                                               _flowState = 'input';
-                                              _showAIResults = false;
                                             });
                                           },
                                           icon: const Icon(Icons.arrow_back,
@@ -846,7 +842,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                           boxShadow: [
                                             BoxShadow(
                                               color: Colors.black
-                                                  .withOpacity(0.05),
+                                                  .withValues(alpha: 0.05),
                                               blurRadius: 15,
                                               offset: const Offset(0, 3),
                                             ),
@@ -1143,7 +1139,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                       // Credit Card Preview
                                       CreditCard(
                                         key: ValueKey(
-                                            '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_${_fatsGoal}'),
+                                            '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
                                         initialCalories:
                                             cardActiveCalories ?? 0,
                                         caloriesOverride:
@@ -1169,7 +1165,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                       boxShadow: [
                                         BoxShadow(
                                           color: Color(0xFF10B981)
-                                              .withOpacity(0.3),
+                                              .withValues(alpha: 0.3),
                                           blurRadius: 12,
                                           offset: const Offset(0, 4),
                                         ),
@@ -1177,7 +1173,25 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                     ),
                                     child: ElevatedButton(
                                       onPressed: () async {
-                                        saveData();
+                                        // Save first (and only once): the
+                                        // card reads this data as soon as
+                                        // the app opens.
+                                        if (_finishingSetup) return;
+                                        _finishingSetup = true;
+                                        try {
+                                          await saveData();
+                                        } catch (e) {
+                                          _finishingSetup = false;
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(SnackBar(
+                                              content: Text(
+                                                  "Couldn't save your details. Please try again."),
+                                            ));
+                                          }
+                                          return;
+                                        }
+                                        if (!context.mounted) return;
                                         await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                                           MaterialPageRoute(
                                             builder: (context) =>
@@ -1228,7 +1242,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
           if (_isEstimatingWithAI && _showMiniGame) const PingPongGame(),
           if (_isEstimatingWithAI && !_showMiniGame)
             Container(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               child: Center(
                 child: Card(
                   elevation: 8,

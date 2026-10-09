@@ -46,7 +46,7 @@ class AchievementsPage extends StatelessWidget {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
+                            color: Colors.black.withValues(alpha: 0.08),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -282,7 +282,7 @@ class AchievementsPage extends StatelessWidget {
                                               decoration: BoxDecoration(
                                                 color: unlocked
                                                     ? const Color(0xFF6366F1)
-                                                        .withOpacity(0.15)
+                                                        .withValues(alpha: 0.15)
                                                     : Colors.grey.shade200,
                                                 shape: BoxShape.circle,
                                               ),

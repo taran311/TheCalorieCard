@@ -1,8 +1,15 @@
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:namer_app/components/calorie_currency_icon.dart';
+import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/ui/calorie_card.dart';
 
+/// The calorie card on the Card screen.
+///
+/// Front: what's left to spend. Tap to flip and see protein, carbs and fat.
+/// Shows today's live balance, or a past day's balance via the overrides.
 class CreditCard extends StatefulWidget {
   final int? initialCalories;
   final int? caloriesOverride;
@@ -10,14 +17,17 @@ class CreditCard extends StatefulWidget {
   final double? carbsOverride;
   final double? fatsOverride;
   final ValueChanged<bool>? onToggleMacros;
+
+  /// Use the overrides instead of the live balance (past days).
   final bool skipFetch;
-  final VoidCallback? triggerFlash;
+
+  /// Day the balance belongs to, as d/m/yyyy.
   final String? validThruDate;
   final String? userIdOverride;
   final String? cardUserNameOverride;
 
   const CreditCard({
-    Key? key,
+    super.key,
     this.initialCalories,
     this.caloriesOverride,
     this.proteinOverride,
@@ -25,356 +35,229 @@ class CreditCard extends StatefulWidget {
     this.fatsOverride,
     this.onToggleMacros,
     this.skipFetch = false,
-    this.triggerFlash,
     this.validThruDate,
     this.userIdOverride,
     this.cardUserNameOverride,
-  }) : super(key: key);
+  });
 
   @override
   State<CreditCard> createState() => _CreditCardWidgetState();
 }
 
 class _CreditCardWidgetState extends State<CreditCard>
-    with TickerProviderStateMixin {
-  int calories = 0;
-  double proteinBalance = 0;
-  double carbsBalance = 0;
-  double fatsBalance = 0;
-  bool _showMacros = false;
-  bool isLoading = true;
-  AnimationController? _flashController;
-  Animation<double>? _flashAnimation;
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _flip = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 450),
+  );
+
+  bool _loading = true;
+  int _calories = 0;
+  double _protein = 0, _carbs = 0, _fats = 0;
+  double? _proteinGoal, _carbsGoal, _fatsGoal;
 
   @override
   void initState() {
     super.initState();
-
-    _flashController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-
-    _flashAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 1),
-    ]).animate(CurvedAnimation(
-      parent: _flashController!,
-      curve: Curves.easeInOut,
-    ));
-
     if (widget.skipFetch) {
-      // Skip fetch entirely, just use overrides
-      calories = widget.caloriesOverride ?? widget.initialCalories ?? 0;
-      proteinBalance = widget.proteinOverride ?? 0;
-      carbsBalance = widget.carbsOverride ?? 0;
-      fatsBalance = widget.fatsOverride ?? 0;
-      isLoading = false;
-    } else {
-      _fetchUserData(initialCalories: widget.initialCalories);
+      _calories = widget.caloriesOverride ?? widget.initialCalories ?? 0;
+      _protein = widget.proteinOverride ?? 0;
+      _carbs = widget.carbsOverride ?? 0;
+      _fats = widget.fatsOverride ?? 0;
+      _loading = false;
     }
+    _load();
   }
 
   @override
   void dispose() {
-    _flashController?.dispose();
+    _flip.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchUserData({int? initialCalories}) async {
+  double? _num(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  Future<void> _load() async {
     try {
       final userId =
           widget.userIdOverride ?? FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) {
-        setState(() {
-          isLoading = false;
-        });
+        if (mounted) setState(() => _loading = false);
         return;
       }
-
-      final snapshot = await FirebaseFirestore.instance
+      final snap = await FirebaseFirestore.instance
           .collection('user_data')
           .where('user_id', isEqualTo: userId)
           .limit(1)
           .get(const GetOptions(source: Source.server));
-
       if (!mounted) return;
-
-      if (snapshot.docs.isEmpty) {
-        setState(() {
-          isLoading = false;
-        });
+      if (snap.docs.isEmpty) {
+        setState(() => _loading = false);
         return;
       }
-
-      final data = snapshot.docs.first.data();
-
+      final data = snap.docs.first.data();
       setState(() {
-        calories = (data['calories'] as num?)?.toInt() ?? initialCalories ?? 0;
-        proteinBalance = (data['protein_balance'] as num?)?.toDouble() ??
-            (data['protein_goal'] as num?)?.toDouble() ??
-            0;
-        carbsBalance = (data['carbs_balance'] as num?)?.toDouble() ??
-            (data['carbs_goal'] as num?)?.toDouble() ??
-            0;
-        fatsBalance = (data['fats_balance'] as num?)?.toDouble() ??
-            (data['fats_goal'] as num?)?.toDouble() ??
-            0;
-        isLoading = false;
+        _proteinGoal = _num(data['protein_goal']);
+        _carbsGoal = _num(data['carbs_goal']);
+        _fatsGoal = _num(data['fats_goal']);
+        if (!widget.skipFetch) {
+          _calories = _num(data['calories'])?.round() ??
+              widget.initialCalories ??
+              (BalanceService.calorieGoalFrom(data)?.round() ?? 0);
+          _protein = _num(data['protein_balance']) ?? _proteinGoal ?? 0;
+          _carbs = _num(data['carbs_balance']) ?? _carbsGoal ?? 0;
+          _fats = _num(data['fats_balance']) ?? _fatsGoal ?? 0;
+        }
+        _loading = false;
       });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        isLoading = false;
-      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _toggle() {
+    final showMacros = _flip.value < 0.5;
+    if (showMacros) {
+      _flip.forward();
+    } else {
+      _flip.reverse();
+    }
+    widget.onToggleMacros?.call(showMacros);
+  }
+
+  bool get _isToday {
+    final d = widget.validThruDate;
+    if (d == null) return true;
+    final now = DateTime.now();
+    return d == '${now.day}/${now.month}/${now.year}';
+  }
+
+  /// "9 Oct" style date for the card corner.
+  String _shortDate() {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final parts = (widget.validThruDate ?? '').split('/');
+    if (parts.length == 3) {
+      final day = int.tryParse(parts[0]);
+      final month = int.tryParse(parts[1]);
+      if (day != null && month != null && month >= 1 && month <= 12) {
+        return '$day ${months[month - 1]}';
+      }
+    }
+    final now = DateTime.now();
+    return '${now.day} ${months[now.month - 1]}';
   }
 
   @override
   Widget build(BuildContext context) {
-    final today = widget.validThruDate ??
-        '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}';
-
-    if (isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    // Use widget props directly if skipFetch to avoid state updates
-    final displayCalories = widget.skipFetch && widget.caloriesOverride != null
+    // Past days are passed in directly; read them fresh each build.
+    final calories = widget.skipFetch && widget.caloriesOverride != null
         ? widget.caloriesOverride!
-        : calories;
-    final displayProtein = widget.skipFetch && widget.proteinOverride != null
+        : _calories;
+    final protein = widget.skipFetch && widget.proteinOverride != null
         ? widget.proteinOverride!
-        : proteinBalance;
-    final displayCarbs = widget.skipFetch && widget.carbsOverride != null
+        : _protein;
+    final carbs = widget.skipFetch && widget.carbsOverride != null
         ? widget.carbsOverride!
-        : carbsBalance;
-    final displayFats = widget.skipFetch && widget.fatsOverride != null
+        : _carbs;
+    final fats = widget.skipFetch && widget.fatsOverride != null
         ? widget.fatsOverride!
-        : fatsBalance;
+        : _fats;
 
-    return GestureDetector(
-      onTap: () {
-        _flashController?.forward(from: 0);
-        final newState = !_showMacros;
-        setState(() {
-          _showMacros = newState;
-        });
-        widget.onToggleMacros?.call(newState);
-      },
-      child: Container(
-        height: 155,
-        width: 350,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF6366F1),
-              Color(0xFF4F46E5),
-            ],
+    final holderSource = widget.cardUserNameOverride ??
+        FirebaseAuth.instance.currentUser?.email ??
+        '';
+    final holder = holderSource.contains('@')
+        ? cardholderFromEmail(holderSource)
+        : holderSource;
+
+    final label = calories < 0
+        ? (_isToday ? 'Over budget today' : 'Over budget')
+        : (_isToday ? 'Left to spend today' : 'Left that day');
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = math.min(constraints.maxWidth - 32, 380.0);
+        final height = width / 1.8;
+
+        Widget sized(Widget child) =>
+            SizedBox(width: width, height: height, child: child);
+
+        if (_loading) return sized(const CalorieCardSkeleton());
+
+        final front = CalorieCardFront(
+          label: label,
+          amount: calories,
+          holder: holder,
+          holderPlaceholder: 'Calorie Card',
+          footnote: _shortDate(),
+          cornerIcon: Icon(
+            Icons.flip_rounded,
+            color: Colors.white.withValues(alpha: 0.55),
+            size: 20,
           ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF6366F1).withOpacity(0.4),
-              blurRadius: 12,
-              spreadRadius: 2,
+        );
+        final back = CalorieCardBack(
+          footnote: _shortDate(),
+          macros: [
+            CardMacro(
+              name: 'Protein',
+              remaining: protein,
+              goal: _proteinGoal,
+              color: CalorieCardColors.protein,
             ),
-            const BoxShadow(
-              color: Colors.black12,
-              blurRadius: 8,
-              spreadRadius: 1,
+            CardMacro(
+              name: 'Carbs',
+              remaining: carbs,
+              goal: _carbsGoal,
+              color: CalorieCardColors.carbs,
+            ),
+            CardMacro(
+              name: 'Fat',
+              remaining: fats,
+              goal: _fatsGoal,
+              color: CalorieCardColors.fat,
             ),
           ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Stack(
-            children: [
-              Positioned(
-                top: 8,
-                left: 16,
-                child: Text(
-                  'TheCalorieCard',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 8,
-                right: 16,
-                child: AnimatedBuilder(
-                  animation:
-                      _flashAnimation ?? const AlwaysStoppedAnimation(0.0),
-                  builder: (context, child) {
-                    final flashValue = _flashAnimation?.value ?? 0.0;
-                    return Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Colors.white.withOpacity(flashValue * 0.8),
-                          width: 2,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: child,
-                    );
-                  },
-                  child: _showMacros
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              'Protein: ${displayProtein.toStringAsFixed(0)}g',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Text(
-                              'Carbs: ${displayCarbs.toStringAsFixed(0)}g',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Text(
-                              'Fats: ${displayFats.toStringAsFixed(0)}g',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Balance',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
+        );
+
+        return Semantics(
+          button: true,
+          label: 'Calorie card. $label: ${formatCardKcal(calories)} kcal. '
+              'Tap to see macros.',
+          child: GestureDetector(
+            onTap: _toggle,
+            child: AnimatedBuilder(
+              animation: _flip,
+              builder: (context, _) {
+                final t = Curves.easeInOut.transform(_flip.value);
+                final angle = t * math.pi;
+                final showBack = t > 0.5;
+                return Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.0012)
+                    ..rotateY(angle),
+                  child: showBack
+                      ? Transform(
+                          // Un-mirror the back face.
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()..rotateY(math.pi),
+                          child: sized(back),
                         )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Row(
-                              children: [
-                                CalorieCurrencyIcon(),
-                                const SizedBox(width: 6),
-                                Text(
-                                  displayCalories.toString(),
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Balance',
-                              style: TextStyle(
-                                fontSize: 8,
-                                color: Colors.white.withOpacity(0.8),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
-              ),
-              Positioned(
-                top: 40,
-                left: 16,
-                child: Container(
-                  width: 34,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.amber.shade300,
-                        Colors.amber.shade600,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 4,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 16,
-                left: 16,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'VALID THRU',
-                      style: TextStyle(
-                        fontSize: 8,
-                        color: Colors.white.withOpacity(0.8),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      today,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
-                bottom: 16,
-                right: 16,
-                child: Align(
-                  alignment: Alignment.bottomRight,
-                  child: Text(
-                    _getTruncatedName(widget.cardUserNameOverride ??
-                        FirebaseAuth.instance.currentUser?.email ??
-                        'User'),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-              ),
-            ],
+                      : sized(front),
+                );
+              },
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
-}
-
-String _getTruncatedName(String name) {
-  if (name.length > 25) {
-    return '${name.substring(0, 22)}...';
-  }
-  return name;
 }

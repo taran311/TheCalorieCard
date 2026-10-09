@@ -116,9 +116,9 @@ class _MainShellState extends State<MainShell> {
   Widget _rootPageFor(ShellTab tab) {
     switch (tab) {
       case ShellTab.card:
-        return const HomePage(hideNav: true);
+        return const HomePage();
       case ShellTab.recipes:
-        return const RecipesPage(hideNav: true);
+        return const RecipesPage();
       case ShellTab.friends:
         return const FriendsPage();
       case ShellTab.hiscores:
@@ -126,10 +126,9 @@ class _MainShellState extends State<MainShell> {
       case ShellTab.statement:
         return const StatementPage();
       case ShellTab.chat:
-        return const MessagesPage(hideNav: true);
+        return const MessagesPage();
       case ShellTab.profile:
         return MenuPage(
-          hideNav: true,
           onOpenStatement: () => _openFromProfile(const StatementPage()),
           onOpenHiscores: () => _openFromProfile(const HiscoresPage()),
         );
@@ -158,7 +157,7 @@ class _MainShellState extends State<MainShell> {
   Widget _buildPages() {
     final children = [for (final t in ShellTab.values) _buildTabNavigator(t)];
     return NavigatorPopHandler(
-      onPop: () => _navKeys[_current]?.currentState?.maybePop(),
+      onPopWithResult: (_) => _navKeys[_current]?.currentState?.maybePop(),
       child: IndexedStack(
         index: ShellTab.values.indexOf(_current),
         children: children,

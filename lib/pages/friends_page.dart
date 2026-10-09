@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/friend_group_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
@@ -598,7 +599,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   color:
-                                      const Color(0xFF6366F1).withOpacity(0.3),
+                                      const Color(0xFF6366F1).withValues(alpha: 0.3),
                                 ),
                               ),
                               child: Text(
@@ -634,7 +635,7 @@ class _FriendsPageState extends State<FriendsPage> {
                             }
 
                             final friendEmail =
-                                snapshot.data?.get('email') ?? 'Unknown';
+                                (snapshot.data?.data() as Map<String, dynamic>?)?['email'] ?? 'Unknown';
 
                             return CheckboxListTile(
                               value: _selectedFriendIds.contains(friendId),
@@ -667,7 +668,7 @@ class _FriendsPageState extends State<FriendsPage> {
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 10,
                       offset: const Offset(0, -2),
                     ),
@@ -740,7 +741,7 @@ class _FriendsPageState extends State<FriendsPage> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withValues(alpha: 0.08),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -810,7 +811,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                   boxShadow: [
                                     BoxShadow(
                                       color: const Color(0xFF6366F1)
-                                          .withOpacity(0.3),
+                                          .withValues(alpha: 0.3),
                                       blurRadius: 8,
                                       offset: const Offset(0, 4),
                                     ),
@@ -821,7 +822,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                     Container(
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.2),
+                                        color: Colors.white.withValues(alpha: 0.2),
                                         shape: BoxShape.circle,
                                       ),
                                       child: const Icon(
@@ -850,7 +851,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                             style: TextStyle(
                                               fontSize: 14,
                                               color:
-                                                  Colors.white.withOpacity(0.9),
+                                                  Colors.white.withValues(alpha: 0.9),
                                             ),
                                           ),
                                         ],
@@ -858,7 +859,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                     ),
                                     Icon(
                                       Icons.arrow_forward_ios,
-                                      color: Colors.white.withOpacity(0.8),
+                                      color: Colors.white.withValues(alpha: 0.8),
                                       size: 20,
                                     ),
                                   ],
@@ -925,7 +926,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                         boxShadow: [
                                           BoxShadow(
                                             color:
-                                                Colors.black.withOpacity(0.08),
+                                                Colors.black.withValues(alpha: 0.08),
                                             blurRadius: 8,
                                             offset: const Offset(0, 2),
                                           ),
@@ -957,7 +958,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                   child: Center(
                                                     child: Text(
                                                       (fromEmail ?? 'U')
-                                                          .substring(0, 1)
+                                                          .initial
                                                           .toUpperCase(),
                                                       style: const TextStyle(
                                                         color: Colors.white,
@@ -1124,7 +1125,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                             boxShadow: [
                                               BoxShadow(
                                                 color: Colors.black
-                                                    .withOpacity(0.08),
+                                                    .withValues(alpha: 0.08),
                                                 blurRadius: 8,
                                                 offset: const Offset(0, 2),
                                               ),
@@ -1160,7 +1161,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                       child: Center(
                                                         child: Text(
                                                           (toEmail ?? 'U')
-                                                              .substring(0, 1)
+                                                              .initial
                                                               .toUpperCase(),
                                                           style:
                                                               const TextStyle(
@@ -1380,7 +1381,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                 }
 
                                 final friendIds =
-                                    (snapshot.data?.get('friends') as List?)
+                                    ((snapshot.data?.data() as Map<String, dynamic>?)?['friends'] as List?)
                                             ?.cast<String>() ??
                                         [];
 
@@ -1416,8 +1417,10 @@ class _FriendsPageState extends State<FriendsPage> {
                                           return const SizedBox.shrink();
                                         }
 
-                                        final friendEmail = snapshot.data!
-                                                .get('email') as String? ??
+                                        final friendEmail = ((snapshot.data!
+                                                        .data()
+                                                    as Map<String, dynamic>?)?[
+                                                'email'] as String?) ??
                                             'Unknown';
 
                                         return ValueListenableBuilder<bool>(
@@ -1430,7 +1433,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                               decoration: BoxDecoration(
                                                 color: isDeleteMode
                                                     ? Colors.red
-                                                        .withOpacity(0.1)
+                                                        .withValues(alpha: 0.1)
                                                     : Colors.white,
                                                 borderRadius:
                                                     BorderRadius.circular(16),
@@ -1438,9 +1441,9 @@ class _FriendsPageState extends State<FriendsPage> {
                                                   BoxShadow(
                                                     color: isDeleteMode
                                                         ? Colors.red
-                                                            .withOpacity(0.1)
+                                                            .withValues(alpha: 0.1)
                                                         : Colors.black
-                                                            .withOpacity(0.08),
+                                                            .withValues(alpha: 0.08),
                                                     blurRadius: 8,
                                                     offset: const Offset(0, 2),
                                                   ),
@@ -1473,7 +1476,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                                       child: Center(
                                                         child: Text(
                                                           friendEmail
-                                                              .substring(0, 1)
+                                                              .initial
                                                               .toUpperCase(),
                                                           style:
                                                               const TextStyle(
@@ -1540,7 +1543,6 @@ class _FriendsPageState extends State<FriendsPage> {
                                                               builder: (_) =>
                                                                   HomePage(
                                                                 readOnly: true,
-                                                                hideNav: true,
                                                                 userIdOverride:
                                                                     friendId,
                                                                 showBanner:
@@ -1684,7 +1686,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                           boxShadow: [
                                             BoxShadow(
                                               color: Colors.black
-                                                  .withOpacity(0.08),
+                                                  .withValues(alpha: 0.08),
                                               blurRadius: 8,
                                               offset: const Offset(0, 2),
                                             ),
@@ -1790,7 +1792,7 @@ class _FriendsPageState extends State<FriendsPage> {
                   .snapshots(),
               builder: (context, snapshot) {
                 final friendIds =
-                    (snapshot.data?.get('friends') as List?)?.cast<String>() ??
+                    ((snapshot.data?.data() as Map<String, dynamic>?)?['friends'] as List?)?.cast<String>() ??
                         [];
                 final hasFriends = friendIds.isNotEmpty;
 

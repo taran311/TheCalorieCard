@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/get_started_page.dart';
 import 'package:namer_app/services/category_service.dart';
+import 'package:namer_app/ui/auth_ui.dart';
 
+/// Waits for the user to click the link in their verification email.
+/// Checks automatically every few seconds and moves on by itself.
 class EmailVerificationPage extends StatefulWidget {
   final String email;
 
@@ -14,416 +20,176 @@ class EmailVerificationPage extends StatefulWidget {
 }
 
 class _EmailVerificationPageState extends State<EmailVerificationPage> {
-  late User? _user;
-  bool _isCheckingVerification = false;
-  bool _canResendEmail = true;
-  int _resendCountdown = 0;
+  Timer? _pollTimer;
+  Timer? _resendTimer;
+  int _resendIn = 0;
+  bool _checking = false;
+  bool _leaving = false;
+  AuthNotice? _notice;
 
   @override
   void initState() {
     super.initState();
-    _user = FirebaseAuth.instance.currentUser;
-    _sendVerificationEmail();
-    _startVerificationCheck();
-  }
-
-  Future<void> _sendVerificationEmail() async {
-    try {
-      if (_user != null && !_user!.emailVerified) {
-        await _user!.sendEmailVerification();
-        setState(() {
-          _canResendEmail = false;
-          _resendCountdown = 60;
-        });
-        _startResendTimer();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending email: ${e.toString()}')),
-        );
-      }
-    }
-  }
-
-  void _startResendTimer() {
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted && !_canResendEmail) {
-        setState(() {
-          _resendCountdown--;
-        });
-        if (_resendCountdown > 0) {
-          _startResendTimer();
-        } else {
-          setState(() {
-            _canResendEmail = true;
-          });
-        }
-      }
-    });
-  }
-
-  void _startVerificationCheck() {
-    Future.delayed(const Duration(seconds: 2), () async {
-      if (!mounted) return;
-
-      try {
-        // Reload user to get fresh email verification status
-        await _user?.reload();
-        _user = FirebaseAuth.instance.currentUser;
-
-        if (_user?.emailVerified ?? false) {
-          // Email verified, proceed to next page
-          if (mounted) {
-            setState(() {
-              _isCheckingVerification = false;
-            });
-            // Reset category to default for new user
-            Provider.of<CategoryService>(context, listen: false)
-                .resetToDefault();
-
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => GetStartedPage()),
-            );
-          }
-        } else {
-          // Not verified yet, check again in 2 seconds
-          // Keep _isCheckingVerification = true to show spinner continuously
-          _startVerificationCheck();
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _isCheckingVerification = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error checking verification: $e')),
-          );
-        }
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF6366F1),
-              const Color(0xFF4F46E5),
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Logo/Icon
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.credit_card,
-                            size: 60,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 12),
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: const Text(
-                                'TheCalorieCard',
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 48),
-
-                    // Main content
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.95),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        children: [
-                          // Email icon
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.mail_outline,
-                              size: 64,
-                              color: Color(0xFF6366F1),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Title
-                          const Text(
-                            'Verify Your Email',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Description
-                          Text(
-                            'We\'ve sent a verification email to:',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Email display
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: const Color(0xFF6366F1).withOpacity(0.3),
-                              ),
-                            ),
-                            child: Text(
-                              widget.email,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF6366F1),
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-
-                          // Instructions
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.blue[50],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.blue[200]!,
-                                width: 1,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'What to do next:',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                _buildInstructionStep(
-                                  '1',
-                                  'Open your email app',
-                                ),
-                                const SizedBox(height: 8),
-                                _buildInstructionStep(
-                                  '2',
-                                  'Find the email from TheCalorieCard',
-                                ),
-                                const SizedBox(height: 8),
-                                _buildInstructionStep(
-                                  '3',
-                                  'Click the verification link',
-                                ),
-                                const SizedBox(height: 8),
-                                _buildInstructionStep(
-                                  '4',
-                                  'Return to this app - you\'ll be automatically logged in',
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-
-                          // Loading indicator
-                          if (_isCheckingVerification) ...[
-                            const CircularProgressIndicator(
-                              color: Color(0xFF6366F1),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Checking email verification...',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ] else ...[
-                            const Text(
-                              'Waiting for email confirmation...',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 24),
-
-                          // Resend button
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _canResendEmail
-                                  ? () {
-                                      _sendVerificationEmail();
-                                    }
-                                  : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _canResendEmail
-                                    ? const Color(0xFF6366F1)
-                                    : Colors.grey[300],
-                                foregroundColor: Colors.white,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: Text(
-                                _canResendEmail
-                                    ? 'Resend Email'
-                                    : 'Resend in ${_resendCountdown}s',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: _canResendEmail
-                                      ? Colors.white
-                                      : Colors.grey[600],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Back button
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              onPressed: () {
-                                FirebaseAuth.instance.signOut();
-                                Navigator.pop(context);
-                              },
-                              style: OutlinedButton.styleFrom(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                side: const BorderSide(
-                                  color: Color(0xFF6366F1),
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: const Text(
-                                'Go Back',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF6366F1),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInstructionStep(String number, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: const Color(0xFF6366F1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Center(
-            child: Text(
-              number,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
+    _sendEmail(initial: true);
+    _pollTimer =
+        Timer.periodic(const Duration(seconds: 3), (_) => _check(quiet: true));
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
+    _resendTimer?.cancel();
     super.dispose();
+  }
+
+  void _startResendCooldown() {
+    _resendTimer?.cancel();
+    setState(() => _resendIn = 60);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _resendIn--);
+      if (_resendIn <= 0) t.cancel();
+    });
+  }
+
+  Future<void> _sendEmail({bool initial = false}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.emailVerified) return;
+    try {
+      await user.sendEmailVerification();
+      if (!mounted) return;
+      _startResendCooldown();
+      if (!initial) {
+        setState(() => _notice = const AuthNotice(
+              kind: AuthNoticeKind.success,
+              message: 'Sent. Check your inbox for a new link.',
+            ));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final code = e is FirebaseAuthException ? e.code : '';
+      setState(() => _notice = AuthNotice(
+            kind: AuthNoticeKind.error,
+            message: code == 'too-many-requests'
+                ? "We've sent several emails already. Wait a few minutes before asking for another."
+                : "The email didn't send. Check your connection and tap Resend.",
+          ));
+    }
+  }
+
+  /// [quiet] checks run in the background; a manual check reports back.
+  Future<void> _check({bool quiet = false}) async {
+    if (_checking || _leaving) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    if (!quiet) setState(() => _checking = true);
+    try {
+      await user.reload();
+      final verified = FirebaseAuth.instance.currentUser?.emailVerified ?? false;
+      if (!mounted) return;
+      if (verified) {
+        _leaving = true;
+        _pollTimer?.cancel();
+        Provider.of<CategoryService>(context, listen: false).resetToDefault();
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => GetStartedPage()),
+        );
+        return;
+      }
+      if (!quiet) {
+        setState(() => _notice = const AuthNotice(
+              kind: AuthNoticeKind.info,
+              message:
+                  "Not verified yet. Open the link in the email, then come back here.",
+            ));
+      }
+    } catch (_) {
+      if (!quiet && mounted) {
+        setState(() => _notice = const AuthNotice(
+              kind: AuthNoticeKind.error,
+              message: "Couldn't check right now. Check your connection.",
+            ));
+      }
+    } finally {
+      if (!quiet && mounted && !_leaving) setState(() => _checking = false);
+    }
+  }
+
+  Future<void> _useDifferentEmail() async {
+    _pollTimer?.cancel();
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    // This page replaced the app's first screen, so there's nothing to pop
+    // back to. Restart from the sign-in flow instead.
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AuthPage()),
+      (route) => false,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AuthScaffold(
+      title: 'Verify your email',
+      subtitle: 'We sent a link to ${widget.email}. '
+          'Open it and this page will carry on by itself.',
+      cardholder: cardholderFromEmail(widget.email),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_notice != null) ...[
+            _notice!,
+            const SizedBox(height: 20),
+          ],
+          const AuthSteps(steps: [
+            'Open the email from The Calorie Card',
+            'Tap the verification link',
+            'Come back here. We\'ll set up your card next.',
+          ]),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AuthColors.action,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Waiting for you to verify…',
+                  style: TextStyle(color: AuthColors.muted, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          AuthButton(
+            label: "I've verified my email",
+            loading: _checking,
+            onPressed: () => _check(),
+          ),
+          const SizedBox(height: 12),
+          AuthSecondaryButton(
+            label: _resendIn > 0 ? 'Resend in ${_resendIn}s' : 'Resend email',
+            onPressed: _resendIn > 0 ? null : () => _sendEmail(),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: AuthLink(
+              label: 'Use a different email',
+              onPressed: _useDifferentEmail,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

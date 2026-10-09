@@ -1,25 +1,21 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/text_utils.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
 import 'package:namer_app/pages/statement_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
-import 'package:namer_app/pages/home_page.dart';
-import 'package:namer_app/pages/recipes_page.dart';
 import 'package:namer_app/pages/friends_page.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 
 class MenuPage extends StatelessWidget {
-  final bool hideNav;
-
   /// Opened from the menu; provided by the app shell.
   final VoidCallback? onOpenStatement;
   final VoidCallback? onOpenHiscores;
 
   const MenuPage({
     Key? key,
-    this.hideNav = false,
     this.onOpenStatement,
     this.onOpenHiscores,
   }) : super(key: key);
@@ -60,7 +56,7 @@ class MenuPage extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -71,7 +67,7 @@ class MenuPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
+                color: iconColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -169,7 +165,7 @@ class MenuPage extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.3),
                     blurRadius: 15,
                     offset: const Offset(0, 6),
                   ),
@@ -181,17 +177,17 @@ class MenuPage extends StatelessWidget {
                     width: 64,
                     height: 64,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         width: 2,
                       ),
                     ),
                     child: Center(
                       child: Text(
                         (currentUser?.email ?? 'U')
-                            .substring(0, 1)
+                            .initial
                             .toUpperCase(),
                         style: const TextStyle(
                           fontSize: 28,
@@ -220,7 +216,7 @@ class MenuPage extends StatelessWidget {
                           currentUser?.email ?? '',
                           style: TextStyle(
                             fontSize: 13,
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -353,67 +349,6 @@ class MenuPage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: hideNav
-          ? null
-          : Container(
-              color: Colors.white,
-              height: 56,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border(
-                          right:
-                              BorderSide(color: Colors.grey.shade200, width: 1),
-                        ),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.person,
-                            size: 24, color: Color(0xFF6366F1)),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const HomePage()),
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border(
-                            right: BorderSide(
-                                color: Colors.grey.shade200, width: 1),
-                          ),
-                        ),
-                        child: const Center(
-                          child: Icon(Icons.credit_card, size: 24),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const RecipesPage()),
-                        );
-                      },
-                      child: Container(
-                        child: const Center(
-                          child: Icon(Icons.restaurant, size: 24),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
     );
   }
 }

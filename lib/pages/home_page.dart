@@ -4,18 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/pages/add_food_page.dart';
-import 'package:namer_app/pages/add_recipe_page.dart';
-import 'package:namer_app/pages/login_or_register_page.dart';
-import 'package:namer_app/pages/menu_page.dart';
-import 'package:namer_app/pages/recipes_page.dart';
-import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/ui/home_widgets.dart';
+import 'package:namer_app/ui/responsive.dart';
 
 class HomePage extends StatefulWidget {
-  final bool addFoodAnimation;
-  final bool hideNav;
   final bool readOnly;
   final String? userIdOverride;
   final String? bannerTitle;
@@ -23,8 +19,6 @@ class HomePage extends StatefulWidget {
 
   const HomePage(
       {Key? key,
-      this.addFoodAnimation = false,
-      this.hideNav = false,
       this.readOnly = false,
       this.userIdOverride,
       this.bannerTitle,
@@ -442,7 +436,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.orange.withOpacity(0.3),
+                          color: Colors.orange.withValues(alpha: 0.3),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -674,7 +668,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   double _cardDragDx = 0;
   DateTime _selectedLogDate = DateTime.now();
   Map<String, dynamic>? _selectedDailyLog;
-  bool _isDailyLogLoading = false;
 
   // User goals for unlogged days
   int? _userCalorieGoal;
@@ -756,10 +749,30 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
 
     _initializeHome();
+    FoodLog.changed.addListener(_onFoodLoggedElsewhere);
+  }
+
+  /// Food was logged from another screen (e.g. Recipes): refresh the card.
+  void _onFoodLoggedElsewhere() {
+    if (!mounted || widget.readOnly || widget.userIdOverride != null) return;
+    _refreshAfterExternalChange();
+  }
+
+  Future<void> _refreshAfterExternalChange() async {
+    await populateFoodItems();
+    if (!mounted) return;
+    final categoryService =
+        Provider.of<CategoryService>(context, listen: false);
+    await _fetchCategoryTotals(categoryService.selectedCategory);
+    if (!mounted) return;
+    setState(() {
+      _creditCardRefreshKey++;
+    });
   }
 
   @override
   void dispose() {
+    FoodLog.changed.removeListener(_onFoodLoggedElsewhere);
     _jiggleAnimationController?.dispose();
     _cardDragResetController?.dispose();
     _reactionFadeController?.dispose();
@@ -801,6 +814,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
     await populateFoodItems();
     await _fetchDailyLogForDate(_selectedLogDate);
+    if (!mounted) return;
     // Fetch category totals on initial load
     final categoryService =
         Provider.of<CategoryService>(context, listen: false);
@@ -810,6 +824,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _changeDay(DateTime day) async {
+    setState(() {
+      _selectedLogDate = day;
+      _deleteMode = false;
+    });
+    await populateFoodItems();
+    await _fetchDailyLogForDate(day);
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
@@ -823,30 +846,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     final foodEntries = _selectedDailyLog?['food_entries'] as List?;
     return foodEntries != null && foodEntries.isNotEmpty;
   }
-
-  String _formatDate(DateTime date) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
-    return '${date.day} ${months[date.month - 1]} ${date.year}';
-  }
-
   Future<void> _fetchDailyLogForDate(DateTime date) async {
     try {
-      setState(() {
-        _isDailyLogLoading = true;
-      });
       final userId = _activeUserId;
       final key = _dateKey(date);
       final docRef = FirebaseFirestore.instance
@@ -876,11 +877,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       if (!_isSameDay(_selectedLogDate, DateTime.now())) {
         await _fetchUserGoals();
       }
-    } finally {
-      if (!mounted) return;
-      setState(() {
-        _isDailyLogLoading = false;
-      });
     }
   }
 
@@ -967,7 +963,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       final startOfDay = DateTime(date.year, date.month, date.day);
       final endOfDay = startOfDay.add(const Duration(days: 1));
 
-      DateTime? _extractDocDate(QueryDocumentSnapshot doc) {
+      DateTime? extractDocDate(QueryDocumentSnapshot doc) {
         final data = doc.data() as Map<String, dynamic>;
         final timeAdded = data['time_added'];
         final createdAt = data['created_at'];
@@ -984,7 +980,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         if (doc.data()['foodCategory'] == BalanceService.recipeCategory) {
           return false;
         }
-        final docDate = _extractDocDate(doc);
+        final docDate = extractDocDate(doc);
         if (docDate == null) return false;
         return !docDate.isBefore(startOfDay) && docDate.isBefore(endOfDay);
       }).toList();
@@ -1016,7 +1012,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           .get();
 
       final userData = userDataSnapshot.docs.isNotEmpty
-          ? (userDataSnapshot.docs.first.data() as Map<String, dynamic>)
+          ? userDataSnapshot.docs.first.data()
           : <String, dynamic>{};
 
       final docRef = firestore.collection('daily_logs').doc('${userId}_$key');
@@ -1130,7 +1126,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
       final endOfDay = startOfDay.add(const Duration(days: 1));
 
-      DateTime? _extractDocDate(QueryDocumentSnapshot doc) {
+      DateTime? extractDocDate(QueryDocumentSnapshot doc) {
         final data = doc.data() as Map<String, dynamic>;
         final timeAdded = data['time_added'];
         final createdAt = data['created_at'];
@@ -1152,7 +1148,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           final categoryMatches = (doc['foodCategory'] ?? 'Brekkie') ==
               categoryService.selectedCategory;
           if (!categoryMatches) return false;
-          final docDate = _extractDocDate(doc);
+          final docDate = extractDocDate(doc);
           if (docDate == null) return false;
           return !docDate.isBefore(startOfDay) && docDate.isBefore(endOfDay);
         }).toList();
@@ -1315,40 +1311,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       });
     }
   }
-
-  Future<void> signOut(BuildContext context) async {
-    try {
-      await FirebaseAuth.instance.signOut();
-
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginOrRegisterPage()),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error signing out: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> navigateToProfilePage() async {
-    if (mounted) {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => UserSettingsPage()),
-      );
-      if (!mounted) return;
-      setState(() {
-        _deleteMode = false;
-        _creditCardRefreshKey++;
-      });
-    }
-  }
-
   Future<void> _deleteFoodItem(String docId) async {
     if (_isDeletingItem) return; // Prevent multiple deletions
 
@@ -1639,79 +1601,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             child: CircularProgressIndicator(),
           ),
         ),
-        bottomNavigationBar: widget.hideNav
-            ? null
-            : Container(
-                color: Colors.white,
-                height: 56,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const MenuPage(),
-                            ),
-                          );
-                          if (mounted) {
-                            setState(() {
-                              _deleteMode = false;
-                            });
-                          }
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border(
-                              right: BorderSide(
-                                  color: Colors.grey.shade200, width: 1),
-                            ),
-                          ),
-                          child: const Center(
-                            child: Icon(Icons.person, size: 24),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border(
-                            right: BorderSide(
-                                color: Colors.grey.shade200, width: 1),
-                          ),
-                        ),
-                        child: const Center(
-                          child: Icon(Icons.credit_card,
-                              size: 24, color: Color(0xFF6366F1)),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const RecipesPage()),
-                          );
-                          if (mounted) {
-                            setState(() {
-                              _deleteMode = false;
-                            });
-                          }
-                        },
-                        child: Container(
-                          child: const Center(
-                            child: Icon(Icons.restaurant, size: 24),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
       );
     }
 
@@ -1719,16 +1608,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       body: Stack(
         children: [
           Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.indigo.shade50,
-                  Colors.blue.shade50,
-                ],
-              ),
-            ),
+            color: AppColors.canvas,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -1748,7 +1628,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withValues(alpha: 0.08),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -1897,7 +1777,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                               right: 12,
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.9),
+                                  color: Colors.white.withValues(alpha: 0.9),
                                   shape: BoxShape.circle,
                                 ),
                                 padding: const EdgeInsets.all(4),
@@ -1916,115 +1796,22 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _selectedLogDate,
-                        firstDate: DateTime(2020, 1, 1),
-                        lastDate: DateTime.now(),
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _selectedLogDate = picked;
-                          _deleteMode = false;
-                        });
-                        await populateFoodItems();
-                        await _fetchDailyLogForDate(picked);
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade200),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.calendar_month,
-                            color: Color(0xFF6366F1),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _formatDate(_selectedLogDate),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          const Icon(
-                            Icons.keyboard_arrow_down,
-                            color: Colors.grey,
-                          ),
-                        ],
-                      ),
-                    ),
+                  child: DayStepper(
+                    selected: _selectedLogDate,
+                    onChanged: _changeDay,
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Tabs
+                // Meals
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Consumer<CategoryService>(
-                      builder: (context, categoryService, _) {
-                        return Row(
-                          children: _tabs.map((tab) {
-                            bool isSelected =
-                                categoryService.selectedCategory == tab;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: GestureDetector(
-                                onTap: () {
-                                  categoryService.setSelectedCategory(tab);
-                                  populateFoodItems();
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? const Color(0xFF6366F1)
-                                        : Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: const Color(0xFF6366F1),
-                                      width: isSelected ? 0 : 2,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    tab,
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? Colors.white
-                                          : const Color(0xFF6366F1),
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        );
+                  child: Consumer<CategoryService>(
+                    builder: (context, categoryService, _) => MealTabs(
+                      meals: _tabs,
+                      selected: categoryService.selectedCategory,
+                      onSelected: (tab) {
+                        categoryService.setSelectedCategory(tab);
+                        populateFoodItems();
                       },
                     ),
                   ),
@@ -2045,8 +1832,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Colors.indigo.shade600,
-                              Colors.blue.shade700,
+                              Color(0xFF4338CA),
+                              Color(0xFF312E81),
                             ],
                           ),
                         ),
@@ -2090,12 +1877,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                             ),
                                             decoration: BoxDecoration(
                                               color: Colors.white
-                                                  .withOpacity(0.15),
+                                                  .withValues(alpha: 0.15),
                                               borderRadius:
                                                   BorderRadius.circular(12),
                                               border: Border.all(
                                                 color: Colors.white
-                                                    .withOpacity(0.3),
+                                                    .withValues(alpha: 0.3),
                                                 width: 1,
                                               ),
                                             ),
@@ -2165,20 +1952,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                               decoration: BoxDecoration(
                                                 borderRadius:
                                                     BorderRadius.circular(12),
-                                                gradient: LinearGradient(
-                                                  begin: Alignment.topLeft,
-                                                  end: Alignment.bottomRight,
-                                                  colors: [
-                                                    Colors.white
-                                                        .withOpacity(0.95),
-                                                    Colors.blue.shade50
-                                                        .withOpacity(0.9),
-                                                  ],
-                                                ),
+                                                color: Colors.white,
                                                 boxShadow: [
                                                   BoxShadow(
                                                     color: Colors.black
-                                                        .withOpacity(0.1),
+                                                        .withValues(alpha: 0.1),
                                                     blurRadius: 4,
                                                     offset: const Offset(0, 2),
                                                   ),
@@ -2576,7 +2354,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                         if (_isDeletingItem)
                                           Container(
                                             color:
-                                                Colors.black.withOpacity(0.3),
+                                                Colors.black.withValues(alpha: 0.3),
                                             child: const Center(
                                               child: CircularProgressIndicator(
                                                 valueColor:
@@ -2609,6 +2387,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                     _deleteMode = false;
                                                   });
                                                   await populateFoodItems();
+                                                  if (!context.mounted) return;
                                                   final categoryService =
                                                       Provider.of<
                                                               CategoryService>(
@@ -2629,7 +2408,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                           heroTag: 'addFood',
                                           backgroundColor: _isDayFinished
                                               ? Colors.grey.shade400
-                                              : Colors.green.shade400,
+                                              : const Color(0xFF059669),
                                           foregroundColor: Colors.white,
                                           icon: const Icon(Icons.add),
                                           label: const Text('Food'),
@@ -2655,6 +2434,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                                     final multiplier =
                                                         result['multiplier']
                                                             as double;
+                                                    if (!context.mounted) return;
                                                     final categoryService =
                                                         Provider.of<
                                                                 CategoryService>(
@@ -2688,7 +2468,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                           heroTag: 'addRecipe',
                                           backgroundColor: _isDayFinished
                                               ? Colors.grey.shade400
-                                              : Colors.purple.shade600,
+                                              : const Color(0xFF7C3AED),
                                           foregroundColor: Colors.white,
                                           icon: const Icon(Icons.add),
                                           label: const Text('Recipe'),
@@ -2705,8 +2485,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                           backgroundColor: _isDayFinished
                                               ? Colors.grey.shade400
                                               : _deleteMode
-                                                  ? Colors.red.shade600
-                                                  : Colors.red.shade400,
+                                                  ? const Color(0xFFB91C1C)
+                                                  : const Color(0xFFDC2626),
                                           foregroundColor: Colors.white,
                                           child: Icon(_deleteMode
                                               ? Icons.close
@@ -2729,69 +2509,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           ),
         ],
       ),
-      bottomNavigationBar: widget.hideNav
-          ? null
-          : Container(
-              color: Colors.white,
-              height: 56,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const MenuPage(),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border(
-                            right: BorderSide(
-                                color: Colors.grey.shade200, width: 1),
-                          ),
-                        ),
-                        child: Center(
-                          child: Icon(Icons.person, size: 24),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border(
-                          right:
-                              BorderSide(color: Colors.grey.shade200, width: 1),
-                        ),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.credit_card,
-                            size: 24, color: Color(0xFF6366F1)),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const RecipesPage()),
-                        );
-                      },
-                      child: Container(
-                        child: const Center(
-                          child: Icon(Icons.restaurant, size: 24),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
     );
   }
 }

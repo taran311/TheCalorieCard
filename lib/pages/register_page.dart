@@ -1,331 +1,217 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:namer_app/components/my_button.dart';
-import 'package:namer_app/components/my_text_field.dart';
 import 'package:namer_app/pages/email_verification_page.dart';
 import 'package:namer_app/services/category_service.dart';
+import 'package:namer_app/ui/auth_ui.dart';
 
 class RegisterPage extends StatefulWidget {
-  final Function()? onTap;
+  /// Switches back to the sign-in form.
+  final VoidCallback? onTap;
 
-  RegisterPage({super.key, required this.onTap});
+  const RegisterPage({super.key, required this.onTap});
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
-  final confirmPasswordController = TextEditingController();
-  bool isLoading = false;
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
 
-  Future<void> signUserUp() async {
-    if (emailController.text.isEmpty || passwordController.text.isEmpty) {
-      await showErrorDialog("Email and Password cannot be empty");
-      return;
-    }
+  bool _loading = false;
+  bool _submitted = false;
+  String? _emailError;
+  String? _passwordError;
+  String? _confirmError;
+  AuthProblem? _problem;
 
-    if (passwordController.text != confirmPasswordController.text) {
-      await showErrorDialog("Passwords don't match");
-      return;
-    }
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
 
+  void _validate() {
+    final email = _email.text.trim();
+    _emailError = validateEmail(email);
+    _passwordError = validateNewPassword(_password.text);
+    _confirmError = _confirm.text.isEmpty
+        ? 'Type your password again'
+        : (_confirm.text != _password.text ? "Passwords don't match" : null);
+  }
+
+  Future<void> _signUp() async {
+    if (_loading) return;
     setState(() {
-      isLoading = true;
+      _submitted = true;
+      _problem = null;
+      _validate();
     });
+    if (_emailError != null || _passwordError != null || _confirmError != null) {
+      return;
+    }
 
+    setState(() => _loading = true);
+    final email = _email.text.trim();
     try {
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
+        email: email,
+        // Never trim passwords: sign-in uses exactly what was typed.
+        password: _password.text,
       );
+      TextInput.finishAutofillContext();
+      if (!mounted) return;
 
-      if (mounted) {
-        // Reset category to default for new user
-        Provider.of<CategoryService>(context, listen: false).resetToDefault();
-
-        setState(() {
-          isLoading = false;
-        });
-
-        // Navigate to email verification page instead of directly to GetStartedPage
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => EmailVerificationPage(
-              email: emailController.text.trim(),
-            ),
-          ),
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-        });
-        await showErrorDialog(getErrorMessage(e.code));
-      }
+      Provider.of<CategoryService>(context, listen: false).resetToDefault();
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EmailVerificationPage(email: email),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final problem = authProblemFor(e, flow: 'signup');
+      setState(() {
+        _loading = false;
+        if (problem.field == 'email') {
+          _emailError = problem.message;
+        } else if (problem.field == 'password') {
+          _passwordError = problem.message;
+        } else {
+          _problem = problem;
+        }
+      });
     }
   }
 
-  Future<void> showErrorDialog(String message) async {
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Color(0xFF6366F1),
-          title: Text(
-            message,
-            style: const TextStyle(color: Colors.white),
-          ),
-        );
-      },
-    );
-  }
-
-  String getErrorMessage(String code) {
-    switch (code) {
-      case 'email-already-in-use':
-        return 'This email is already in use.';
-      case 'invalid-email':
-        return 'Invalid email address.';
-      case 'weak-password':
-        return 'Password is too weak.';
-      default:
-        return 'An unknown error occurred.';
+  /// Re-check as people type, but only after a first submit attempt, so
+  /// we don't shout at someone who has barely started.
+  void _revalidate() {
+    if (!_submitted) {
+      setState(() {});
+      return;
     }
+    setState(_validate);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF6366F1),
-              Color(0xFF8B5CF6),
-            ],
+    final length = _password.text.length;
+
+    return AuthScaffold(
+      title: 'Create your card',
+      subtitle:
+          'Set up an account, then we\'ll work out your daily calorie budget.',
+      cardholder: cardholderFromEmail(_email.text),
+      footer: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AuthDivider(text: 'Already have an account?'),
+          const SizedBox(height: 16),
+          AuthSecondaryButton(
+            label: 'Sign in',
+            onPressed: _loading ? null : widget.onTap,
           ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ScrollConfiguration(
-                behavior:
-                    ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Logo Section
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 20,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Icon(
-                                  Icons.credit_card,
-                                  size: 48,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'TheCalorieCard',
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.auto_awesome,
-                                      size: 12,
-                                      color: Colors.white,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    const Text(
-                                      'Powered by AI',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 48),
-
-                        // Register Card
-                        Container(
-                          padding: const EdgeInsets.all(28),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(24),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Welcome Section
-                              Column(
-                                children: [
-                                  Text(
-                                    'Create Account',
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1F2937),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Join us and start tracking today!',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 32),
-                              MyTextField(
-                                controller: emailController,
-                                hintText: 'Email',
-                                obscureText: false,
-                              ),
-                              const SizedBox(height: 8),
-                              MyTextField(
-                                controller: passwordController,
-                                hintText: 'Password',
-                                obscureText: true,
-                              ),
-                              const SizedBox(height: 8),
-                              MyTextField(
-                                controller: confirmPasswordController,
-                                hintText: 'Confirm Password',
-                                obscureText: true,
-                              ),
-                              const SizedBox(height: 28),
-                              isLoading
-                                  ? Center(
-                                      child: CircularProgressIndicator(
-                                        color: Color(0xFF6366F1),
-                                      ),
-                                    )
-                                  : MyButton(
-                                      onTap: () async {
-                                        await signUserUp();
-                                      },
-                                      text: 'Sign Up',
-                                    ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-
-                        // Login link
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Already have an account?',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: widget.onTap,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.4),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: const Text(
-                                  'Login now',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+        ],
+      ),
+      child: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_problem != null) ...[
+              AuthNotice(
+                kind: AuthNoticeKind.error,
+                message: _problem!.message,
+                actionLabel: _problem!.actionLabel,
+                onAction: _problem!.action == 'signin' ? widget.onTap : null,
               ),
+              const SizedBox(height: 20),
+            ],
+            AuthField(
+              controller: _email,
+              label: 'Email',
+              hint: 'name@example.com',
+              icon: Icons.mail_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              errorText: _emailError,
+              enabled: !_loading,
+              onChanged: (_) => _revalidate(),
             ),
-          ),
+            const SizedBox(height: 18),
+            AuthField(
+              controller: _password,
+              label: 'Password',
+              icon: Icons.lock_outline_rounded,
+              password: true,
+              autofillHints: const [AutofillHints.newPassword],
+              errorText: _passwordError,
+              enabled: !_loading,
+              onChanged: (_) => _revalidate(),
+            ),
+            if (_passwordError == null) ...[
+              const SizedBox(height: 8),
+              _PasswordHint(length: length),
+            ],
+            const SizedBox(height: 18),
+            AuthField(
+              controller: _confirm,
+              label: 'Confirm password',
+              icon: Icons.lock_outline_rounded,
+              password: true,
+              autofillHints: const [AutofillHints.newPassword],
+              textInputAction: TextInputAction.done,
+              errorText: _confirmError,
+              enabled: !_loading,
+              onChanged: (_) => _revalidate(),
+              onSubmitted: (_) => _signUp(),
+            ),
+            const SizedBox(height: 24),
+            AuthButton(
+              label: 'Create account',
+              loading: _loading,
+              onPressed: _signUp,
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+/// Live, quiet guidance under the password field.
+class _PasswordHint extends StatelessWidget {
+  final int length;
+
+  const _PasswordHint({required this.length});
+
+  @override
+  Widget build(BuildContext context) {
+    final ok = length >= minPasswordLength;
+    final strong = length >= 10;
+    final color = !ok
+        ? AuthColors.muted
+        : (strong ? AuthColors.successText : AuthColors.infoText);
+    final text = !ok
+        ? 'At least $minPasswordLength characters'
+        : (strong ? 'Strong length' : 'Good. Longer is stronger.');
+
+    return Row(
+      children: [
+        Icon(
+          ok ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+          size: 16,
+          color: color,
+        ),
+        const SizedBox(width: 6),
+        Text(text, style: TextStyle(fontSize: 13, color: color)),
+      ],
     );
   }
 }

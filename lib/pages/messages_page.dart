@@ -6,9 +6,8 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class MessagesPage extends StatelessWidget {
-  final bool hideNav;
 
-  const MessagesPage({Key? key, this.hideNav = false}) : super(key: key);
+  const MessagesPage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -268,7 +267,9 @@ class MessagesPage extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
+      // Keep `context` = the Messages page: the chat is opened from it after
+      // the sheet closes (the sheet's own context is gone by then).
+      builder: (sheetContext) => DraggableScrollableSheet(
         initialChildSize: 0.7,
         minChildSize: 0.5,
         maxChildSize: 0.95,
@@ -509,7 +510,7 @@ class MessagesPage extends StatelessWidget {
       });
     } else {
       // Update existing conversation with group_id if missing
-      final data = conversationDoc.data() as Map<String, dynamic>?;
+      final data = conversationDoc.data();
       if (data?['group_id'] == null) {
         await conversationRef.update({
           'group_id': groupId,
@@ -977,8 +978,6 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   List<Widget> _buildMessageStatus(String status, List<dynamic> deliveredTo,
       List<dynamic> readBy, int totalParticipants) {
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-
     if (widget.isGroup) {
       // For groups: check if all other participants have read/delivered
       final otherParticipantsCount = totalParticipants - 1; // Exclude sender

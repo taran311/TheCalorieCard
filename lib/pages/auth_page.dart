@@ -50,7 +50,7 @@ class AuthPage extends StatelessWidget {
               },
             );
           } else {
-            return LoginOrRegisterPage();
+            return const LoginOrRegisterPage();
           }
         },
       ),

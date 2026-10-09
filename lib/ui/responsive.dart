@@ -40,9 +40,6 @@ class Breakpoints {
 
   /// Widest the main page column grows to on large screens.
   static const double contentMaxWidth = 720;
-
-  static bool isPhone(BuildContext context) =>
-      MediaQuery.sizeOf(context).width < tablet;
 }
 
 /// Counts how many app shells (signed-in layouts) are currently on screen.

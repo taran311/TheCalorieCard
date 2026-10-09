@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
@@ -161,7 +162,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
+                    color: Colors.black.withValues(alpha: 0.08),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -285,7 +286,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                     borderRadius: BorderRadius.circular(16),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.08),
+                                        color: Colors.black.withValues(alpha: 0.08),
                                         blurRadius: 8,
                                         offset: const Offset(0, 2),
                                       ),
@@ -317,7 +318,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                               child: Center(
                                                 child: Text(
                                                   memberEmail
-                                                      .substring(0, 1)
+                                                      .initial
                                                       .toUpperCase(),
                                                   style: const TextStyle(
                                                     color: Colors.white,
@@ -416,7 +417,6 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                                                     MaterialPageRoute(
                                                       builder: (_) => HomePage(
                                                         readOnly: true,
-                                                        hideNav: true,
                                                         userIdOverride:
                                                             memberId,
                                                         showBanner: true,
@@ -587,10 +587,10 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: color.withOpacity(0.25),
+          color: color.withValues(alpha: 0.25),
           width: 1,
         ),
       ),
@@ -599,7 +599,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: color.withOpacity(0.9),
+          color: color.withValues(alpha: 0.9),
         ),
       ),
     );

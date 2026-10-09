@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
 import 'package:namer_app/components/mini_game.dart';
@@ -265,13 +266,13 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             querySnapshot.docs.first.data() as Map<String, dynamic>;
 
         setState(() {
-          _selectedAge = userData['age'] as int?;
+          _selectedAge = asInt(userData['age']);
           _ageController.text =
               _selectedAge != null ? '$_selectedAge Years Old' : '';
-          _selectedHeight = userData['height'] as int?;
+          _selectedHeight = asInt(userData['height']);
           _heightController.text =
               _selectedHeight != null ? '${_selectedHeight}cm' : '';
-          _selectedWeight = userData['weight'] as int?;
+          _selectedWeight = asInt(userData['weight']);
           _weightController.text =
               _selectedWeight != null ? '${_selectedWeight}kg' : '';
           _exerciseLevel = (userData['exercise_level'] as num?)?.toDouble() ??
@@ -501,7 +502,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 'Invalid request data. Please check your profile information.';
           } else {
             errorMessage =
-                'Error ${response.statusCode}: ${response.body.length > 100 ? response.body.substring(0, 100) + "..." : response.body}';
+                'Error ${response.statusCode}: ${response.body.length > 100 ? '${response.body.substring(0, 100)}...' : response.body}';
           }
 
           throw Exception(errorMessage);
@@ -819,7 +820,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF10B981).withOpacity(0.3),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.3),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -853,7 +854,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 ),
                 elevation: 0,
                 disabledBackgroundColor:
-                    const Color(0xFF10B981).withOpacity(0.6),
+                    const Color(0xFF10B981).withValues(alpha: 0.6),
               ),
               child: _isSaving
                   ? const SizedBox(
@@ -1058,7 +1059,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 Icon(
                   Icons.auto_awesome,
                   size: 48,
-                  color: Color(0xFF6366F1).withOpacity(0.3),
+                  color: Color(0xFF6366F1).withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -1393,8 +1394,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [
-                                  Colors.white.withOpacity(0.15),
-                                  Colors.white.withOpacity(0.05),
+                                  Colors.white.withValues(alpha: 0.15),
+                                  Colors.white.withValues(alpha: 0.05),
                                 ],
                               ),
                               borderRadius: const BorderRadius.only(
@@ -1403,7 +1404,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                               ),
                               border: Border(
                                 bottom: BorderSide(
-                                  color: Colors.white.withOpacity(0.2),
+                                  color: Colors.white.withValues(alpha: 0.2),
                                   width: 1,
                                 ),
                               ),
@@ -1412,7 +1413,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                               children: [
                                 Container(
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
+                                    color: Colors.white.withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: IconButton(
@@ -1444,7 +1445,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           fontSize: 13,
-                                          color: Colors.white.withOpacity(0.85),
+                                          color: Colors.white.withValues(alpha: 0.85),
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -1463,7 +1464,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                               borderRadius: BorderRadius.circular(24),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
+                                  color: Colors.black.withValues(alpha: 0.1),
                                   blurRadius: 20,
                                   offset: const Offset(0, 4),
                                 ),
@@ -1508,7 +1509,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                         BoxShadow(
                                                           color: Color(
                                                                   0xFF6366F1)
-                                                              .withOpacity(0.3),
+                                                              .withValues(alpha: 0.3),
                                                           blurRadius: 8,
                                                           offset: const Offset(
                                                               0, 2),
@@ -1573,7 +1574,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                                         BoxShadow(
                                                           color: Color(
                                                                   0xFF6366F1)
-                                                              .withOpacity(0.3),
+                                                              .withValues(alpha: 0.3),
                                                           blurRadius: 8,
                                                           offset: const Offset(
                                                               0, 2),

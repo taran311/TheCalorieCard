@@ -5,9 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
-import 'package:namer_app/services/proxy_client.dart';
+import 'package:namer_app/services/food_resolver.dart';
+import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
-import 'dart:convert';
 
 class AddFoodPage extends StatefulWidget {
   const AddFoodPage({Key? key}) : super(key: key);
@@ -25,6 +25,293 @@ class _AddFoodPageState extends State<AddFoodPage> {
   bool _saving = false;
   bool _showMiniGame = false;
   bool _tutorialMode = false;
+  int _progressDone = 0;
+  int _progressTotal = 0;
+
+  /// Foods logged recently, for one-tap re-adding (no lookup needed).
+  List<CardTransaction> _recent = const [];
+
+  bool get _hasInput =>
+      _ingredients.isNotEmpty || _controller.text.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecent();
+  }
+
+  Future<void> _loadRecent() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final statement = await StatementService.load(uid, days: 14);
+      final seen = <String>{};
+      final recent = <CardTransaction>[];
+      for (final tx in statement.recent) {
+        if (tx.description.startsWith('Recipe:')) continue;
+        if (seen.add(tx.description.toLowerCase())) recent.add(tx);
+        if (recent.length >= 10) break;
+      }
+      if (mounted) setState(() => _recent = recent);
+    } catch (_) {
+      // Recent foods are a convenience; ignore failures.
+    }
+  }
+
+  /// Adds every complete item from the text box (anything followed by a
+  /// comma, semicolon or new line). With [all], the unfinished last item
+  /// is added too (used on Enter and before calculating).
+  void _takeItemsFromInput({bool all = false}) {
+    final value = _controller.text;
+    final parts = FoodResolver.splitItems(value);
+    final endsWithSeparator = RegExp(r'[,\n;]\s*$').hasMatch(value);
+    var remainder = '';
+    if (!all && !endsWithSeparator && parts.isNotEmpty) {
+      remainder = parts.removeLast();
+    }
+    if (parts.isEmpty && remainder == value.trim()) {
+      setState(() {}); // just refresh the buttons
+      return;
+    }
+    setState(() {
+      _ingredients.addAll(parts);
+      _calculated = _calculatedItems.isNotEmpty;
+      _controller.value = TextEditingValue(
+        text: remainder,
+        selection: TextSelection.collapsed(offset: remainder.length),
+      );
+    });
+  }
+
+  Map<String, dynamic> _itemFromResolved(ResolvedFood r) => {
+        'name': r.query,
+        'matched_name': r.name,
+        'calories': r.calories,
+        'protein': r.protein,
+        'carbs': r.carbs,
+        'fat': r.fat,
+        'portion': r.portion,
+        'source': r.source,
+        'needs_review': r.needsReview,
+        'multiplier': 1.0,
+        'base': {
+          'calories': r.calories,
+          'protein': r.protein,
+          'carbs': r.carbs,
+          'fat': r.fat,
+        },
+      };
+
+  void _addRecent(CardTransaction tx) {
+    setState(() {
+      _calculatedItems.add({
+        'name': tx.description,
+        'calories': tx.calories,
+        'protein': tx.protein,
+        'carbs': tx.carbs,
+        'fat': tx.fat,
+        'portion': tx.portion,
+        'source': 'recent',
+        'needs_review': false,
+        'multiplier': 1.0,
+        'base': {
+          'calories': tx.calories,
+          'protein': tx.protein,
+          'carbs': tx.carbs,
+          'fat': tx.fat,
+        },
+      });
+      _calculated = true;
+    });
+  }
+
+  /// Scale an item, e.g. "I had two of those".
+  void _setMultiplier(int idx, double multiplier) {
+    final item = _calculatedItems[idx];
+    final base = (item['base'] as Map?) ??
+        {
+          'calories': item['calories'],
+          'protein': item['protein'],
+          'carbs': item['carbs'],
+          'fat': item['fat'],
+        };
+    double b(String k) => (base[k] as num?)?.toDouble() ?? 0;
+    setState(() {
+      _calculatedItems[idx] = {
+        ...item,
+        'base': base,
+        'multiplier': multiplier,
+        'calories': b('calories') * multiplier,
+        'protein': b('protein') * multiplier,
+        'carbs': b('carbs') * multiplier,
+        'fat': b('fat') * multiplier,
+      };
+    });
+  }
+
+  Future<void> _showAdjustSheet(int idx) async {
+    final item = _calculatedItems[idx];
+    final current = (item['multiplier'] as num?)?.toDouble() ?? 1.0;
+    final picked = await showModalBottomSheet<double>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item['name'].toString(),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              if ((item['portion'] ?? '').toString().isNotEmpty)
+                Text('Portion: ${item['portion']}',
+                    style: TextStyle(color: Colors.grey.shade600)),
+              const SizedBox(height: 16),
+              const Text('How much did you have?',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final m in const [0.5, 1.0, 1.5, 2.0, 3.0])
+                    ChoiceChip(
+                      label: Text('${m == m.roundToDouble() ? m.toStringAsFixed(0) : m}×'),
+                      selected: current == m,
+                      onSelected: (_) => Navigator.pop(sheetContext, m),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked != null && mounted) _setMultiplier(idx, picked);
+  }
+
+  Widget _buildResultCard(int idx, Map<String, dynamic> item) {
+    final source = item['source'];
+    final review = item['needs_review'] == true;
+    final multiplier = (item['multiplier'] as num?)?.toDouble() ?? 1.0;
+    final portion = (item['portion'] ?? '').toString();
+    String g(String k) => ((item[k] as num?) ?? 0).round().toString();
+
+    Widget badge(String text, Color color, IconData icon) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 12, color: color),
+              const SizedBox(width: 3),
+              Text(text,
+                  style: TextStyle(
+                      fontSize: 11, color: color, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: review ? Colors.orange.shade300 : Colors.grey.shade200,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _showAdjustSheet(idx),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      multiplier == 1.0
+                          ? item['name'].toString()
+                          : '${item['name']}  ×${multiplier == multiplier.roundToDouble() ? multiplier.toStringAsFixed(0) : multiplier}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        if (portion.isNotEmpty) portion,
+                        'P ${g('protein')}g · C ${g('carbs')}g · F ${g('fat')}g',
+                      ].join('  ·  '),
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        if (source == 'fatsecret')
+                          badge('Database match', const Color(0xFF10B981),
+                              Icons.verified_outlined),
+                        if (source == 'ai')
+                          badge('AI estimate', const Color(0xFF6366F1),
+                              Icons.auto_awesome),
+                        if (source == 'recent')
+                          badge('From your history', const Color(0xFF0EA5E9),
+                              Icons.history),
+                        if (review)
+                          badge('Check this', Colors.orange.shade700,
+                              Icons.warning_amber_rounded),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${(item['calories'] as num).round()}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                  Text('kcal',
+                      style:
+                          TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                ],
+              ),
+              IconButton(
+                onPressed: () => setState(() {
+                  _calculatedItems.removeAt(idx);
+                  _calculated = _calculatedItems.isNotEmpty;
+                }),
+                icon: const Icon(Icons.close),
+                color: Colors.grey.shade500,
+                iconSize: 20,
+                tooltip: 'Remove item',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   // Cached tutorial data for instant demo
   static const List<Map<String, dynamic>> _tutorialCachedResults = [
@@ -62,22 +349,22 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
   double get _totalCalories {
     return _calculatedItems.fold(
-        0.0, (sum, item) => sum + (item['calories'] as num).toDouble());
+        0.0, (total, item) => total + (item['calories'] as num).toDouble());
   }
 
   double get _totalProtein {
     return _calculatedItems.fold(
-        0.0, (sum, item) => sum + (item['protein'] as num).toDouble());
+        0.0, (total, item) => total + (item['protein'] as num).toDouble());
   }
 
   double get _totalCarbs {
     return _calculatedItems.fold(
-        0.0, (sum, item) => sum + (item['carbs'] as num).toDouble());
+        0.0, (total, item) => total + (item['carbs'] as num).toDouble());
   }
 
   double get _totalFat {
     return _calculatedItems.fold(
-        0.0, (sum, item) => sum + (item['fat'] as num).toDouble());
+        0.0, (total, item) => total + (item['fat'] as num).toDouble());
   }
 
   Future<void> _runTutorial() async {
@@ -175,90 +462,56 @@ class _AddFoodPageState extends State<AddFoodPage> {
   }
 
   Future<void> _calculateWithAI() async {
+    _takeItemsFromInput(all: true);
     if (_ingredients.isEmpty) return;
+    final queries = List<String>.from(_ingredients);
 
     setState(() {
       _calculating = true;
       _showMiniGame = false;
+      _progressDone = 0;
+      _progressTotal = queries.length;
     });
 
-    final results = <Map<String, dynamic>>[];
-    int successCount = 0;
-    int failCount = 0;
+    // Several lookups at once instead of one after another.
+    final results = await FoodResolver.resolveAll(
+      queries,
+      onProgress: (done, _) {
+        if (mounted) setState(() => _progressDone = done);
+      },
+    );
 
-    for (final ingredient in _ingredients) {
-      try {
-        final response = await ProxyClient.post(
-            '/food/resolve', {'food': ingredient});
-
-        if (response.statusCode == 200) {
-          final Map<String, dynamic> jsonResponse = json.decode(response.body);
-
-          final foodName = jsonResponse['name'] ?? ingredient;
-          final mode = jsonResponse['mode'] ?? 'grams';
-          final servingDescription = jsonResponse['serving_description'];
-          final servingGrams = jsonResponse['grams'];
-          final servingMl = jsonResponse['ml'];
-
-          final totalCalories =
-              ((jsonResponse['calories'] ?? 0) as num).toDouble();
-          final totalProtein =
-              ((jsonResponse['protein'] ?? 0) as num).toDouble();
-          final totalCarbs = ((jsonResponse['carbs'] ?? 0) as num).toDouble();
-          final totalFat = ((jsonResponse['fat'] ?? 0) as num).toDouble();
-
-          // Determine portion display
-          String portion = '';
-          if (mode == 'serving' && servingDescription != null) {
-            portion = servingDescription;
-          } else if (servingGrams != null) {
-            portion = '${servingGrams}g';
-          } else if (servingMl != null) {
-            portion = '${servingMl}ml';
-          }
-          // If both grams and ml are null, portion remains empty
-
-          // Use the user's original input string
-          final displayName = ingredient;
-
-          results.add({
-            'name': displayName,
-            'calories': totalCalories,
-            'protein': totalProtein,
-            'carbs': totalCarbs,
-            'fat': totalFat,
-            'portion': portion,
-          });
-          successCount++;
-        } else {
-          failCount++;
-        }
-      } catch (e) {
-        failCount++;
+    final failed = <String>[];
+    final items = <Map<String, dynamic>>[];
+    for (var i = 0; i < queries.length; i++) {
+      final r = results[i];
+      if (r == null) {
+        failed.add(queries[i]);
+      } else {
+        items.add(_itemFromResolved(r));
       }
-
-      // Small delay between requests to avoid overwhelming the API
-      await Future.delayed(const Duration(milliseconds: 300));
     }
 
-    if (mounted) {
-      setState(() {
-        _calculatedItems.addAll(results);
-        _ingredients
-            .clear(); // Clear ingredients after calculation to prevent duplicates
-        _calculating = false;
-        _calculated = true;
-        _showMiniGame = false;
-      });
+    if (!mounted) return;
+    setState(() {
+      _calculatedItems.addAll(items);
+      // Anything that failed stays in the list so it can be retried.
+      _ingredients
+        ..clear()
+        ..addAll(failed);
+      _calculating = false;
+      _calculated = _calculatedItems.isNotEmpty;
+      _showMiniGame = false;
+    });
 
-      if (failCount > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Calculated $successCount items${failCount > 0 ? ', $failCount failed' : ''}'),
-          ),
-        );
-      }
+    if (failed.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              "Couldn't look up ${failed.length} item${failed.length == 1 ? '' : 's'}. "
+              "${failed.length == 1 ? 'It\'s' : 'They\'re'} still in the list; tap Calculate to retry."),
+        ),
+      );
     }
   }
 
@@ -376,27 +629,51 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  if (_recent.isNotEmpty && !_tutorialMode) ...[
+                    Text(
+                      'Recent',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 36,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _recent.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, i) {
+                          final tx = _recent[i];
+                          return ActionChip(
+                            avatar: const Icon(Icons.add, size: 16),
+                            label: Text(
+                                '${tx.description} · ${tx.calories.round()}'),
+                            onPressed: () => _addRecent(tx),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   TextField(
                     controller: _controller,
+                    textInputAction: TextInputAction.done,
                     decoration: InputDecoration(
-                      labelText: 'Enter foods (comma-separated)',
-                      hintText: 'e.g. 100g banana, 200g chicken, 1 apple',
+                      labelText: 'What did you eat?',
+                      hintText: 'e.g. 2 eggs, 1 slice toast, 330ml coke',
                       border: const OutlineInputBorder(),
-                      helperText: 'Add each item with a comma',
+                      helperText:
+                          'Separate foods with commas, or press Enter after each',
+                      suffixIcon: IconButton(
+                        tooltip: 'Add to list',
+                        icon: const Icon(Icons.add_circle_outline),
+                        onPressed: () => _takeItemsFromInput(all: true),
+                      ),
                     ),
-                    onChanged: (value) {
-                      if (value.endsWith(',')) {
-                        final ingredient =
-                            value.substring(0, value.length - 1).trim();
-                        if (ingredient.isNotEmpty) {
-                          setState(() {
-                            _ingredients.add(ingredient);
-                            _controller.clear();
-                            _calculated = false;
-                          });
-                        }
-                      }
-                    },
+                    onChanged: (_) => _takeItemsFromInput(),
+                    onSubmitted: (_) => _takeItemsFromInput(all: true),
                   ),
                   const SizedBox(height: 16),
                   if (_ingredients.isNotEmpty) ...[
@@ -441,81 +718,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ..._calculatedItems.asMap().entries.map((entry) {
-                      final idx = entry.key;
-                      final item = entry.value;
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Colors.indigo.shade600,
-                                Colors.blue.shade700,
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 4,
-                            ),
-                            title: Text(
-                              item['name'],
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                              ),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange.shade400,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    '${item['calories'].round()} kcal',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _calculatedItems.removeAt(idx);
-                                    });
-                                  },
-                                  icon: const Icon(Icons.close),
-                                  color: Colors.white,
-                                  iconSize: 20,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  tooltip: 'Remove item',
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                    for (var i = 0; i < _calculatedItems.length; i++)
+                      _buildResultCard(i, _calculatedItems[i]),
+                    Text(
+                      'Tap an item to change how much you had.',
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -525,7 +734,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         border: Border.all(color: Colors.orange.shade300),
                       ),
                       child: Text(
-                        'Total Calories Consumed: ${_totalCalories.round()} kcal',
+                        'Total: ${_totalCalories.round()} kcal  ·  P ${_totalProtein.round()}g  C ${_totalCarbs.round()}g  F ${_totalFat.round()}g',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -541,7 +750,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       Expanded(
                         flex: 2,
                         child: ElevatedButton.icon(
-                          onPressed: (_ingredients.isEmpty || _calculating)
+                          onPressed: (!_hasInput || _calculating)
                               ? null
                               : _calculateWithAI,
                           icon: _calculating
@@ -557,8 +766,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
                               : const Icon(Icons.auto_awesome, size: 20),
                           label: Text(
                             _calculating
-                                ? 'Calculating...'
-                                : 'Calculate with AI',
+                                ? 'Looking up $_progressDone/$_progressTotal…'
+                                : 'Calculate',
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -645,7 +854,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
           if (_calculating && _showMiniGame) const PingPongGame(),
           if (_tutorialMode)
             Container(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: Container(
@@ -657,7 +866,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         blurRadius: 10,
                         offset: const Offset(0, -2),
                       ),
