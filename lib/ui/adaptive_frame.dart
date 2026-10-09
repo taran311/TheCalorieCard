@@ -29,7 +29,9 @@ class AdaptiveFrame extends StatelessWidget {
         // The widget structure below never changes shape, only its
         // settings. Changing shape would rebuild the app's navigator and
         // throw away the pages the user has open.
-        return ColoredBox(
+        // Material (not a plain ColoredBox) gives the brand panel proper
+        // text styling; without it Flutter shows yellow debug underlines.
+        return Material(
           color: framed ? AppColors.canvas : Colors.white,
           child: Row(
             children: [
