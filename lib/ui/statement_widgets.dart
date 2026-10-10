@@ -21,6 +21,9 @@ String formatKcal(double v) {
   return '${n < 0 ? '-' : ''}$buf';
 }
 
+/// "1 day", "3 days".
+String formatDays(int n) => n == 1 ? '1 day' : '$n days';
+
 String formatDayHeading(DateTime day) {
   final now = BalanceService.now();
   final d = DateTime(day.year, day.month, day.day);
@@ -369,6 +372,26 @@ class WeeklySpendChart extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// Key for the green budget line drawn on [WeeklySpendChart].
+class BudgetLegend extends StatelessWidget {
+  const BudgetLegend({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 14, height: 2, color: AppColors.green),
+        const SizedBox(width: 6),
+        const Text(
+          'Daily budget',
+          style: TextStyle(fontSize: 11, color: AppColors.muted),
+        ),
+      ],
     );
   }
 }

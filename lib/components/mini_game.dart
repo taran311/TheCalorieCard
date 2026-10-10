@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -76,77 +77,107 @@ class _PingPongGameState extends State<PingPongGame> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
     return Container(
       color: Colors.black.withValues(alpha: 0.7),
-      child: Center(
-        child: Card(
-          elevation: 8,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    const Text(
-                      'AI is calculating...',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Play Ping Pong! Score: $score',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              GestureDetector(
-                onHorizontalDragUpdate: (details) {
-                  setState(() {
-                    paddleX += details.delta.dx / 150;
-                    paddleX = paddleX.clamp(-0.8, 0.8);
-                  });
-                },
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Fit narrow and short screens: never wider than the space
+            // allows, never taller than half the screen.
+            final double courtWidth =
+                math.max(120.0, math.min(300.0, constraints.maxWidth - 48));
+            final double courtHeight =
+                math.max(160.0, math.min(400.0, screenHeight * 0.5));
+            return Center(
+              child: SingleChildScrollView(
                 child: Container(
-                  width: 300,
-                  height: 400,
-                  decoration: BoxDecoration(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Stack(
+                  margin: const EdgeInsets.all(16),
+                  decoration: AppDecor.card,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Ball
-                      Align(
-                        alignment: Alignment(ballX, ballY),
-                        child: Container(
-                          width: 15,
-                          height: 15,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            const Text(
+                              'Coach is working out your numbers…',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Score: $score',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primaryDark,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: GestureDetector(
+                          onHorizontalDragUpdate: (details) {
+                            setState(() {
+                              // Alignment runs -1..1 across the court, so a
+                              // drag of half the width moves one unit.
+                              paddleX += details.delta.dx / (courtWidth / 2);
+                              paddleX = paddleX.clamp(-0.8, 0.8);
+                            });
+                          },
+                          child: Container(
+                            width: courtWidth,
+                            height: courtHeight,
+                            decoration: BoxDecoration(
+                              color: AppColors.ink,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Stack(
+                              children: [
+                                // Ball
+                                Align(
+                                  alignment: Alignment(ballX, ballY),
+                                  child: Container(
+                                    width: 15,
+                                    height: 15,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                                // Paddle
+                                Align(
+                                  alignment: Alignment(paddleX, 0.95),
+                                  child: Container(
+                                    width: courtWidth / 5,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                      // Paddle
-                      Align(
-                        alignment: Alignment(paddleX, 0.95),
-                        child: Container(
-                          width: 60,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(5),
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'Drag to move the paddle',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.muted,
                           ),
                         ),
                       ),
@@ -154,18 +185,8 @@ class _PingPongGameState extends State<PingPongGame> {
                   ),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'Swipe to move paddle',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.gray400,
-                  ),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

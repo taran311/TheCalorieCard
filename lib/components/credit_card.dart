@@ -31,6 +31,10 @@ class CreditCard extends StatefulWidget {
   /// Marks the card's parts for the first-time spotlight tour.
   final CardTourKeys? tourKeys;
 
+  /// Told the live calorie balance once it has loaded (not for past days
+  /// passed in with [skipFetch]).
+  final ValueChanged<int>? onBalance;
+
   const CreditCard({
     super.key,
     this.initialCalories,
@@ -45,6 +49,7 @@ class CreditCard extends StatefulWidget {
     this.cardUserNameOverride,
     this.design = CardDesign.midnight,
     this.tourKeys,
+    this.onBalance,
   });
 
   @override
@@ -130,6 +135,7 @@ class _CreditCardWidgetState extends State<CreditCard>
         }
         _loading = false;
       });
+      if (!widget.skipFetch) widget.onBalance?.call(_calories);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -155,7 +161,7 @@ class _CreditCardWidgetState extends State<CreditCard>
   /// 09/10 style date for the card's "valid thru" spot.
   String _validThru() {
     final parts = (widget.validThruDate ?? '').split('/');
-    DateTime d = DateTime.now();
+    DateTime d = BalanceService.now();
     if (parts.length == 3) {
       final day = int.tryParse(parts[0]);
       final month = int.tryParse(parts[1]);
@@ -181,7 +187,7 @@ class _CreditCardWidgetState extends State<CreditCard>
         return '$day ${months[month - 1]}';
       }
     }
-    final now = DateTime.now();
+    final now = BalanceService.now();
     return '${now.day} ${months[now.month - 1]}';
   }
 

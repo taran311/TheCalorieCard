@@ -205,6 +205,70 @@ class CoachContext {
   }
 }
 
+/// A gentle way to even out going over: a little less each day for the
+/// rest of this week, or across next week when today is Sunday. Never more
+/// than 10% of the daily goal (or 200 kcal) a day, matching Coach's rules.
+class OffsetPlan {
+  final int overBy;
+  final int days;
+  final int perDay;
+  final bool nextWeek;
+
+  /// True when the daily cap means the plan doesn't cover all of it (and
+  /// that's fine: one day over doesn't undo anything).
+  final bool partial;
+
+  const OffsetPlan({
+    required this.overBy,
+    required this.days,
+    required this.perDay,
+    required this.nextWeek,
+    required this.partial,
+  });
+
+  factory OffsetPlan.compute({
+    required int overBy,
+    required double goal,
+    required DateTime today,
+  }) {
+    final daysLeft = DateTime.sunday - today.weekday; // Monday-start weeks
+    final nextWeek = daysLeft <= 0;
+    final days = nextWeek ? 7 : daysLeft;
+    final tenPercent = goal > 0 ? (goal * 0.10).floor() : 200;
+    final cap = tenPercent < 200 ? (tenPercent < 25 ? 25 : tenPercent) : 200;
+    final needed = overBy <= 0 ? 0 : (overBy / days).ceil();
+    final partial = needed > cap;
+    return OffsetPlan(
+      overBy: overBy < 0 ? 0 : overBy,
+      days: days,
+      perDay: partial ? cap : needed,
+      nextWeek: nextWeek,
+      partial: partial,
+    );
+  }
+
+  String get when => nextWeek
+      ? 'across next week'
+      : days == 1
+          ? 'tomorrow'
+          : 'for the rest of this week';
+
+  /// One line for the card under the balance.
+  String get summary => perDay <= 0
+      ? 'One day never undoes your progress.'
+      : 'About $perDay kcal less a day $when evens it out'
+          '${partial ? ' (most of it)' : ''}.';
+
+  /// What we ask Coach when they tap it.
+  String get question =>
+      "I've gone over my calories today by $overBy kcal and feel a bit rubbish "
+      'about it. Can you help me feel better and even it out gently? I was '
+      'thinking about $perDay kcal less a day $when'
+      '${nextWeek || days == 1 ? '' : ' ($days days)'}'
+      '${partial ? ", and not worrying about the rest" : ''}. '
+      'What easy swaps would do that?';
+}
+
 /// Coach's answer: the text, plus any changes it's proposing.
 class CoachReply {
   final String text;

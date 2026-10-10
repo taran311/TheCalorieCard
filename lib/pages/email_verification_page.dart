@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/pages/auth_page.dart';
-import 'package:namer_app/pages/get_started_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/ui/auth_ui.dart';
 
@@ -13,13 +12,25 @@ import 'package:namer_app/ui/auth_ui.dart';
 class EmailVerificationPage extends StatefulWidget {
   final String email;
 
-  const EmailVerificationPage({super.key, required this.email});
+  /// Send a fresh link as the page opens. Off when the app reopens on this
+  /// page (they already have one; Resend is there if not).
+  final bool sendOnOpen;
+
+  const EmailVerificationPage({
+    super.key,
+    required this.email,
+    this.sendOnOpen = true,
+  });
 
   @override
   State<EmailVerificationPage> createState() => _EmailVerificationPageState();
 }
 
 class _EmailVerificationPageState extends State<EmailVerificationPage> {
+  /// When the last automatic email went out, so two copies of this page
+  /// (e.g. during a route change) don't both send one.
+  static DateTime? _lastAutoSend;
+
   Timer? _pollTimer;
   Timer? _resendTimer;
   int _resendIn = 0;
@@ -30,7 +41,13 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
   @override
   void initState() {
     super.initState();
-    _sendEmail(initial: true);
+    final last = _lastAutoSend;
+    final recent = last != null &&
+        DateTime.now().difference(last) < const Duration(seconds: 60);
+    if (widget.sendOnOpen && !recent) {
+      _lastAutoSend = DateTime.now();
+      _sendEmail(initial: true);
+    }
     _pollTimer =
         Timer.periodic(const Duration(seconds: 3), (_) => _check(quiet: true));
   }
@@ -94,9 +111,12 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
         _leaving = true;
         _pollTimer?.cancel();
         Provider.of<CategoryService>(context, listen: false).resetToDefault();
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => GetStartedPage()),
+        // Back through AuthPage: it checks for an existing card, so a
+        // returning user isn't sent through setup (which would overwrite
+        // their card). New users carry on to setup from there.
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AuthPage()),
+          (route) => false,
         );
         return;
       }

@@ -51,10 +51,14 @@ class AdaptiveFrame extends StatelessWidget {
                           ? const BoxConstraints(maxWidth: 460, maxHeight: 900)
                           : const BoxConstraints(),
                       child: Material(
-                        elevation: framed ? 12 : 0,
-                        shadowColor: Colors.black26,
-                        borderRadius:
-                            BorderRadius.circular(framed ? 28 : 0),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(framed ? 28 : 0),
+                          side: framed
+                              ? const BorderSide(color: AppColors.border)
+                              : BorderSide.none,
+                        ),
                         clipBehavior: Clip.antiAlias,
                         child: LocalMediaQuery(child: child),
                       ),
@@ -190,14 +194,18 @@ class _MiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
+    // Today's date, like the real card (dd/MM).
+    final now = DateTime.now();
+    final today = '${now.day.toString().padLeft(2, '0')}/'
+        '${now.month.toString().padLeft(2, '0')}';
+    return SizedBox(
       width: 340,
       height: 200,
       child: CalorieCardFront(
         amount: 1840,
         holder: 'Alex Morgan',
-        validThru: '09/10',
-        macros: [
+        validThru: today,
+        macros: const [
           CardMacro(name: 'Protein', remaining: 112, color: CalorieCardColors.protein),
           CardMacro(name: 'Carbs', remaining: 180, color: CalorieCardColors.carbs),
           CardMacro(name: 'Fat', remaining: 54, color: CalorieCardColors.fat),

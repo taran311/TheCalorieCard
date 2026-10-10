@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/pages/messages_page.dart';
 import 'package:namer_app/ui/responsive.dart';
 
-/// Chat icon (with an unread count) for the top of the Friends page.
+/// Chat icon (with an unread count) for the Friends page's app bar.
 class MessagesButton extends StatefulWidget {
   const MessagesButton({super.key});
 
@@ -39,7 +39,8 @@ class _MessagesButtonState extends State<MessagesButton> {
           tooltip: 'Messages',
           color: Colors.white,
           splashRadius: 20,
-          onPressed: () => Navigator.of(context).push(
+          // On phones this opens over the bottom bar, like the chats it leads to.
+          onPressed: () => chatNavigator(context).push(
             MaterialPageRoute(builder: (_) => const MessagesPage()),
           ),
           icon: unread <= 0

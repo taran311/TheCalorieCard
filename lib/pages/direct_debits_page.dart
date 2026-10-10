@@ -17,7 +17,16 @@ class DirectDebitsPage extends StatelessWidget {
         stream: DirectDebitService.forUser(uid),
         builder: (context, snap) {
           if (snap.hasError) {
-            return const Center(child: Text("Couldn't load direct debits."));
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  "Couldn't load your direct debits. Check your connection and try again.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ),
+            );
           }
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -30,7 +39,7 @@ class DirectDebitsPage extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.autorenew, size: 56, color: AppColors.gray400),
+                    Icon(Icons.autorenew, size: 56, color: AppColors.muted),
                     SizedBox(height: 12),
                     Text('No direct debits yet',
                         style: TextStyle(
@@ -48,11 +57,17 @@ class DirectDebitsPage extends StatelessWidget {
             );
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
             children: [
               for (final d in debits)
                 Card(
                   margin: const EdgeInsets.only(bottom: 10),
+                  color: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppDecor.radius),
+                    side: const BorderSide(color: AppColors.border),
+                  ),
                   child: ListTile(
                     leading: const Icon(Icons.autorenew, color: AppColors.sky),
                     title: Text(d.name),
@@ -62,6 +77,7 @@ class DirectDebitsPage extends StatelessWidget {
                     ),
                     trailing: IconButton(
                       tooltip: 'Cancel direct debit',
+                      color: AppColors.red600,
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () async {
                         final ok = await showDialog<bool>(
@@ -78,11 +94,24 @@ class DirectDebitsPage extends StatelessWidget {
                               TextButton(
                                   onPressed: () =>
                                       Navigator.pop(dialogContext, true),
-                                  child: const Text('Cancel it')),
+                                  style: TextButton.styleFrom(
+                                      foregroundColor: AppColors.red600),
+                                  child: const Text('Cancel direct debit')),
                             ],
                           ),
                         );
-                        if (ok == true) await DirectDebitService.cancel(d);
+                        if (ok != true) return;
+                        try {
+                          await DirectDebitService.cancel(d);
+                        } catch (_) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      "Couldn't cancel that. Please try again.")),
+                            );
+                          }
+                        }
                       },
                     ),
                   ),

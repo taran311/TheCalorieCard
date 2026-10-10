@@ -6,6 +6,7 @@ import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/wrapped_service.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/statement_widgets.dart';
 import 'package:namer_app/services/achievement_service.dart';
 
 /// Monthly statement / "Wrapped": your month in review, shareable to chat.
@@ -20,6 +21,7 @@ class _WrappedPageState extends State<WrappedPage> {
   final User _user = FirebaseAuth.instance.currentUser!;
   late DateTime _month;
   late Future<MonthWrap> _wrap;
+  bool _sharing = false;
 
   @override
   void initState() {
@@ -46,9 +48,12 @@ class _WrappedPageState extends State<WrappedPage> {
   }
 
   Future<void> _share(MonthWrap wrap) async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
     final friends = await FriendsService.load(_user.uid).catchError(
         (_) => <Friend>[]);
     if (!mounted) return;
+    setState(() => _sharing = false);
     final text = wrap.toShareText();
     final target = await showModalBottomSheet<Object>(
       context: context,
@@ -121,7 +126,7 @@ class _WrappedPageState extends State<WrappedPage> {
           final loading = snap.connectionState != ConnectionState.done;
           final wrap = loading ? null : snap.data;
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
             children: [
               Row(
                 children: [
@@ -147,26 +152,51 @@ class _WrappedPageState extends State<WrappedPage> {
               ),
               const SizedBox(height: 12),
               if (!loading && snap.hasError)
-                const Center(child: Text("Couldn't load this month."))
+                Padding(
+                  padding: const EdgeInsets.only(top: 60),
+                  child: Column(
+                    children: [
+                      const Text(
+                        "Couldn't load this month.",
+                        style: TextStyle(color: AppColors.muted),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: () => setState(_load),
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                )
               else if (wrap == null)
                 const Padding(
                   padding: EdgeInsets.only(top: 80),
                   child: Center(child: CircularProgressIndicator()),
                 )
               else if (wrap.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 60),
+                Padding(
+                  padding: const EdgeInsets.only(top: 60),
                   child: Center(
-                    child: Text('Nothing logged this month yet.',
-                        style: TextStyle(color: AppColors.muted)),
+                    child: Text(
+                        _isCurrentMonth
+                            ? 'Nothing logged this month yet.'
+                            : 'Nothing logged in ${MonthWrap.nameOf(_month)}.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: AppColors.muted)),
                   ),
                 )
               else ...[
                 _WrapCard(wrap: wrap),
                 const SizedBox(height: 16),
                 FilledButton.icon(
-                  onPressed: () => _share(wrap),
-                  icon: const Icon(Icons.ios_share),
+                  onPressed: _sharing ? null : () => _share(wrap),
+                  icon: _sharing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.ios_share),
                   label: const Text('Share'),
                 ),
               ],
@@ -228,14 +258,14 @@ class _WrapCard extends StatelessWidget {
           const SizedBox(height: 16),
           Row(
             children: [
-              stat('🍽️', '${wrap.averageCalories.round()}', 'avg kcal/day'),
-              stat('💪', '${wrap.totalProtein.round()}g', 'protein'),
+              stat('🍽️', formatKcal(wrap.averageCalories), 'avg kcal/day'),
+              stat('💪', '${formatKcal(wrap.totalProtein)}g', 'protein'),
               stat(
                   '🎯',
                   wrap.senseGuesses > 0
                       ? '${wrap.calorieSense.round()}%'
                       : '–',
-                  'calorie sense'),
+                  'guess accuracy'),
             ],
           ),
           if (wrap.topFoods.isNotEmpty) ...[

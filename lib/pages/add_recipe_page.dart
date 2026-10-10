@@ -28,6 +28,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       TextEditingController(text: '1');
   final List<_IngredientEntry> _ingredients = [];
   bool _saving = false;
+  bool _loading = false; // loading an existing recipe to edit
   String _servingUnit = 'Serving';
   int? _editingIngredientIndex;
   late TextEditingController _ingredientPortionController;
@@ -83,6 +84,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
     ProxyClient.warmUp();
     _ingredientPortionController = TextEditingController();
     if (widget.recipeId != null) {
+      _loading = true;
       _loadRecipeForEdit(widget.recipeId!);
     }
   }
@@ -232,7 +234,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Tutorial complete! Now try it yourself.'),
+          content: Text('Your turn! Add your own recipe.'),
           backgroundColor: AppColors.green,
           duration: Duration(seconds: 2),
         ),
@@ -243,19 +245,21 @@ class _AddRecipePageState extends State<AddRecipePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.canvas,
       appBar: AppBar(
-        title: Text(widget.recipeId != null ? 'Edit Recipe' : 'Add Recipe'),
+        title: Text(widget.recipeId != null ? 'Edit recipe' : 'New recipe'),
         actions: [
           if (widget.recipeId == null)
             IconButton(
               onPressed: _tutorialMode ? null : _runTutorial,
-              icon: const Icon(Icons.help_outline, size: 36),
-              tooltip: 'Tutorial',
-              iconSize: 36,
+              icon: const Icon(Icons.help_outline),
+              tooltip: 'Show me how',
             ),
         ],
       ),
-      body: Stack(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Stack(
         children: [
           AbsorbPointer(
             absorbing: _tutorialMode,
@@ -269,7 +273,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(
-                        labelText: 'Recipe Name',
+                        labelText: 'Recipe name',
+                        hintText: 'e.g. Chicken curry',
                         border: OutlineInputBorder(),
                       ),
                       validator: (v) => (v == null || v.trim().isEmpty)
@@ -278,7 +283,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Serving Size',
+                      'This recipe makes',
                       style:
                           TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     ),
@@ -289,11 +294,12 @@ class _AddRecipePageState extends State<AddRecipePage> {
                           flex: 2,
                           child: TextFormField(
                             controller: _servingSizeController,
+                            onChanged: (_) => setState(() {}),
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
                             decoration: const InputDecoration(
-                              labelText: 'Per',
+                              labelText: 'Amount',
                               border: OutlineInputBorder(),
                               contentPadding: EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -324,7 +330,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                             items: const [
                               DropdownMenuItem(
                                 value: 'Serving',
-                                child: Text('Serving'),
+                                child: Text('Servings'),
                               ),
                               DropdownMenuItem(
                                 value: 'g',
@@ -358,9 +364,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
                     const SizedBox(height: 8),
                     _buildFreeTextInput(),
                     const SizedBox(height: 24),
+                    _buildTotalsBar(),
+                    if (_ingredients.isNotEmpty) const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton.icon(
+                      child: FilledButton.icon(
                         onPressed: _saving
                             ? null
                             : (widget.recipeId != null
@@ -368,18 +376,14 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                 : _saveRecipe),
                         icon: const Icon(Icons.check),
                         label: Text(widget.recipeId != null
-                            ? 'Save Changes'
-                            : 'Save Recipe'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
+                            ? 'Save changes'
+                            : 'Save recipe'),
+                        style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 48),
                   ],
                 ),
               ),
@@ -426,7 +430,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Tutorial Mode',
+                            'Quick demo',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 18,
@@ -435,7 +439,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Watch how to create a recipe',
+                            'Watch how a recipe comes together',
                             style: TextStyle(
                               color: Colors.white70,
                               fontSize: 12,
@@ -453,9 +457,96 @@ class _AddRecipePageState extends State<AddRecipePage> {
     );
   }
 
+  /// Live totals for the ingredients so far, whole recipe and per serving.
+  Widget _buildTotalsBar() {
+    if (_ingredients.isEmpty) return const SizedBox.shrink();
+    final totals = RecipeService.totalsOf(_recipeIngredients);
+    double t(String key) => BalanceService.number(totals[key]) ?? 0;
+    final kcal = t('total_calories');
+    final makes = double.tryParse(_servingSizeController.text.trim());
+    final amount = makes != null && makes.isFinite && makes > 0 ? makes : 1.0;
+    final grams = _servingUnit == 'g';
+    final perLabel = grams ? 'per 100 g' : 'per serving';
+    final perKcal = grams ? kcal * 100 / amount : kcal / amount;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.indigo50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.indigo100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Whole recipe: ${kcal.round()} kcal · $perLabel: ${perKcal.round()} kcal',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryDark,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              Text(
+                'Protein ${t('total_protein').round()}g',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, color: AppColors.proteinText),
+              ),
+              Text(
+                'Carbs ${t('total_carbs').round()}g',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, color: AppColors.carbsText),
+              ),
+              Text(
+                'Fat ${t('total_fat').round()}g',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, color: AppColors.fatText),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Removes an ingredient, with Undo to put it back where it was.
+  void _removeIngredient(int idx) {
+    final removed = _ingredients[idx];
+    setState(() {
+      _ingredients.removeAt(idx);
+      _editingIngredientIndex = null;
+    });
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Removed ${removed.name}'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            if (!mounted) return;
+            setState(() {
+              final at = idx <= _ingredients.length ? idx : _ingredients.length;
+              _ingredients.insert(at, removed);
+              _editingIngredientIndex = null;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _buildSelectedIngredients() {
     if (_ingredients.isEmpty) {
-      return const Text('No ingredients yet. Add from search below.');
+      return const Text(
+        'No ingredients yet. Type them below, e.g. "200g chicken, 1 onion".',
+        style: TextStyle(color: AppColors.muted),
+      );
     }
 
     return Column(
@@ -495,18 +586,16 @@ class _AddRecipePageState extends State<AddRecipePage> {
                       ),
                     ),
                     IconButton(
+                      tooltip: 'Change amount',
                       icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
                       onPressed: () {
                         _startEditingIngredient(idx, ing.portion);
                       },
                     ),
                     IconButton(
+                      tooltip: 'Remove',
                       icon: const Icon(Icons.delete_outline, color: AppColors.red600),
-                      onPressed: () {
-                        setState(() {
-                          _ingredients.removeAt(idx);
-                        });
-                      },
+                      onPressed: () => _removeIngredient(idx),
                     ),
                   ],
                 ),
@@ -532,7 +621,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                       ),
                     ),
                     SizedBox(
-                      width: 55,
+                      width: 72,
                       child: TextField(
                         controller: _ingredientPortionController,
                         keyboardType: const TextInputType.numberWithOptions(
@@ -561,8 +650,14 @@ class _AddRecipePageState extends State<AddRecipePage> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () async {
+                    IconButton.filled(
+                      tooltip: 'Save amount',
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppColors.emerald600,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.check),
+                      onPressed: () {
                         final newPortion = double.tryParse(
                             _ingredientPortionController.text.trim());
                         if (newPortion == null ||
@@ -597,40 +692,15 @@ class _AddRecipePageState extends State<AddRecipePage> {
                           _editingIngredientIndex = null;
                         });
                       },
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.emerald400,
-                        ),
-                        child: const Icon(
-                          Icons.check,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                      ),
                     ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () {
+                    IconButton(
+                      tooltip: 'Cancel',
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
                         setState(() {
                           _editingIngredientIndex = null;
                         });
                       },
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.red400,
-                        ),
-                        child: const Icon(
-                          Icons.close,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -666,19 +736,25 @@ class _AddRecipePageState extends State<AddRecipePage> {
   }
   // Edit mode: load existing recipe and its ingredients
   Future<void> _loadRecipeForEdit(String recipeId) async {
-    setState(() => _saving = true);
     try {
       final firestore = FirebaseFirestore.instance;
       final recipeSnap =
           await firestore.collection('recipes').doc(recipeId).get();
-      if (!recipeSnap.exists || !mounted) return;
-      final data = recipeSnap.data()!;
+      if (!mounted) return;
+      final data = recipeSnap.data();
+      if (!recipeSnap.exists || data == null) {
+        _leaveWithMessage('That recipe no longer exists.');
+        return;
+      }
 
       // Name
-      _nameController.text = (data['name'] as String?)?.trim() ?? '';
+      _nameController.text = (data['name'] ?? '').toString().trim();
 
       // Serving size
-      final serving = (data['serving_size'] as String?) ?? 'Per 1 Serving';
+      final servingValue = data['serving_size'];
+      final serving = servingValue is String && servingValue.isNotEmpty
+          ? servingValue
+          : 'Per 1 Serving';
       _applyServingSizeToFields(serving);
 
       // Ingredients (authoritative list from user_food with foodCategory 'Recipe')
@@ -693,12 +769,12 @@ class _AddRecipePageState extends State<AddRecipePage> {
       for (final doc in ingSnap.docs) {
         final d = doc.data();
         loaded.add(_IngredientEntry(
-          name: (d['food_description'] as String?) ?? 'Item',
-          calories: ((d['food_calories'] as num?)?.toDouble() ?? 0),
-          protein: ((d['food_protein'] as num?)?.toDouble() ?? 0),
-          carbs: ((d['food_carbs'] as num?)?.toDouble() ?? 0),
-          fat: ((d['food_fat'] as num?)?.toDouble() ?? 0),
-          portion: (d['food_portion'] as String?) ?? '',
+          name: (d['food_description'] ?? 'Ingredient').toString(),
+          calories: BalanceService.number(d['food_calories']) ?? 0,
+          protein: BalanceService.number(d['food_protein']) ?? 0,
+          carbs: BalanceService.number(d['food_carbs']) ?? 0,
+          fat: BalanceService.number(d['food_fat']) ?? 0,
+          portion: (d['food_portion'] ?? '').toString(),
         ));
       }
       if (!mounted) return;
@@ -709,13 +785,18 @@ class _AddRecipePageState extends State<AddRecipePage> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load recipe: $e')),
-        );
+        _leaveWithMessage("Couldn't open that recipe. Please try again.");
       }
-    } finally {
-      if (mounted) setState(() => _saving = false);
+      return;
     }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  /// Closes the editor and explains why.
+  void _leaveWithMessage(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _applyServingSizeToFields(String serving) {
@@ -792,7 +873,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
           SnackBar(
             content: Text(e is StateError
                 ? e.message
-                : "Couldn't save your changes. Please try again."),
+                : "Couldn't save that recipe. Please try again."),
           ),
         );
       }
@@ -819,7 +900,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text("Couldn't save the recipe. Please try again.")),
+              content: Text("Couldn't save that recipe. Please try again.")),
         );
         setState(() => _saving = false);
       }
@@ -878,11 +959,12 @@ class _AddRecipePageState extends State<AddRecipePage> {
           controller: _freeTextController,
           textInputAction: TextInputAction.done,
           decoration: InputDecoration(
-            labelText: 'Ingredients',
+            labelText: 'Add ingredients',
             hintText: 'e.g. 200g chicken breast, 1 onion, 100g rice',
             border: const OutlineInputBorder(),
             helperText:
-                'Separate with commas, or press Enter after each (pasting a list works too)',
+                'Separate with commas or press Enter. Pasting a list works too.',
+            helperMaxLines: 2,
             suffixIcon: IconButton(
               tooltip: 'Add to list',
               icon: const Icon(Icons.add_circle_outline),
@@ -916,7 +998,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
+            child: FilledButton.icon(
               onPressed: _calculatingAi ? null : _calculateAllWithAi,
               icon: _calculatingAi
                   ? const SizedBox(
@@ -924,33 +1006,28 @@ class _AddRecipePageState extends State<AddRecipePage> {
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(AppColors.primaryDark),
                       ),
                     )
                   : const Icon(Icons.auto_awesome),
-              label:
-                  Text(_calculatingAi ? 'Calculating...' : 'Calculate with AI'),
-              style: ElevatedButton.styleFrom(
+              label: Text(
+                  _calculatingAi ? 'Working it out…' : 'Work out calories'),
+              style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
               ),
             ),
           ),
           if (_calculatingAi && !_showMiniGame) ...[
             const SizedBox(height: 12),
-            ElevatedButton.icon(
+            OutlinedButton.icon(
               onPressed: () {
                 setState(() {
                   _showMiniGame = true;
                 });
               },
               icon: const Icon(Icons.sports_esports),
-              label: const Text('Play Ping Pong While You Wait'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.violet600,
-                foregroundColor: Colors.white,
-              ),
+              label: const Text('Play ping pong while you wait'),
             ),
           ],
         ],
@@ -1002,13 +1079,20 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-              'Added ${results.length} ingredient${results.length == 1 ? '' : 's'}'
-              '${failed.isNotEmpty ? '. ${failed.length} failed and ${failed.length == 1 ? 'is' : 'are'} still listed; tap calculate to retry.' : ''}'),
+          content: Text(_lookupMessage(results.length, failed.length)),
         ),
       );
     }
   }
+}
+
+/// Snackbar text after working out calories.
+String _lookupMessage(int added, int failed) {
+  final addedText = 'Added $added ingredient${added == 1 ? '' : 's'}';
+  if (failed == 0) return addedText;
+  final missed = "we couldn't find $failed. Check the spelling and tap "
+      'Work out calories again.';
+  return added == 0 ? 'Sorry, $missed' : '$addedText, but $missed';
 }
 
 class _IngredientEntry {

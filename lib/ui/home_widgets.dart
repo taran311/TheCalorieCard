@@ -26,7 +26,7 @@ class DayStepper extends StatelessWidget {
   }) : firstDate = firstDate ?? DateTime(2020, 1, 1);
 
   String _label(DateTime d) {
-    final now = DateTime.now();
+    final now = BalanceService.now();
     if (_sameDay(d, now)) return 'Today';
     if (_sameDay(d, BalanceService.addDays(now, -1))) {
       return 'Yesterday';
@@ -37,7 +37,7 @@ class DayStepper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    final now = BalanceService.now();
     final day = DateTime(selected.year, selected.month, selected.day);
     final canGoForward = !_sameDay(day, now) && day.isBefore(now);
     final canGoBack = day.isAfter(firstDate);
@@ -106,11 +106,15 @@ class MealTabs extends StatelessWidget {
   final String selected;
   final ValueChanged<String> onSelected;
 
+  /// Calories logged per meal, shown under each label. Empty hides them.
+  final Map<String, int> totals;
+
   const MealTabs({
     super.key,
     required this.meals,
     required this.selected,
     required this.onSelected,
+    this.totals = const {},
   });
 
   IconData _icon(String meal) {
@@ -178,6 +182,21 @@ class MealTabs extends StatelessWidget {
                                 : AppColors.muted,
                           ),
                         ),
+                        if (totals.isNotEmpty)
+                          Text(
+                            (totals[meal] ?? 0) > 0
+                                ? '${totals[meal]} kcal'
+                                : '–',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w500,
+                              color: meal == selected
+                                  ? AppColors.indigo100
+                                  : AppColors.muted,
+                            ),
+                          ),
                       ],
                     ),
                   ),

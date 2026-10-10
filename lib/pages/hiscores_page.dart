@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/pages/challenges_page.dart';
+import 'package:namer_app/pages/friends_page.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -51,10 +52,10 @@ final _boards = <_Board>[
     value: (p) => p.proteinThisWeek.round(),
   ),
   _Board(
-    label: 'Calorie Sense',
+    label: 'Calorie sense',
     emoji: '🎯',
-    description: 'How well you guess calories this month. Counts after '
-        '5 guesses (guess while food is looking up)',
+    description:
+        'How close your calorie guesses are this month. Shows after 5 guesses.',
     unit: '%',
     // One lucky guess shouldn't top the board: you need a few first.
     value: (p) => p.senseGuesses >= 5 ? p.calorieSense.round() : 0,
@@ -62,7 +63,11 @@ final _boards = <_Board>[
 ];
 
 class HiscoresPage extends StatefulWidget {
-  const HiscoresPage({Key? key}) : super(key: key);
+  /// True when opened from the Friends page, so "Add friends" can just go
+  /// back there.
+  final bool fromFriends;
+
+  const HiscoresPage({Key? key, this.fromFriends = false}) : super(key: key);
 
   @override
   State<HiscoresPage> createState() => _HiscoresPageState();
@@ -71,6 +76,13 @@ class HiscoresPage extends StatefulWidget {
 class _HiscoresPageState extends State<HiscoresPage> {
   int _board = 0;
   Future<List<PlayerStats>>? _future;
+
+  /// Created once: building it in build() would re-subscribe every rebuild.
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _userStream =
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser!.uid)
+          .snapshots();
   List<String> _loadedFor = const [];
 
   void _ensureLoaded(String uid, List<String> friendIds) {
@@ -94,16 +106,16 @@ class _HiscoresPageState extends State<HiscoresPage> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text('Please log in to view hiscores')),
+      return Scaffold(
+        appBar: AppBar(title: const Text('Hiscores')),
+        body: const Center(child: Text('Sign in to see hiscores.')),
       );
     }
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
-        title: const Text('Hiscores',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Hiscores'),
         actions: [
           IconButton(
             tooltip: 'Challenges',
@@ -121,11 +133,20 @@ class _HiscoresPageState extends State<HiscoresPage> {
         ],
       ),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .snapshots(),
+        stream: _userStream,
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  "Couldn't load this. Check your connection.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ),
+            );
+          }
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -134,7 +155,9 @@ class _HiscoresPageState extends State<HiscoresPage> {
                   .toList() ??
               <String>[];
 
-          if (friends.isEmpty) return const _NoFriends();
+          if (friends.isEmpty) {
+            return _NoFriends(fromFriends: widget.fromFriends);
+          }
 
           _ensureLoaded(user.uid, friends);
 
@@ -142,14 +165,18 @@ class _HiscoresPageState extends State<HiscoresPage> {
             future: _future,
             builder: (context, snap) {
               if (snap.hasError) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      "Couldn't load hiscores.\n${snap.error}",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.muted),
-                    ),
+                return RefreshIndicator(
+                  onRefresh: () => _refresh(user.uid),
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(24, 80, 24, 96),
+                    children: const [
+                      Text(
+                        "Couldn't load hiscores.\nPull down to try again.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.muted),
+                      ),
+                    ],
                   ),
                 );
               }
@@ -165,10 +192,16 @@ class _HiscoresPageState extends State<HiscoresPage> {
                   return a.name.toLowerCase().compareTo(b.name.toLowerCase());
                 });
 
+              // Nobody has scored yet: don't crown anyone.
+              final noScores =
+                  ranked.isEmpty || board.value(ranked.first) <= 0;
+
               return RefreshIndicator(
                 onRefresh: () => _refresh(user.uid),
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  // Room at the bottom for the Coach button.
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
                   children: [
                     _BoardPicker(
                       selected: _board,
@@ -182,7 +215,22 @@ class _HiscoresPageState extends State<HiscoresPage> {
                           color: AppColors.muted, fontSize: 13),
                     ),
                     const SizedBox(height: 18),
-                    _Podium(ranked: ranked, board: board),
+                    if (noScores)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 24),
+                        decoration: AppDecor.card,
+                        child: const Text(
+                          'No scores yet. Finish today to get on the board!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.gray700,
+                          ),
+                        ),
+                      )
+                    else
+                      _Podium(ranked: ranked, board: board),
                     const SizedBox(height: 18),
                     for (var i = 0; i < ranked.length; i++)
                       _RankRow(
@@ -411,7 +459,9 @@ class _RankRow extends StatelessWidget {
 }
 
 class _NoFriends extends StatelessWidget {
-  const _NoFriends();
+  final bool fromFriends;
+
+  const _NoFriends({required this.fromFriends});
 
   @override
   Widget build(BuildContext context) {
@@ -421,10 +471,10 @@ class _NoFriends extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.group_off, size: 80, color: AppColors.gray400),
+            const Icon(Icons.group_off, size: 80, color: AppColors.gray400),
             const SizedBox(height: 16),
-            Text(
-              'No Friends Yet',
+            const Text(
+              'No friends yet',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -432,10 +482,23 @@ class _NoFriends extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              'Add friends to see leaderboards!',
+            const Text(
+              "Add a friend to see who's on top.",
               style: TextStyle(fontSize: 14, color: AppColors.muted),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: () {
+                if (fromFriends) {
+                  Navigator.of(context).pop();
+                } else {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const FriendsPage()),
+                  );
+                }
+              },
+              child: const Text('Add friends'),
             ),
           ],
         ),

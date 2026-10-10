@@ -1,8 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/chat_service.dart';
+import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
+import 'package:namer_app/pages/challenges_page.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/friend_group_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
@@ -17,16 +20,43 @@ class FriendsPage extends StatefulWidget {
 }
 
 class _FriendsPageState extends State<FriendsPage> {
-  final TextEditingController _emailController = TextEditingController();
-  final ValueNotifier<bool> _showAddFriendForm = ValueNotifier<bool>(false);
-  final ValueNotifier<bool> _isSubmitting = ValueNotifier<bool>(false);
-  final ValueNotifier<bool> _isDeleteMode = ValueNotifier<bool>(false);
-  String? _errorMessage;
+  final String _uid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
-  // Friend group creation
-  final TextEditingController _groupNameController = TextEditingController();
-  Set<String> _selectedFriendIds = {};
-  bool _isCreatingGroup = false;
+  final TextEditingController _emailController = TextEditingController();
+  final ValueNotifier<bool> _isSubmitting = ValueNotifier<bool>(false);
+
+  /// The add-friend error, shown inside the add-friend sheet.
+  final ValueNotifier<String?> _addError = ValueNotifier<String?>(null);
+
+  // Created once: building them in build() would re-subscribe every rebuild.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _incomingRequests =
+      FirebaseFirestore.instance
+          .collection('friend_requests')
+          .where('to_user_id', isEqualTo: _uid)
+          .where('status', isEqualTo: 'pending')
+          .snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _sentRequests =
+      FirebaseFirestore.instance
+          .collection('friend_requests')
+          .where('from_user_id', isEqualTo: _uid)
+          .where('status', isEqualTo: 'pending')
+          .snapshots();
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _userDoc =
+      FirebaseFirestore.instance.collection('users').doc(_uid).snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _groups =
+      FirebaseFirestore.instance
+          .collection('friend_groups')
+          .where('members', arrayContains: _uid)
+          .snapshots();
+
+  /// Friends' user docs, fetched once each.
+  final Map<String, Future<DocumentSnapshot<Map<String, dynamic>>>>
+      _friendDocs = {};
+
+  Future<DocumentSnapshot<Map<String, dynamic>>> _friendDoc(String id) =>
+      _friendDocs.putIfAbsent(
+          id,
+          () => FirebaseFirestore.instance.collection('users').doc(id).get());
 
   @override
   void initState() {
@@ -36,12 +66,17 @@ class _FriendsPageState extends State<FriendsPage> {
 
   @override
   void dispose() {
-    _showAddFriendForm.dispose();
     _isSubmitting.dispose();
-    _isDeleteMode.dispose();
+    _addError.dispose();
     _emailController.dispose();
-    _groupNameController.dispose();
     super.dispose();
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _initializeUserDocument() async {
@@ -69,20 +104,30 @@ class _FriendsPageState extends State<FriendsPage> {
     }
   }
 
-  Future<void> _submitFriendRequest() async {
+  /// Shows [message] in the add-friend sheet and re-enables the button.
+  void _fail(String message) {
+    _addError.value = message;
+    _isSubmitting.value = false;
+  }
+
+  Future<void> _submitFriendRequest(VoidCallback closeSheet) async {
+    if (_isSubmitting.value) return;
     final email = _emailController.text.trim();
 
     if (email.isEmpty) {
-      setState(() => _errorMessage = 'Please enter an email address');
+      _fail("Enter your friend's email.");
       return;
     }
 
     _isSubmitting.value = true;
-    _errorMessage = null;
+    _addError.value = null;
 
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
+      if (currentUser == null) {
+        _fail('Please sign in again.');
+        return;
+      }
 
       // Find user by email (as typed, then lower-case: sign-up emails are
       // usually stored lower-case, but people type "Sam@Gmail.com").
@@ -100,8 +145,8 @@ class _FriendsPageState extends State<FriendsPage> {
       }
 
       if (userQuery.docs.isEmpty) {
-        _errorMessage = 'User not found';
-        _isSubmitting.value = false;
+        _fail("We couldn't find anyone with that email. Check it, or ask "
+            'them to sign up first.');
         return;
       }
 
@@ -109,8 +154,7 @@ class _FriendsPageState extends State<FriendsPage> {
 
       // Prevent self-requests
       if (targetUserId == currentUser.uid) {
-        _errorMessage = 'You cannot add yourself';
-        _isSubmitting.value = false;
+        _fail("That's your own email.");
         return;
       }
 
@@ -123,8 +167,7 @@ class _FriendsPageState extends State<FriendsPage> {
       final friends =
           (currentUserDoc.data()?['friends'] as List?)?.cast<String>() ?? [];
       if (friends.contains(targetUserId)) {
-        _errorMessage = 'Already friends with this user';
-        _isSubmitting.value = false;
+        _fail("You're already friends.");
         return;
       }
 
@@ -138,8 +181,7 @@ class _FriendsPageState extends State<FriendsPage> {
           .get();
 
       if (existingRequest.docs.isNotEmpty) {
-        _errorMessage = 'Friend request already sent';
-        _isSubmitting.value = false;
+        _fail("You've already sent them a request.");
         return;
       }
 
@@ -154,8 +196,8 @@ class _FriendsPageState extends State<FriendsPage> {
           .get();
       if (reverseRequest.docs.isNotEmpty) {
         _emailController.clear();
-        _showAddFriendForm.value = false;
         _isSubmitting.value = false;
+        closeSheet();
         await _acceptFriendRequest(
           reverseRequest.docs.first.id,
           targetUserId,
@@ -175,18 +217,104 @@ class _FriendsPageState extends State<FriendsPage> {
       });
 
       _emailController.clear();
-      _showAddFriendForm.value = false;
       _isSubmitting.value = false;
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Friend request sent!')),
-        );
-      }
-    } catch (e) {
-      _errorMessage = 'Error: ${e.toString()}';
-      _isSubmitting.value = false;
+      closeSheet();
+      _snack('Request sent');
+    } catch (_) {
+      _fail("Couldn't send the request. Check your connection and try again.");
     }
+  }
+
+  void _showAddFriendSheet() {
+    _emailController.clear();
+    _addError.value = null;
+    _isSubmitting.value = false;
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        void close() {
+          if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+        }
+
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Add a friend',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "We'll send them a friend request.",
+                    style: TextStyle(color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 16),
+                  ValueListenableBuilder<String?>(
+                    valueListenable: _addError,
+                    builder: (context, error, _) => TextField(
+                      controller: _emailController,
+                      autofocus: true,
+                      autocorrect: false,
+                      keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _submitFriendRequest(close),
+                      onChanged: (_) {
+                        if (_addError.value != null) _addError.value = null;
+                      },
+                      decoration: InputDecoration(
+                        labelText: "Friend's email",
+                        hintText: 'name@example.com',
+                        errorText: error,
+                        errorMaxLines: 3,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _isSubmitting,
+                    builder: (context, busy, _) => FilledButton(
+                      onPressed: busy ? null : () => _submitFriendRequest(close),
+                      child: busy
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Send request'),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: close,
+                    child: const Text('Cancel'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _cancelFriendRequest(String requestId) async {
@@ -195,18 +323,9 @@ class _FriendsPageState extends State<FriendsPage> {
           .collection('friend_requests')
           .doc(requestId)
           .delete();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Friend request cancelled')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
-      }
+      _snack('Request cancelled');
+    } catch (_) {
+      _snack('Something went wrong. Please try again.');
     }
   }
 
@@ -242,17 +361,9 @@ class _FriendsPageState extends State<FriendsPage> {
         );
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('You are now friends with $fromEmail')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
-      }
+      _snack("You're now friends with ${FriendsService.displayName(fromEmail)}");
+    } catch (_) {
+      _snack('Something went wrong. Please try again.');
     }
   }
 
@@ -262,60 +373,89 @@ class _FriendsPageState extends State<FriendsPage> {
           .collection('friend_requests')
           .doc(requestId)
           .update({'status': 'rejected'});
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Friend request rejected')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
-      }
+      _snack('Request declined');
+    } catch (_) {
+      _snack('Something went wrong. Please try again.');
     }
   }
 
-  Future<void> _deleteFriends(List<String> friendIds) async {
+  Future<void> _confirmRemoveFriend(String friendId, String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Remove $name?'),
+        content:
+            const Text("You'll stop seeing each other's cards and hiscores."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.red600),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _removeFriend(friendId);
+  }
+
+  Future<void> _removeFriend(String friendId) async {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) return;
 
       await FirebaseFirestore.instance.runTransaction((transaction) async {
-        for (final friendId in friendIds) {
-          // Remove from current user's friends
-          transaction.update(
-            FirebaseFirestore.instance.collection('users').doc(currentUser.uid),
-            {
-              'friends': FieldValue.arrayRemove([friendId]),
-            },
-          );
+        // Remove from current user's friends
+        transaction.update(
+          FirebaseFirestore.instance.collection('users').doc(currentUser.uid),
+          {
+            'friends': FieldValue.arrayRemove([friendId]),
+          },
+        );
 
-          // Remove from friend's friends list
-          transaction.update(
-            FirebaseFirestore.instance.collection('users').doc(friendId),
-            {
-              'friends': FieldValue.arrayRemove([currentUser.uid]),
-            },
-          );
-        }
+        // Remove from friend's friends list
+        transaction.update(
+          FirebaseFirestore.instance.collection('users').doc(friendId),
+          {
+            'friends': FieldValue.arrayRemove([currentUser.uid]),
+          },
+        );
       });
 
-      _isDeleteMode.value = false;
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Friends deleted')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
-      }
+      _snack('Friend removed');
+    } catch (_) {
+      _snack('Something went wrong. Please try again.');
     }
+  }
+
+  void _openFriendCard(String friendId, String friendEmail) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HomePage(
+          readOnly: true,
+          userIdOverride: friendId,
+          showBanner: true,
+          bannerTitle: friendEmail,
+        ),
+      ),
+    );
+  }
+
+  void _openChat(String conversationId, String name, bool isGroup) {
+    if (!mounted) return;
+    chatNavigator(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatDetailPage(
+          conversationId: conversationId,
+          conversationName: name,
+          isGroup: isGroup,
+        ),
+      ),
+    );
   }
 
   Future<void> _startChatWithFriend(String friendId, String friendEmail) async {
@@ -352,25 +492,31 @@ class _FriendsPageState extends State<FriendsPage> {
         });
       }
 
-      // Navigate to chat
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ChatDetailPage(
-              conversationId: conversationId,
-              conversationName: friendEmail.split('@')[0],
-              isGroup: false,
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error starting chat: $e')),
-        );
-      }
+      _openChat(conversationId, friendEmail.split('@')[0], false);
+    } catch (_) {
+      _snack("Couldn't open the chat. Please try again.");
+    }
+  }
+
+  /// Sends a quick cheer into your chat with a friend, then opens the chat.
+  Future<void> _sendCheer(String friendId, String friendEmail) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await ChatService.sendToFriend(
+        uid: user.uid,
+        myName: FriendsService.displayName(user.email),
+        friendId: friendId,
+        friendName: FriendsService.displayName(friendEmail),
+        text: '👏 Keep it up!',
+      );
+      _openChat(
+        ChatService.conversationId(user.uid, friendId),
+        FriendsService.displayName(friendEmail),
+        false,
+      );
+    } catch (_) {
+      _snack('Message not sent. Check your connection and try again.');
     }
   }
 
@@ -410,312 +556,522 @@ class _FriendsPageState extends State<FriendsPage> {
         });
       }
 
-      // Navigate to chat
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ChatDetailPage(
-              conversationId: conversationId,
-              conversationName: groupName,
-              isGroup: true,
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error starting chat: $e')),
-        );
-      }
+      _openChat(conversationId, groupName, true);
+    } catch (_) {
+      _snack("Couldn't open the chat. Please try again.");
     }
   }
 
-  Future<void> _createFriendGroup() async {
-    final groupName = _groupNameController.text.trim();
-
-    if (groupName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a group name')),
-      );
-      return;
-    }
-
-    if (_selectedFriendIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one friend')),
-      );
-      return;
-    }
-
-    setState(() {
-      _isCreatingGroup = true;
-    });
-
-    try {
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
-
-      // Add creator to the members list
-      final allMembers = [currentUser.uid, ..._selectedFriendIds];
-
-      await FirebaseFirestore.instance.collection('friend_groups').add({
-        'name': groupName,
-        'creator_id': currentUser.uid,
-        'members': allMembers,
-        'created_at': FieldValue.serverTimestamp(),
-      });
-
-      _groupNameController.clear();
-      setState(() {
-        _selectedFriendIds.clear();
-        _isCreatingGroup = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Friend group created!')),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _isCreatingGroup = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
-      }
-    }
-  }
-
-  void _showGroupCreationModal(List<String> friendIds) {
-    final groupNameSuggestions = [
-      'SoberGophers',
-      'CleanMachines',
-      'KetoGang',
-      'TeamVegan',
-      'FatBurnersUnited',
-    ];
-
-    showModalBottomSheet(
+  Future<void> _showNewGroupSheet() async {
+    final created = await showModalBottomSheet<bool>(
       context: context,
+      showDragHandle: true,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          height: MediaQuery.of(context).size.height * 0.75,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
+      builder: (_) => _NewGroupSheet(uid: _uid),
+    );
+    if (created == true) _snack('Group created');
+  }
+
+  // ---------------------------------------------------------------- UI bits
+
+  static const _sectionStyle = TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
+    color: AppColors.ink,
+  );
+
+  static const _nameStyle = TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    color: AppColors.gray800,
+  );
+
+  static const _subStyle = TextStyle(fontSize: 12, color: AppColors.gray600);
+
+  Widget _emptyNote(String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      decoration: AppDecor.card,
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 14, color: AppColors.muted),
+      ),
+    );
+  }
+
+  Widget _loadError() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: Text(
+          "Couldn't load this. Check your connection.",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.muted),
+        ),
+      ),
+    );
+  }
+
+  Widget _loading() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 16),
+      child: Center(child: CircularProgressIndicator()),
+    );
+  }
+
+  Widget _avatar(String text, {Color color = AppColors.primary}) {
+    return CircleAvatar(
+      radius: 22,
+      backgroundColor: color,
+      child: Text(
+        text.initial.toUpperCase(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  /// A white, bordered, tappable card.
+  Widget _tappableCard({required VoidCallback onTap, required Widget child}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(AppDecor.radius)),
+          side: BorderSide(color: AppColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(onTap: onTap, child: child),
+      ),
+    );
+  }
+
+  Widget _hiscoresCard() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: const BorderRadius.all(Radius.circular(AppDecor.radius)),
+        clipBehavior: Clip.antiAlias,
+        child: Ink(
+          decoration: const BoxDecoration(gradient: AppColors.brandGradient),
+          child: InkWell(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const HiscoresPage(fromFriends: true),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.leaderboard,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Hiscores',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'See how you rank against friends',
+                          style: TextStyle(fontSize: 14, color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: Colors.white),
+                ],
+              ),
             ),
           ),
-          child: Column(
+        ),
+      ),
+    );
+  }
+
+  Widget _challengesCard() {
+    return _tappableCard(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ChallengesPage()),
+      ),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: AppColors.indigo50,
+              child: Icon(Icons.emoji_events_outlined,
+                  color: AppColors.primary, size: 22),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Challenges', style: _nameStyle),
+                  SizedBox(height: 2),
+                  Text('Go head-to-head this week', style: _subStyle),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: AppColors.gray400),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _incomingRequestsSection() {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _incomingRequests,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return _loadError();
+        if (!snapshot.hasData) return _loading();
+
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) return _emptyNote('No new requests');
+
+        return Column(
+          children: [
+            for (final doc in docs) _incomingRequestCard(doc),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _incomingRequestCard(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    final fromEmail = data['from_email'] as String?;
+    final fromUserId = data['from_user_id'] as String?;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecor.card,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Create Friend Group',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        setState(() {
-                          _selectedFriendIds.clear();
-                          _groupNameController.clear();
-                        });
-                      },
-                      icon: const Icon(Icons.close, color: Colors.white),
-                    ),
-                  ],
-                ),
-              ),
+              _avatar(fromEmail ?? 'U', color: AppColors.emerald600),
+              const SizedBox(width: 12),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Group Name',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _groupNameController,
-                        decoration: InputDecoration(
-                          hintText: 'Enter group name',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Suggested Names',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: groupNameSuggestions.map((name) {
-                          return GestureDetector(
-                            onTap: () {
-                              setModalState(() {
-                                _groupNameController.text = name;
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.indigo50,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color:
-                                      AppColors.primary.withValues(alpha: 0.3),
-                                ),
-                              ),
-                              child: Text(
-                                name,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Select Friends',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...friendIds.map((friendId) {
-                        return FutureBuilder<DocumentSnapshot>(
-                          future: FirebaseFirestore.instance
-                              .collection('users')
-                              .doc(friendId)
-                              .get(),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData) {
-                              return const SizedBox.shrink();
-                            }
-
-                            final friendEmail =
-                                (snapshot.data?.data() as Map<String, dynamic>?)?['email'] ?? 'Unknown';
-
-                            return CheckboxListTile(
-                              value: _selectedFriendIds.contains(friendId),
-                              onChanged: (bool? value) {
-                                setModalState(() {
-                                  if (value == true) {
-                                    _selectedFriendIds.add(friendId);
-                                  } else {
-                                    _selectedFriendIds.remove(friendId);
-                                  }
-                                });
-                                setState(() {});
-                              },
-                              title: Text(
-                                friendEmail,
-                                style: TextStyle(fontSize: 14),
-                              ),
-                              activeColor: AppColors.primary,
-                            );
-                          },
-                        );
-                      }).toList(),
-                    ],
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, -2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      FriendsService.displayName(fromEmail),
+                      style: _nameStyle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 2),
+                    const Text('wants to be your friend', style: _subStyle),
                   ],
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isCreatingGroup
-                        ? null
-                        : () {
-                            Navigator.pop(context);
-                            _createFriendGroup();
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: _isCreatingGroup
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : Text(
-                            'Create Group',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                  ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _acceptFriendRequest(
+                    doc.id,
+                    fromUserId ?? '',
+                    fromEmail ?? '',
+                  ),
+                  icon: const Icon(Icons.check, size: 20),
+                  label: const Text('Accept'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _rejectFriendRequest(doc.id),
+                  icon: const Icon(Icons.close, size: 20),
+                  label: const Text('Decline'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sentRequestsSection() {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _sentRequests,
+      builder: (context, snapshot) {
+        // Sent requests are a side note: stay quiet while loading or failing.
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 12),
+            const Text('Sent requests', style: _sectionStyle),
+            const SizedBox(height: 12),
+            for (final doc in snapshot.data!.docs) _sentRequestCard(doc),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _sentRequestCard(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final toEmail = doc.data()['to_email'] as String?;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      decoration: AppDecor.card,
+      child: Row(
+        children: [
+          _avatar(toEmail ?? 'U', color: AppColors.indigo400),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  FriendsService.displayName(toEmail),
+                  style: _nameStyle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                const Text('Waiting for them to accept', style: _subStyle),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => _cancelFriendRequest(doc.id),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _friendsSection() {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: _userDoc,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return _loadError();
+        if (!snapshot.hasData) return _loading();
+
+        final friendIds = [
+          for (final id in (snapshot.data!.data()?['friends'] as List?) ??
+              const [])
+            id.toString()
+        ];
+
+        if (friendIds.isEmpty) {
+          return _emptyNote('No friends yet. Tap + to add someone by email.');
+        }
+
+        return Column(
+          children: [
+            for (final friendId in friendIds)
+              FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                key: ValueKey(friendId),
+                future: _friendDoc(friendId),
+                builder: (context, friendSnapshot) {
+                  if (!friendSnapshot.hasData) {
+                    return const SizedBox.shrink();
+                  }
+                  final friendEmail =
+                      (friendSnapshot.data!.data()?['email'] as String?) ??
+                          'Unknown';
+                  return _friendRow(friendId, friendEmail);
+                },
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _friendRow(String friendId, String friendEmail) {
+    final name = FriendsService.displayName(friendEmail);
+    return _tappableCard(
+      onTap: () => _openFriendCard(friendId, friendEmail),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+        child: Row(
+          children: [
+            _avatar(friendEmail),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: _nameStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  FriendTodayStatus(friendId: friendId),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () => _startChatWithFriend(friendId, friendEmail),
+              icon: const Icon(
+                Icons.chat_bubble_outline,
+                color: AppColors.primary,
+                size: 22,
+              ),
+              tooltip: 'Chat',
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'More',
+              icon: const Icon(Icons.more_vert, color: AppColors.gray600),
+              onSelected: (value) {
+                switch (value) {
+                  case 'card':
+                    _openFriendCard(friendId, friendEmail);
+                  case 'cheer':
+                    _sendCheer(friendId, friendEmail);
+                  case 'remove':
+                    _confirmRemoveFriend(friendId, name);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'card', child: Text('View card')),
+                PopupMenuItem(value: 'cheer', child: Text('Send a cheer 👏')),
+                PopupMenuItem(
+                  value: 'remove',
+                  child: Text(
+                    'Remove friend',
+                    style: TextStyle(color: AppColors.red600),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _groupsSection() {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _groups,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return _loadError();
+        if (!snapshot.hasData) return _loading();
+
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) {
+          return _emptyNote(
+              "No groups yet. Make one to see each other's day together.");
+        }
+
+        return Column(
+          children: [
+            for (final doc in docs) _groupCard(doc),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _groupCard(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    final rawName = data['name'];
+    final groupName =
+        rawName is String && rawName.isNotEmpty ? rawName : 'Unnamed group';
+    final memberIds = [
+      for (final id in (data['members'] as List?) ?? const []) id.toString()
+    ];
+
+    return _tappableCard(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => FriendGroupPage(
+            groupId: doc.id,
+            groupName: groupName,
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(
+                gradient: AppColors.brandGradient,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.group, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    groupName,
+                    style: _nameStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
+                    style: _subStyle,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () => _startGroupChat(doc.id, groupName, memberIds),
+              icon: const Icon(
+                Icons.chat_bubble_outline,
+                color: AppColors.primary,
+                size: 22,
+              ),
+              tooltip: 'Group chat',
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.gray400),
+          ],
         ),
       ),
     );
@@ -723,1151 +1079,334 @@ class _FriendsPageState extends State<FriendsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    final topPadding = MediaQuery.of(context).padding.top;
+    if (_uid.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Friends')),
+        body: const Center(child: Text('Sign in to see your friends.')),
+      );
+    }
 
     return Scaffold(
-      body: currentUser == null
-          ? const Center(child: Text('Not logged in'))
-          : SafeArea(
-              top: false,
-              child: Column(
-                children: [
-                  Container(
-                    padding: EdgeInsets.fromLTRB(8, topPadding + 8, 8, 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        if (Navigator.of(context).canPop())
-                          IconButton(
-                            onPressed: () {
-                              Navigator.of(context).maybePop();
-                            },
-                            icon: const Icon(Icons.arrow_back),
-                            color: Colors.white,
-                            splashRadius: 20,
-                            tooltip: 'Back',
-                          )
-                        else
-                          const SizedBox(width: 48),
-                        const Expanded(
-                          child: Center(
-                            child: Text(
-                              'Friends',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const MessagesButton(),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Hiscores Navigation Card
-                            GestureDetector(
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => const HiscoresPage(),
-                                  ),
-                                );
-                              },
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 16),
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      AppColors.primary,
-                                      AppColors.violet,
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.primary
-                                          .withValues(alpha: 0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.2),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.emoji_events,
-                                        color: Colors.white,
-                                        size: 32,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            '🏆 View Hiscores',
-                                            style: TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            'See leaderboards & rankings',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color:
-                                                  Colors.white.withValues(alpha: 0.9),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Icon(
-                                      Icons.arrow_forward_ios,
-                                      color: Colors.white.withValues(alpha: 0.8),
-                                      size: 20,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                            // Friend Requests Section
-                            Text(
-                              'Friend Requests',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('friend_requests')
-                                  .where('to_user_id',
-                                      isEqualTo: currentUser.uid)
-                                  .where('status', isEqualTo: 'pending')
-                                  .snapshots(),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                    ConnectionState.waiting) {
-                                  return const Center(
-                                    child: CircularProgressIndicator(),
-                                  );
-                                }
-
-                                if (!snapshot.hasData ||
-                                    snapshot.data!.docs.isEmpty) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 24),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      'No pending friend requests',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: AppColors.gray400,
-                                      ),
-                                    ),
-                                  );
-                                }
-
-                                return ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: snapshot.data!.docs.length,
-                                  itemBuilder: (context, index) {
-                                    final doc = snapshot.data!.docs[index];
-                                    final fromEmail =
-                                        doc['from_email'] as String?;
-                                    final fromUserId =
-                                        doc['from_user_id'] as String?;
-
-                                    return Container(
-                                      margin: const EdgeInsets.only(bottom: 16),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(16),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color:
-                                                Colors.black.withValues(alpha: 0.08),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(16),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Container(
-                                                  width: 48,
-                                                  height: 48,
-                                                  decoration: BoxDecoration(
-                                                    gradient: LinearGradient(
-                                                      begin: Alignment.topLeft,
-                                                      end:
-                                                          Alignment.bottomRight,
-                                                      colors: [
-                                                        AppColors.emerald400,
-                                                        AppColors.emerald600,
-                                                      ],
-                                                    ),
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                  child: Center(
-                                                    child: Text(
-                                                      (fromEmail ?? 'U')
-                                                          .initial
-                                                          .toUpperCase(),
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 20,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      Text(
-                                                        (fromEmail ?? 'Unknown')
-                                                            .split('@')[0],
-                                                        style: const TextStyle(
-                                                          fontSize: 16,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          color:
-                                                              Color(0xFF1F2937),
-                                                        ),
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                      ),
-                                                      const SizedBox(height: 2),
-                                                      Text(
-                                                        'wants to be your friend',
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: Colors
-                                                              .grey.shade600,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 16),
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: ElevatedButton.icon(
-                                                    onPressed: () {
-                                                      _acceptFriendRequest(
-                                                        doc.id,
-                                                        fromUserId ?? '',
-                                                        fromEmail ?? '',
-                                                      );
-                                                    },
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                      backgroundColor:
-                                                          const Color(
-                                                              0xFF10B981),
-                                                      foregroundColor:
-                                                          Colors.white,
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          vertical: 12),
-                                                      shape:
-                                                          RoundedRectangleBorder(
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(12),
-                                                      ),
-                                                    ),
-                                                    icon: const Icon(
-                                                        Icons.check,
-                                                        size: 20),
-                                                    label: const Text('Accept'),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Expanded(
-                                                  child: OutlinedButton.icon(
-                                                    onPressed: () {
-                                                      _rejectFriendRequest(
-                                                          doc.id);
-                                                    },
-                                                    style: OutlinedButton
-                                                        .styleFrom(
-                                                      foregroundColor:
-                                                          AppColors.gray700,
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          vertical: 12),
-                                                      shape:
-                                                          RoundedRectangleBorder(
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(12),
-                                                      ),
-                                                      side: BorderSide(
-                                                          color: Colors
-                                                              .grey.shade300),
-                                                    ),
-                                                    icon: const Icon(
-                                                        Icons.close,
-                                                        size: 20),
-                                                    label: const Text('Reject'),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Sent Friend Requests Section
-                            StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('friend_requests')
-                                  .where('from_user_id',
-                                      isEqualTo: currentUser.uid)
-                                  .where('status', isEqualTo: 'pending')
-                                  .snapshots(),
-                              builder: (context, snapshot) {
-                                if (!snapshot.hasData ||
-                                    snapshot.data!.docs.isEmpty) {
-                                  return const SizedBox.shrink();
-                                }
-
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Sent Friend Requests',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    ListView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: snapshot.data!.docs.length,
-                                      itemBuilder: (context, index) {
-                                        final doc = snapshot.data!.docs[index];
-                                        final toEmail =
-                                            doc['to_email'] as String?;
-
-                                        return Container(
-                                          margin:
-                                              const EdgeInsets.only(bottom: 16),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius:
-                                                BorderRadius.circular(16),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black
-                                                    .withValues(alpha: 0.08),
-                                                blurRadius: 8,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(16),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Container(
-                                                      width: 48,
-                                                      height: 48,
-                                                      decoration: BoxDecoration(
-                                                        gradient:
-                                                            LinearGradient(
-                                                          begin:
-                                                              Alignment.topLeft,
-                                                          end: Alignment
-                                                              .bottomRight,
-                                                          colors: [
-                                                            Colors
-                                                                .blue.shade400,
-                                                            AppColors.primaryDark,
-                                                          ],
-                                                        ),
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                      child: Center(
-                                                        child: Text(
-                                                          (toEmail ?? 'U')
-                                                              .initial
-                                                              .toUpperCase(),
-                                                          style:
-                                                              const TextStyle(
-                                                            color: Colors.white,
-                                                            fontSize: 20,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Text(
-                                                            (toEmail ??
-                                                                    'Unknown')
-                                                                .split('@')[0],
-                                                            style:
-                                                                const TextStyle(
-                                                              fontSize: 16,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                              color: Color(
-                                                                  0xFF1F2937),
-                                                            ),
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                          ),
-                                                          const SizedBox(
-                                                              height: 2),
-                                                          Text(
-                                                            'Request pending',
-                                                            style: TextStyle(
-                                                              fontSize: 12,
-                                                              color: AppColors.gray600,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 16),
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child:
-                                                          OutlinedButton.icon(
-                                                        onPressed: () {
-                                                          _cancelFriendRequest(
-                                                              doc.id);
-                                                        },
-                                                        style: OutlinedButton
-                                                            .styleFrom(
-                                                          foregroundColor:
-                                                              AppColors.gray700,
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .symmetric(
-                                                                  vertical: 12),
-                                                          shape:
-                                                              RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        12),
-                                                          ),
-                                                          side: BorderSide(
-                                                              color: AppColors.gray300),
-                                                        ),
-                                                        icon: const Icon(
-                                                            Icons.close,
-                                                            size: 20),
-                                                        label: const Text(
-                                                            'Cancel'),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                    const SizedBox(height: 24),
-                                  ],
-                                );
-                              },
-                            ),
-
-                            // Add Friend Form Section
-                            ValueListenableBuilder<bool>(
-                              valueListenable: _showAddFriendForm,
-                              builder: (context, showForm, child) {
-                                if (!showForm) return const SizedBox.shrink();
-                                return Column(
-                                  children: [
-                                    const SizedBox(height: 12),
-                                    TextField(
-                                      controller: _emailController,
-                                      keyboardType: TextInputType.emailAddress,
-                                      decoration: InputDecoration(
-                                        labelText: "Friend's Email",
-                                        hintText: 'name@example.com',
-                                        filled: true,
-                                        fillColor: Colors.white,
-                                        border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                      ),
-                                    ),
-                                    if (_errorMessage != null) ...[
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        _errorMessage!,
-                                        style: const TextStyle(
-                                          color: AppColors.red600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: ValueListenableBuilder<bool>(
-                                            valueListenable: _isSubmitting,
-                                            builder:
-                                                (context, isSubmitting, child) {
-                                              return ElevatedButton(
-                                                onPressed: isSubmitting
-                                                    ? null
-                                                    : _submitFriendRequest,
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor:
-                                                      AppColors.green,
-                                                  foregroundColor: Colors.white,
-                                                ),
-                                                child: isSubmitting
-                                                    ? const SizedBox(
-                                                        height: 16,
-                                                        width: 16,
-                                                        child:
-                                                            CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                          valueColor:
-                                                              AlwaysStoppedAnimation<
-                                                                      Color>(
-                                                                  Colors.white),
-                                                        ),
-                                                      )
-                                                    : const Text(
-                                                        'Send Request'),
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: ElevatedButton(
-                                            onPressed: () {
-                                              _showAddFriendForm.value = false;
-                                              _errorMessage = null;
-                                              _emailController.clear();
-                                            },
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: AppColors.red600,
-                                              foregroundColor: Colors.white,
-                                            ),
-                                            child: const Text('Cancel'),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Your Friends Section
-                            Text(
-                              'Your Friends',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            StreamBuilder<DocumentSnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(currentUser.uid)
-                                  .snapshots(),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                    ConnectionState.waiting) {
-                                  return const Center(
-                                    child: CircularProgressIndicator(),
-                                  );
-                                }
-
-                                if (!snapshot.hasData) {
-                                  return const SizedBox.shrink();
-                                }
-
-                                final friendIds =
-                                    ((snapshot.data?.data() as Map<String, dynamic>?)?['friends'] as List?)
-                                            ?.cast<String>() ??
-                                        [];
-
-                                if (friendIds.isEmpty) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 24),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      'No friends yet',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: AppColors.gray400,
-                                      ),
-                                    ),
-                                  );
-                                }
-
-                                return ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: friendIds.length,
-                                  itemBuilder: (context, index) {
-                                    final friendId = friendIds[index];
-
-                                    return FutureBuilder<DocumentSnapshot>(
-                                      future: FirebaseFirestore.instance
-                                          .collection('users')
-                                          .doc(friendId)
-                                          .get(),
-                                      builder: (context, snapshot) {
-                                        if (!snapshot.hasData) {
-                                          return const SizedBox.shrink();
-                                        }
-
-                                        final friendEmail = ((snapshot.data!
-                                                        .data()
-                                                    as Map<String, dynamic>?)?[
-                                                'email'] as String?) ??
-                                            'Unknown';
-
-                                        return ValueListenableBuilder<bool>(
-                                          valueListenable: _isDeleteMode,
-                                          builder:
-                                              (context, isDeleteMode, child) {
-                                            return Container(
-                                              margin: const EdgeInsets.only(
-                                                  bottom: 16),
-                                              decoration: BoxDecoration(
-                                                color: isDeleteMode
-                                                    ? AppColors.red600
-                                                        .withValues(alpha: 0.1)
-                                                    : Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: isDeleteMode
-                                                        ? AppColors.red600
-                                                            .withValues(alpha: 0.1)
-                                                        : Colors.black
-                                                            .withValues(alpha: 0.08),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 2),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Padding(
-                                                padding:
-                                                    const EdgeInsets.all(16),
-                                                child: Row(
-                                                  children: [
-                                                    Container(
-                                                      width: 48,
-                                                      height: 48,
-                                                      decoration: BoxDecoration(
-                                                        gradient:
-                                                            LinearGradient(
-                                                          begin:
-                                                              Alignment.topLeft,
-                                                          end: Alignment
-                                                              .bottomRight,
-                                                          colors: [
-                                                            const Color(
-                                                                0xFF6366F1),
-                                                            const Color(
-                                                                0xFF8B5CF6),
-                                                          ],
-                                                        ),
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                      child: Center(
-                                                        child: Text(
-                                                          friendEmail
-                                                              .initial
-                                                              .toUpperCase(),
-                                                          style:
-                                                              const TextStyle(
-                                                            color: Colors.white,
-                                                            fontSize: 20,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Text(
-                                                            friendEmail
-                                                                .split('@')[0],
-                                                            style:
-                                                                const TextStyle(
-                                                              fontSize: 16,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                              color: Color(
-                                                                  0xFF1F2937),
-                                                            ),
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                          ),
-                                                          const SizedBox(
-                                                              height: 3),
-                                                          FriendTodayStatus(
-                                                              friendId:
-                                                                  friendId),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    if (!isDeleteMode) ...[
-                                                      IconButton(
-                                                        onPressed: () {
-                                                          _startChatWithFriend(
-                                                              friendId,
-                                                              friendEmail);
-                                                        },
-                                                        icon: const Icon(
-                                                          Icons
-                                                              .chat_bubble_outline,
-                                                          color:
-                                                              AppColors.primary,
-                                                          size: 22,
-                                                        ),
-                                                        tooltip: 'Chat',
-                                                      ),
-                                                      IconButton(
-                                                        onPressed: () {
-                                                          Navigator.push(
-                                                            context,
-                                                            MaterialPageRoute(
-                                                              builder: (_) =>
-                                                                  HomePage(
-                                                                readOnly: true,
-                                                                userIdOverride:
-                                                                    friendId,
-                                                                showBanner:
-                                                                    true,
-                                                                bannerTitle:
-                                                                    friendEmail,
-                                                              ),
-                                                            ),
-                                                          );
-                                                        },
-                                                        icon: const Icon(
-                                                          Icons.credit_card,
-                                                          color:
-                                                              AppColors.primary,
-                                                          size: 22,
-                                                        ),
-                                                        tooltip: 'View card',
-                                                      ),
-                                                      IconButton(
-                                                        onPressed: () {
-                                                          Navigator.push(
-                                                            context,
-                                                            MaterialPageRoute(
-                                                              builder: (_) =>
-                                                                  const HiscoresPage(),
-                                                            ),
-                                                          );
-                                                        },
-                                                        icon: const Icon(
-                                                          Icons.trending_up,
-                                                          color:
-                                                              AppColors.primary,
-                                                          size: 22,
-                                                        ),
-                                                        tooltip: 'View stats',
-                                                      ),
-                                                    ],
-                                                    if (isDeleteMode)
-                                                      IconButton(
-                                                        onPressed: () {
-                                                          _deleteFriends(
-                                                              [friendId]);
-                                                        },
-                                                        icon: Icon(
-                                                          Icons.delete_outline,
-                                                          color: Colors
-                                                              .red.shade600,
-                                                          size: 24,
-                                                        ),
-                                                        tooltip: 'Delete',
-                                                      ),
-                                                    const Icon(
-                                                      Icons.arrow_forward_ios,
-                                                      size: 16,
-                                                      color: AppColors.gray400,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        );
-                                      },
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Friend Groups Section
-                            Text(
-                              'Friend Groups',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('friend_groups')
-                                  .where('creator_id',
-                                      isEqualTo: currentUser.uid)
-                                  .snapshots(),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                    ConnectionState.waiting) {
-                                  return const Center(
-                                    child: CircularProgressIndicator(),
-                                  );
-                                }
-
-                                if (!snapshot.hasData ||
-                                    snapshot.data!.docs.isEmpty) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 24),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      'No friend groups yet',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: AppColors.gray400,
-                                      ),
-                                    ),
-                                  );
-                                }
-
-                                return ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: snapshot.data!.docs.length,
-                                  itemBuilder: (context, index) {
-                                    final doc = snapshot.data!.docs[index];
-                                    final groupName = doc['name'] as String? ??
-                                        'Unnamed Group';
-                                    final memberIds = (doc['members'] as List?)
-                                            ?.cast<String>() ??
-                                        [];
-
-                                    return GestureDetector(
-                                      onTap: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => FriendGroupPage(
-                                              groupId: doc.id,
-                                              groupName: groupName,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                      child: Container(
-                                        margin:
-                                            const EdgeInsets.only(bottom: 16),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black
-                                                  .withValues(alpha: 0.08),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(16),
-                                          child: Row(
-                                            children: [
-                                              Container(
-                                                width: 48,
-                                                height: 48,
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                    colors: [
-                                                      AppColors.primary,
-                                                      AppColors.violet,
-                                                    ],
-                                                  ),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: const Center(
-                                                  child: Icon(
-                                                    Icons.group,
-                                                    color: Colors.white,
-                                                    size: 24,
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      groupName,
-                                                      style: const TextStyle(
-                                                        fontSize: 16,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color:
-                                                            Color(0xFF1F2937),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 2),
-                                                    Text(
-                                                      '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
-                                                      style: TextStyle(
-                                                        fontSize: 12,
-                                                        color: Colors
-                                                            .grey.shade600,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              IconButton(
-                                                onPressed: () {
-                                                  _startGroupChat(doc.id,
-                                                      groupName, memberIds);
-                                                },
-                                                icon: const Icon(
-                                                  Icons.chat_bubble_outline,
-                                                  color: AppColors.primary,
-                                                  size: 22,
-                                                ),
-                                                tooltip: 'Group Chat',
-                                              ),
-                                              const Icon(
-                                                Icons.arrow_forward_ios,
-                                                size: 16,
-                                                color: AppColors.gray400,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-
-                            // Bottom padding for FAB buttons
-                            const SizedBox(height: 100),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+      backgroundColor: AppColors.canvas,
+      appBar: AppBar(
+        title: const Text('Friends'),
+        actions: const [MessagesButton()],
+      ),
+      // A plain scroll view (not a lazy list) so the sections' streams stay
+      // subscribed while scrolled off screen.
+      body: SingleChildScrollView(
+        // Room at the bottom for the add button and the Coach button.
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _hiscoresCard(),
+          _challengesCard(),
+          const SizedBox(height: 12),
+          const Text('Friend requests', style: _sectionStyle),
+          const SizedBox(height: 12),
+          _incomingRequestsSection(),
+          _sentRequestsSection(),
+          const SizedBox(height: 24),
+          const Text('Your friends', style: _sectionStyle),
+          const SizedBox(height: 12),
+          _friendsSection(),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              const Expanded(child: Text('Groups', style: _sectionStyle)),
+              TextButton.icon(
+                onPressed: _showNewGroupSheet,
+                icon: const Icon(Icons.group_add),
+                label: const Text('New group'),
               ),
-            ),
-      floatingActionButton: currentUser == null
-          ? null
-          : StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(currentUser.uid)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                final friendIds =
-                    ((snapshot.data?.data() as Map<String, dynamic>?)?['friends'] as List?)?.cast<String>() ??
-                        [];
-                final hasFriends = friendIds.isNotEmpty;
-
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    ValueListenableBuilder<bool>(
-                      valueListenable: _showAddFriendForm,
-                      builder: (context, showForm, child) {
-                        return FloatingActionButton(
-                          heroTag: 'friends-add',
-                          onPressed: () {
-                            _showAddFriendForm.value =
-                                !_showAddFriendForm.value;
-                            _errorMessage = null;
-                          },
-                          backgroundColor: AppColors.emerald400,
-                          child: Icon(
-                            showForm ? Icons.close : Icons.person_add,
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(width: 12),
-                    if (hasFriends) ...[
-                      FloatingActionButton(
-                        heroTag: 'friends-group',
-                        onPressed: () {
-                          _showGroupCreationModal(friendIds);
-                        },
-                        backgroundColor: AppColors.primary,
-                        child: const Icon(Icons.group_add),
-                      ),
-                      const SizedBox(width: 12),
-                    ],
-                    ValueListenableBuilder<bool>(
-                      valueListenable: _isDeleteMode,
-                      builder: (context, deleteMode, child) {
-                        return FloatingActionButton(
-                          heroTag: 'friends-delete',
-                          onPressed: () {
-                            _isDeleteMode.value = !_isDeleteMode.value;
-                          },
-                          backgroundColor: deleteMode
-                              ? AppColors.red600
-                              : AppColors.red400,
-                          child: Icon(
-                            deleteMode ? Icons.close : Icons.delete_outline,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _groupsSection(),
+        ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'friends-add',
+        tooltip: 'Add friend',
+        onPressed: _showAddFriendSheet,
+        child: const Icon(Icons.person_add),
+      ),
     );
   }
 }
 
+/// Sheet for making a friend group: a name and at least one friend.
+class _NewGroupSheet extends StatefulWidget {
+  final String uid;
+
+  const _NewGroupSheet({required this.uid});
+
+  @override
+  State<_NewGroupSheet> createState() => _NewGroupSheetState();
+}
+
+class _NewGroupSheetState extends State<_NewGroupSheet> {
+  static const _suggestions = [
+    'Lunch Club',
+    'Gym Buddies',
+    'Family',
+    'Weekday Warriors',
+    'Step Squad',
+  ];
+
+  final TextEditingController _name = TextEditingController();
+  final Set<String> _chosen = {};
+  late Future<List<Friend>> _friends = FriendsService.load(widget.uid);
+  bool _saving = false;
+  String? _error;
+
+  bool get _canCreate =>
+      !_saving && _name.text.trim().isNotEmpty && _chosen.isNotEmpty;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _create() async {
+    if (!_canCreate) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await FirebaseFirestore.instance.collection('friend_groups').add({
+        'name': _name.text.trim(),
+        'creator_id': widget.uid,
+        // The creator is a member too.
+        'members': [widget.uid, ..._chosen],
+        'created_at': FieldValue.serverTimestamp(),
+      });
+      if (mounted) Navigator.pop(context, true);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = "Couldn't create the group. Please try again.";
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'New group',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      TextField(
+                        controller: _name,
+                        textCapitalization: TextCapitalization.words,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'Group name',
+                          hintText: 'e.g. Lunch Club',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Ideas',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.gray700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final idea in _suggestions)
+                            ActionChip(
+                              label: Text(idea),
+                              onPressed: () => setState(() {
+                                _name.text = idea;
+                                _name.selection = TextSelection.collapsed(
+                                    offset: idea.length);
+                              }),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        "Who's in?",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.gray700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      FutureBuilder<List<Friend>>(
+                        future: _friends,
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Row(
+                                children: [
+                                  const Expanded(
+                                    child: Text(
+                                      "Couldn't load your friends.",
+                                      style: TextStyle(color: AppColors.muted),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => setState(() {
+                                      _friends =
+                                          FriendsService.load(widget.uid);
+                                    }),
+                                    child: const Text('Try again'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                          if (!snapshot.hasData) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          final friends = snapshot.data!;
+                          if (friends.isEmpty) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                'Add a friend first, then you can make a group.',
+                                style: TextStyle(color: AppColors.muted),
+                              ),
+                            );
+                          }
+                          return Column(
+                            children: [
+                              for (final f in friends)
+                                CheckboxListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
+                                  value: _chosen.contains(f.id),
+                                  title: Text(
+                                    f.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  onChanged: (v) => setState(() {
+                                    if (v == true) {
+                                      _chosen.add(f.id);
+                                    } else {
+                                      _chosen.remove(f.id);
+                                    }
+                                  }),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: AppColors.red600),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: _canCreate ? _create : null,
+                  child: _saving
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Create group'),
+                ),
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Shows whether a friend has finished logging today.
-class FriendTodayStatus extends StatelessWidget {
+class FriendTodayStatus extends StatefulWidget {
   final String friendId;
 
   const FriendTodayStatus({super.key, required this.friendId});
 
   @override
-  Widget build(BuildContext context) {
+  State<FriendTodayStatus> createState() => _FriendTodayStatusState();
+}
+
+class _FriendTodayStatusState extends State<FriendTodayStatus> {
+  late Future<DocumentSnapshot<Map<String, dynamic>>> _log = _load();
+
+  Future<DocumentSnapshot<Map<String, dynamic>>> _load() {
     final now = DateTime.now();
     final key =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    return FirebaseFirestore.instance
+        .collection('daily_logs')
+        .doc('${widget.friendId}_$key')
+        .get();
+  }
+
+  @override
+  void didUpdateWidget(covariant FriendTodayStatus oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.friendId != widget.friendId) _log = _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      future: FirebaseFirestore.instance
-          .collection('daily_logs')
-          .doc('${friendId}_$key')
-          .get(),
+      future: _log,
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox(height: 16);
         final data = snapshot.data!.data();
@@ -1880,10 +1419,10 @@ class FriendTodayStatus extends StatelessWidget {
         final Color color;
         if (finished && onBudget) {
           label = 'Finished today · on budget';
-          color = AppColors.green;
+          color = AppColors.emerald700;
         } else if (finished) {
           label = 'Finished today';
-          color = AppColors.primary;
+          color = AppColors.primaryDark;
         } else {
           label = 'Not finished today';
           color = AppColors.muted;
@@ -1899,6 +1438,7 @@ class FriendTodayStatus extends StatelessWidget {
             Flexible(
               child: Text(
                 label,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: color),
               ),

@@ -11,6 +11,21 @@ import 'package:namer_app/ui/responsive.dart';
 class CardDesignPage extends StatelessWidget {
   const CardDesignPage({super.key});
 
+  Future<void> _choose(
+      BuildContext context, String uid, CardDesign design) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await CardDesignService.choose(uid, design);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Card design updated')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't change your design. Try again.")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser!;
@@ -22,6 +37,18 @@ class CardDesignPage extends StatelessWidget {
         stream:
             BalanceService.db.collection('users').doc(user.uid).snapshots(),
         builder: (context, snap) {
+          if (snap.hasError) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  "Couldn't load your card designs. Check your connection and try again.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ),
+            );
+          }
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -30,7 +57,7 @@ class CardDesignPage extends StatelessWidget {
           final best =
               (BalanceService.number(data?['best_streak']) ?? 0).round();
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
             children: [
               Text(
                 'Longest streak: $best day${best == 1 ? '' : 's'}',
@@ -45,7 +72,9 @@ class CardDesignPage extends StatelessWidget {
                       : holder,
                   selected: design.id == current.id,
                   unlocked: CardDesignService.isUnlocked(design, data),
-                  onPick: () => CardDesignService.choose(user.uid, design),
+                  daysToUnlock: CardDesignService.daysToUnlock(design, data),
+                  progress: CardDesignService.unlockProgress(design, data),
+                  onPick: () => _choose(context, user.uid, design),
                 ),
             ],
           );
@@ -62,12 +91,18 @@ class _DesignOption extends StatelessWidget {
   final bool unlocked;
   final VoidCallback onPick;
 
+  /// For designs unlocked by a streak: days still to go, and progress 0-1.
+  final int? daysToUnlock;
+  final double? progress;
+
   const _DesignOption({
     required this.design,
     required this.holder,
     required this.selected,
     required this.unlocked,
     required this.onPick,
+    this.daysToUnlock,
+    this.progress,
   });
 
   @override
@@ -150,6 +185,32 @@ class _DesignOption extends StatelessWidget {
                     const Chip(label: Text('Locked')),
                 ],
               ),
+              if (!unlocked &&
+                  daysToUnlock != null &&
+                  daysToUnlock! > 0 &&
+                  progress != null) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress!,
+                    minHeight: 6,
+                    backgroundColor: AppColors.border,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppColors.primary),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  daysToUnlock == 1
+                      ? '1 more day to unlock'
+                      : '$daysToUnlock more days to unlock',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.gray700),
+                ),
+              ],
             ],
           ),
         ),

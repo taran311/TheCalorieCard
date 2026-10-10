@@ -314,7 +314,7 @@ class _CoachPageState extends State<CoachPage> {
           if (started)
             IconButton(
               tooltip: 'New chat',
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Icons.add_comment_outlined),
               onPressed: _thinking ? null : _newChat,
             ),
         ],
@@ -371,7 +371,7 @@ class _CoachPageState extends State<CoachPage> {
                             'Nothing changes until you tap Accept.',
                             textAlign: TextAlign.center,
                             style:
-                                TextStyle(fontSize: 11, color: AppColors.gray400),
+                                TextStyle(fontSize: 11, color: AppColors.muted),
                           ),
                         ],
                       ),
@@ -855,11 +855,17 @@ class _InputBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Pages can be drawn with a narrowed MediaQuery on desktop, so use the
+    // real window width to tell whether the phone bottom bar is showing.
+    final view = View.of(context);
+    final windowWidth = view.physicalSize.width / view.devicePixelRatio;
+    final onPhone = windowWidth < Breakpoints.tablet;
     return SafeArea(
       top: false,
       child: Padding(
-        // Extra room at the bottom for the Coach button above the bar.
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 30),
+        // On phones, extra room at the bottom for the Coach button that
+        // sits over the bottom bar.
+        padding: EdgeInsets.fromLTRB(12, 8, 12, onPhone ? 30 : 12),
         child: Row(
           children: [
             Expanded(

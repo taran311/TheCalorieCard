@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:namer_app/ui/responsive.dart';
 
 /// "Contactless": point the camera at a barcode. Pops with the barcode
 /// digits. The number can also be typed in (handy on a laptop without a
@@ -83,6 +82,13 @@ class _BarcodeScanPageState extends State<BarcodeScanPage>
         title: const Text('Scan barcode'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            tooltip: 'Torch',
+            icon: const Icon(Icons.flashlight_on_outlined),
+            onPressed: () => _controller.toggleTorch().catchError((_) {}),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -93,6 +99,29 @@ class _BarcodeScanPageState extends State<BarcodeScanPage>
                 MobileScanner(
                   controller: _controller,
                   onDetect: _onDetect,
+                  errorBuilder: (context, error, child) => const ColoredBox(
+                    color: Colors.black,
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.no_photography_outlined,
+                                color: Colors.white70, size: 40),
+                            SizedBox(height: 12),
+                            Text(
+                              "Can't use the camera. Allow camera access in "
+                              'Settings, or type the number below.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: Colors.white, fontSize: 15),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
                 IgnorePointer(
                   child: Container(
@@ -135,8 +164,6 @@ class _BarcodeScanPageState extends State<BarcodeScanPage>
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primaryDark),
                     onPressed: () => _finish(_manual.text),
                     child: const Text('Look up'),
                   ),

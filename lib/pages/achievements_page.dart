@@ -30,8 +30,15 @@ class _AchievementsPageState extends State<AchievementsPage> {
       widget.userIdOverride ?? FirebaseAuth.instance.currentUser?.uid;
   late final bool _isMe = widget.userIdOverride == null ||
       widget.userIdOverride == FirebaseAuth.instance.currentUser?.uid;
-  late final Stream<DocumentSnapshot<Map<String, dynamic>>>? _stream =
+  late Stream<DocumentSnapshot<Map<String, dynamic>>>? _stream = _open();
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _open() =>
       _uid == null ? null : AchievementService.streamUserAchievements(_uid!);
+
+  void _retry() {
+    setState(() => _stream = _open());
+    if (_isMe && _uid != null) _check();
+  }
 
   bool _checking = false;
   List<Achievement> _justUnlocked = const [];
@@ -77,13 +84,31 @@ class _AchievementsPageState extends State<AchievementsPage> {
         ],
       ),
       body: _stream == null
-          ? const Center(child: Text('Not logged in'))
+          ? const Center(child: Text('Please sign in'))
           : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
               stream: _stream,
               builder: (context, snap) {
                 if (snap.hasError) {
-                  return const Center(
-                      child: Text("Couldn't load achievements."));
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            "Couldn't load achievements.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.muted),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: _retry,
+                            child: const Text('Try again'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
                 }
                 if (!snap.hasData) {
                   return const Center(child: CircularProgressIndicator());
@@ -120,7 +145,7 @@ class _AchievementsPageState extends State<AchievementsPage> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: Breakpoints.contentMaxWidth),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
           children: [
             _Summary(
               unlocked: unlocked.length,
@@ -489,7 +514,7 @@ class _AchievementTile extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.gray400),
+                        color: AppColors.muted),
                   ),
               ],
             ),

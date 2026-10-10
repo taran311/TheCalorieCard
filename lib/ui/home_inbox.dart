@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:namer_app/pages/coach_page.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/split_service.dart';
@@ -112,8 +112,10 @@ class _HomeInboxState extends State<HomeInbox> {
     }
   }
 
-  List<Widget> _items() {
-    final items = <Widget>[];
+  /// Inbox items. On [narrow] screens, cards with two buttons put the
+  /// buttons on their own row under the text.
+  List<_InboxCard> _items({bool narrow = false}) {
+    final items = <_InboxCard>[];
     final uid = widget.userId;
 
     for (final split in _splits) {
@@ -131,6 +133,7 @@ class _HomeInboxState extends State<HomeInbox> {
               () => SplitService.accept(uid, split),
               done: 'Added your share to ${split.meal}'), primary: true),
         ],
+        stacked: narrow,
       ));
     }
 
@@ -151,6 +154,7 @@ class _HomeInboxState extends State<HomeInbox> {
                   done: 'Logged ${debit.name}'),
               primary: true),
         ],
+        stacked: narrow,
       ));
     }
 
@@ -159,30 +163,8 @@ class _HomeInboxState extends State<HomeInbox> {
         profile['balance_date'] == BalanceService.dateKey(BalanceService.now())) {
       final left = BalanceService.number(profile['calories']) ?? 0;
       final goal = BalanceService.calorieGoalFrom(profile) ?? 0;
-      if (left < 0) {
-        items.add(_InboxCard(
-          icon: Icons.warning_amber_rounded,
-          color: AppColors.red600,
-          title: 'Over budget by ${(-left).round()} kcal',
-          subtitle: "One day won't undo your progress.",
-          actions: [
-            _InboxAction(
-                'Talk it through',
-                () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CoachPage(
-                          initialQuestion:
-                              "I've gone over my calories today by ${(-left).round()} kcal. "
-                              'Can you help me feel better about it and suggest a gentle '
-                              'way to balance it out over the next few days?',
-                        ),
-                      ),
-                    ),
-                primary: true),
-          ],
-        ));
-      } else if (goal > 0 && left <= goal * 0.1 && widget.hasFoodToday) {
+      // Going over is handled by the Coach note under the card.
+      if (left >= 0 && goal > 0 && left <= goal * 0.1 && widget.hasFoodToday) {
         items.add(_InboxCard(
           icon: Icons.battery_alert,
           color: AppColors.amber700,
@@ -227,41 +209,56 @@ class _HomeInboxState extends State<HomeInbox> {
 
   @override
   Widget build(BuildContext context) {
-    final items = _items();
-    if (items.isEmpty) return const SizedBox.shrink();
-    final page = _page.clamp(0, items.length - 1);
+    if (_items().isEmpty) return const SizedBox.shrink();
+    // Grow with the text size so nothing is clipped.
+    final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    final textHeight = 50 * scale;
 
-    return Column(
-      children: [
-        SizedBox(
-          height: 78,
-          child: PageView(
-            controller: _pages,
-            onPageChanged: (i) => setState(() => _page = i),
-            children: items,
-          ),
-        ),
-        if (items.length > 1)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 0; i < items.length; i++)
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: i == page ? 16 : 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: i == page ? AppColors.primary : AppColors.gray300,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-              ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 340;
+        final items = _items(narrow: narrow);
+        if (items.isEmpty) return const SizedBox.shrink();
+        final page = _page.clamp(0, items.length - 1);
+        final anyStacked = items.any((c) => c.stacked && c.actions.length > 1);
+        final height = anyStacked
+            ? 72 + textHeight
+            : math.max(78.0, 22 + textHeight);
+
+        return Column(
+          children: [
+            SizedBox(
+              height: height,
+              child: PageView(
+                controller: _pages,
+                onPageChanged: (i) => setState(() => _page = i),
+                children: items,
+              ),
             ),
-          ),
-      ],
+            if (items.length > 1)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < items.length; i++)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: i == page ? 16 : 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color:
+                              i == page ? AppColors.primary : AppColors.gray300,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -282,6 +279,9 @@ class _InboxCard extends StatelessWidget {
   final List<_InboxAction> actions;
   final bool busy;
 
+  /// Buttons on their own row under the text (narrow screens).
+  final bool stacked;
+
   const _InboxCard({
     required this.icon,
     required this.color,
@@ -289,94 +289,111 @@ class _InboxCard extends StatelessWidget {
     required this.subtitle,
     this.actions = const [],
     this.busy = false,
+    this.stacked = false,
   });
+
+  Widget _button(_InboxAction a) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: a.primary
+          ? FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: color,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              onPressed: a.onPressed,
+              child: Text(a.label),
+            )
+          : TextButton(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              onPressed: a.onPressed,
+              child: Text(a.label),
+            ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    const spinner = Padding(
+      padding: EdgeInsets.all(10),
+      child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2)),
+    );
+    final text = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13.5,
+              color: AppColors.ink),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          subtitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+      ],
+    );
+    final iconBadge = Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, color: color, size: 20),
+    );
+
+    final Widget body;
+    if (stacked && actions.length > 1) {
+      body = Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              iconBadge,
+              const SizedBox(width: 10),
+              Expanded(child: text),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (busy) spinner else for (final a in actions) _button(a),
+            ],
+          ),
+        ],
+      );
+    } else {
+      body = Row(
+        children: [
+          iconBadge,
+          const SizedBox(width: 10),
+          Expanded(child: text),
+          if (busy) spinner else for (final a in actions) _button(a),
+        ],
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2),
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5,
-                      color: AppColors.ink),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
-                ),
-              ],
-            ),
-          ),
-          if (busy)
-            const Padding(
-              padding: EdgeInsets.all(10),
-              child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2)),
-            )
-          else
-            for (final a in actions)
-              Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: a.primary
-                    ? FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: color,
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                        ),
-                        onPressed: a.onPressed,
-                        child: Text(a.label),
-                      )
-                    : TextButton(
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                        ),
-                        onPressed: a.onPressed,
-                        child: Text(a.label),
-                      ),
-              ),
-        ],
-      ),
+      decoration: AppDecor.card,
+      child: body,
     );
   }
 }

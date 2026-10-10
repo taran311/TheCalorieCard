@@ -79,6 +79,18 @@ class _PotsPageState extends State<PotsPage> {
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _profile,
         builder: (context, snap) {
+          if (snap.hasError) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  "Couldn't load your pot. Check your connection and try again.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ),
+            );
+          }
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -88,13 +100,13 @@ class _PotsPageState extends State<PotsPage> {
           final enabled = data['pots_enabled'] == true;
           final pot = BalanceService.potFrom(data);
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
             children: [
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [AppColors.emerald600, Color(0xFF065F46)],
+                    colors: [AppColors.emerald600, AppColors.emerald800],
                   ),
                   borderRadius: BorderRadius.circular(20),
                 ),
@@ -125,21 +137,35 @@ class _PotsPageState extends State<PotsPage> {
                         foregroundColor: AppColors.emerald600,
                       ),
                       onPressed: (!enabled || pot <= 0 || _busy) ? null : _spend,
-                      icon: const Icon(Icons.call_received),
+                      icon: const Icon(Icons.add_card),
                       label: const Text('Move to today\'s card'),
                     ),
+                    if (!enabled) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Turn on saving below to start filling your pot.',
+                        style: TextStyle(color: Colors.white, fontSize: 13),
+                      ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              SwitchListTile(
-                value: enabled,
-                onChanged: _busy ? null : _toggle,
-                title: const Text('Save into a pot'),
-                subtitle: Text(
-                  'On days you log food, up to '
-                  '${BalanceService.potDailyCap.round()} kcal you didn\'t '
-                  'spend goes into this week\'s pot.',
+              Container(
+                decoration: AppDecor.card,
+                clipBehavior: Clip.antiAlias,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: SwitchListTile(
+                    value: enabled,
+                    onChanged: _busy ? null : _toggle,
+                    title: const Text('Save into a pot'),
+                    subtitle: Text(
+                      'On days you log food, up to '
+                      '${BalanceService.potDailyCap.round()} kcal you didn\'t '
+                      'spend goes into this week\'s pot.',
+                    ),
+                  ),
                 ),
               ),
               const Padding(

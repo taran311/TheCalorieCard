@@ -174,7 +174,7 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
             const SizedBox(height: 24),
             AuthButton(
-              label: 'Create account',
+              label: 'Create my card',
               loading: _loading,
               onPressed: _signUp,
             ),
@@ -200,7 +200,7 @@ class _PasswordHint extends StatelessWidget {
         : (strong ? AuthColors.successText : AuthColors.infoText);
     final text = !ok
         ? 'At least $minPasswordLength characters'
-        : (strong ? 'Strong length' : 'Good. Longer is stronger.');
+        : (strong ? 'Nice and strong' : 'Good. Longer is even better.');
 
     return Row(
       children: [

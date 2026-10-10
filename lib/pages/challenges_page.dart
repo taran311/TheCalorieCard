@@ -18,6 +18,7 @@ class ChallengesPage extends StatefulWidget {
 class _ChallengesPageState extends State<ChallengesPage> {
   final String _uid = FirebaseAuth.instance.currentUser!.uid;
   List<Friend> _friends = const [];
+  bool _friendsFailed = false;
 
   /// Created once: building it in build() would re-subscribe every rebuild.
   late final Stream<List<Challenge>> _challenges =
@@ -26,9 +27,20 @@ class _ChallengesPageState extends State<ChallengesPage> {
   @override
   void initState() {
     super.initState();
+    _loadFriends();
+  }
+
+  void _loadFriends() {
     FriendsService.load(_uid).then((f) {
-      if (mounted) setState(() => _friends = f);
-    }, onError: (_) {});
+      if (mounted) {
+        setState(() {
+          _friends = f;
+          _friendsFailed = false;
+        });
+      }
+    }, onError: (_) {
+      if (mounted) setState(() => _friendsFailed = true);
+    });
   }
 
   String _nameOf(String id) {
@@ -41,6 +53,14 @@ class _ChallengesPageState extends State<ChallengesPage> {
 
   Future<void> _create() async {
     if (_friends.isEmpty) {
+      if (_friendsFailed) {
+        _loadFriends();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Couldn't load your friends. Try again.")),
+        );
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Add some friends to challenge first.')),
       );
@@ -64,15 +84,13 @@ class _ChallengesPageState extends State<ChallengesPage> {
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
-        title: const Text('Challenges',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Challenges'),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'challenges-new',
+        tooltip: 'New challenge',
         onPressed: _create,
-        backgroundColor: AppColors.primaryDark,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('New challenge'),
+        child: const Icon(Icons.add),
       ),
       body: StreamBuilder<List<Challenge>>(
         stream: _challenges,
@@ -85,7 +103,7 @@ class _ChallengesPageState extends State<ChallengesPage> {
           }
           final list = snap.data!;
           if (list.isEmpty) {
-            return const _EmptyChallenges();
+            return _EmptyChallenges(onCreate: _create);
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
@@ -106,27 +124,35 @@ class _ChallengesPageState extends State<ChallengesPage> {
 }
 
 class _EmptyChallenges extends StatelessWidget {
-  const _EmptyChallenges();
+  final VoidCallback onCreate;
+
+  const _EmptyChallenges({required this.onCreate});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(32),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.emoji_events_outlined,
+            const Icon(Icons.emoji_events_outlined,
                 size: 64, color: AppColors.gray400),
-            SizedBox(height: 12),
-            Text('No challenges this week',
+            const SizedBox(height: 12),
+            const Text('No challenges this week',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            SizedBox(height: 6),
-            Text(
+            const SizedBox(height: 6),
+            const Text(
               'Go head-to-head on days on budget, or set a team goal for '
               'finished days.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.muted),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onCreate,
+              icon: const Icon(Icons.add),
+              label: const Text('New challenge'),
             ),
           ],
         ),
@@ -185,6 +211,7 @@ class _ChallengeCardState extends State<_ChallengeCard> {
               child: const Text('Stay')),
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
+              style: TextButton.styleFrom(foregroundColor: AppColors.red600),
               child: const Text('Leave')),
         ],
       ),
@@ -233,7 +260,13 @@ class _ChallengeCardState extends State<_ChallengeCard> {
               PopupMenuButton<String>(
                 onSelected: (_) => _leave(),
                 itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'leave', child: Text('Leave')),
+                  PopupMenuItem(
+                    value: 'leave',
+                    child: Text(
+                      'Leave',
+                      style: TextStyle(color: AppColors.red600),
+                    ),
+                  ),
                 ],
               ),
             ],

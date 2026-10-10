@@ -514,8 +514,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Tutorial complete! Now try it yourself.'),
-          backgroundColor: AppColors.green,
+          content: Text("That's it. Now try your own."),
           duration: Duration(seconds: 2),
         ),
       );
@@ -590,7 +589,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
         SnackBar(
           content: Text(
               "Couldn't look up ${failed.length} item${failed.length == 1 ? '' : 's'}. "
-              "${failed.length == 1 ? 'It\'s' : 'They\'re'} still in the list; tap Calculate to retry."),
+              "${failed.length == 1 ? 'It\'s' : 'They\'re'} still in the list; tap Look up to retry."),
         ),
       );
     }
@@ -682,9 +681,19 @@ class _AddFoodPageState extends State<AddFoodPage> {
     setState(() => item.guess = picked.roundToDouble());
   }
 
+  /// True on a phone-sized window. Uses the real window width: on desktop
+  /// MediaQuery.size is narrowed to the page column.
+  bool get _isPhone {
+    final view = View.of(context);
+    return view.physicalSize.width / view.devicePixelRatio <
+        Breakpoints.tablet;
+  }
+
   Future<void> _scanBarcode() async {
-    final code = await Navigator.push<String>(
-      context,
+    // On phones, open above the bottom bar so the Coach button doesn't
+    // cover the number field.
+    final code = await Navigator.of(context, rootNavigator: _isPhone)
+        .push<String>(
       MaterialPageRoute(builder: (_) => const BarcodeScanPage()),
     );
     if (code == null || code.isEmpty || !mounted) return;
@@ -774,8 +783,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
       if (mounted) {
         setState(() => _readingPhoto = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(e.toString().replaceFirst('Exception: ', ''))),
+          const SnackBar(
+              content: Text(
+                  "Couldn't read that photo. Try another, or type what you had.")),
         );
       }
     }
@@ -958,19 +968,71 @@ class _AddFoodPageState extends State<AddFoodPage> {
     }
   }
 
+  /// The one main button: look up what's been typed, then add it.
+  Widget _buildMainButton(String meal) {
+    final typed = _controller.text.trim().isEmpty
+        ? 0
+        : FoodResolver.splitItems(_controller.text).length;
+    final toLookUp = _ingredients.length + typed;
+    final canAdd = _calculated && _calculatedItems.isNotEmpty;
+
+    const spinner = SizedBox(
+      width: 18,
+      height: 18,
+      child: CircularProgressIndicator(
+        strokeWidth: 2,
+        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      ),
+    );
+
+    final VoidCallback? onPressed;
+    final Widget icon;
+    final String label;
+    if (_calculating) {
+      onPressed = null;
+      icon = spinner;
+      label = 'Looking up $_progressDone/$_progressTotal…';
+    } else if (_hasInput) {
+      final n = toLookUp < 1 ? 1 : toLookUp;
+      onPressed = _calculateWithAI;
+      icon = const Icon(Icons.auto_awesome, size: 20);
+      label = 'Look up $n item${n == 1 ? '' : 's'}';
+    } else if (_saving) {
+      onPressed = null;
+      icon = spinner;
+      label = 'Adding…';
+    } else if (canAdd) {
+      onPressed = _saveItems;
+      icon = const Icon(Icons.check_circle_outline, size: 20);
+      label = 'Add ${_totalCalories.round()} kcal to $meal';
+    } else {
+      onPressed = null;
+      icon = const Icon(Icons.add, size: 20);
+      label = 'Add to $meal';
+    }
+
+    return FilledButton.icon(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(0, 52),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+      icon: icon,
+      label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final meal = Provider.of<CategoryService>(context).selectedCategory;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Add Food Items'),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
+        title: Text('Add to $meal'),
         actions: [
           IconButton(
             onPressed: _tutorialMode ? null : _runTutorial,
-            icon: const Icon(Icons.help_outline, size: 36),
-            tooltip: 'Tutorial',
-            iconSize: 36,
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Show me how',
           ),
         ],
       ),
@@ -979,16 +1041,16 @@ class _AddFoodPageState extends State<AddFoodPage> {
           AbsorbPointer(
             absorbing: _tutorialMode,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    'Add multiple food items at once',
+                    "Type everything you had. We'll work out the calories.",
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
+                      color: AppColors.ink,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1012,7 +1074,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                           return ActionChip(
                             avatar: const Icon(Icons.add, size: 16),
                             label: Text(
-                                '${tx.description} · ${tx.calories.round()}'),
+                                '${tx.description} · ${tx.calories.round()} kcal'),
                             onPressed: () => _addRecent(tx),
                           );
                         },
@@ -1081,10 +1143,11 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   const SizedBox(height: 16),
                   if (_ingredients.isNotEmpty) ...[
                     const Text(
-                      'Items to calculate:',
+                      'Ready to look up',
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w700,
                         fontSize: 14,
+                        color: AppColors.ink,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1134,11 +1197,11 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     const Divider(),
                     const SizedBox(height: 8),
                     const Text(
-                      'Calculated items:',
+                      'Ready to add',
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w700,
                         fontSize: 14,
-                        color: AppColors.green,
+                        color: AppColors.ink,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1153,108 +1216,23 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppColors.amber50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.amber300),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: Text(
                         'Total: ${_totalCalories.round()} kcal  ·  P ${_totalProtein.round()}g  C ${_totalCarbs.round()}g  F ${_totalFat.round()}g',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
                           fontSize: 16,
-                          color: AppColors.amber700,
+                          color: AppColors.ink,
                         ),
                         textAlign: TextAlign.center,
                       ),
                     ),
                   ],
                   const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton.icon(
-                          onPressed: (!_hasInput || _calculating)
-                              ? null
-                              : _calculateWithAI,
-                          icon: _calculating
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white),
-                                  ),
-                                )
-                              : const Icon(Icons.auto_awesome, size: 20),
-                          label: Text(
-                            _calculating
-                                ? 'Looking up $_progressDone/$_progressTotal…'
-                                : 'Calculate',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 2,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: (!_calculated ||
-                                  _saving ||
-                                  _calculatedItems.isEmpty)
-                              ? null
-                              : _saveItems,
-                          icon: _saving
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white),
-                                  ),
-                                )
-                              : const Icon(Icons.check_circle, size: 20),
-                          label: Text(
-                            _saving ? 'Saving...' : 'Save',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            backgroundColor: (!_calculated ||
-                                    _saving ||
-                                    _calculatedItems.isEmpty)
-                                ? AppColors.gray300
-                                : AppColors.green,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: (!_calculated ||
-                                    _saving ||
-                                    _calculatedItems.isEmpty)
-                                ? 0
-                                : 2,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  _buildMainButton(meal),
                   if (_calculated &&
                       _calculatedItems.isNotEmpty &&
                       !_calculating &&
@@ -1305,7 +1283,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Tutorial Mode',
+                            'Quick demo',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 18,

@@ -104,7 +104,7 @@ class _LoginPageState extends State<LoginPage> {
           const AuthDivider(text: 'New here?'),
           const SizedBox(height: 16),
           AuthSecondaryButton(
-            label: 'Create an account',
+            label: 'Create your card',
             onPressed: _loading ? null : widget.onTap,
           ),
         ],

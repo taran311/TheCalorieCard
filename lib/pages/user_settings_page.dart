@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
@@ -13,6 +14,49 @@ import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/services/card_design_service.dart';
 import 'dart:convert';
+
+/// Calories a day to stay the same weight: Mifflin–St Jeor times an
+/// activity factor for [exerciseLevel] (0 = little or none ... 4 = 10+
+/// hours a week). Null if age, height or weight is missing.
+double? maintenanceCalories({
+  required int? age,
+  required int? heightCm,
+  required int? weightKg,
+  required bool male,
+  required double exerciseLevel,
+}) {
+  if (age == null || heightCm == null || weightKg == null) return null;
+  const multipliers = [1.2, 1.375, 1.55, 1.725, 1.9];
+  final level = exerciseLevel.round().clamp(0, 4).toInt();
+  return ((10 * weightKg) + (6.25 * heightCm) - (5 * age) + (male ? 5 : -161)) *
+      multipliers[level];
+}
+
+/// The suggested daily calorie goal for a goal [mode] ('lose', 'maintain'
+/// or 'gain'; anything else counts as 'lose', as Settings does).
+int suggestedCalorieGoal(double maintenance, String? mode) {
+  if (mode == 'maintain') return maintenance.round();
+  if (mode == 'gain') return (maintenance * 1.15).round();
+  return (maintenance * 0.85).round();
+}
+
+/// A default macro split for a calorie goal (30% protein, 40% carbs,
+/// 30% fat), used when there are no AI targets.
+Macros defaultMacrosFor(int calories) => Macros(
+      calories: calories.toDouble(),
+      protein: (calories * 0.30 / 4).round().toDouble(),
+      carbs: (calories * 0.40 / 4).round().toDouble(),
+      fat: (calories * 0.30 / 9).round().toDouble(),
+    );
+
+/// A message that is safe to show as-is when working out targets fails.
+class _EstimateError implements Exception {
+  final String message;
+  const _EstimateError(this.message);
+
+  @override
+  String toString() => message;
+}
 
 class UserSettingsPage extends StatefulWidget {
   UserSettingsPage({
@@ -34,7 +78,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   @override
   void initState() {
     super.initState();
-    // Wake the lookup server early (it sleeps when idle).
+    // Open a connection to the lookup server early.
     ProxyClient.warmUp();
 
     // Show the preview card in your chosen finish.
@@ -122,8 +166,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
   List<bool> genderSelections = [true, false];
   List<bool> calorieSelections = [true, false, false];
-
-  final date = DateTime.now().add(const Duration(days: 31));
 
   bool _isSaving = false;
 
@@ -243,11 +285,17 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       );
       return;
     }
-    await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+    // The messenger sits above the navigator, so the message stays up
+    // after this page is replaced.
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (context) => const MainShell(initialIndex: 1),
       ),
       (route) => false,
+    );
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Goals saved. Your card is up to date.')),
     );
   }
 
@@ -269,7 +317,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         setState(() {
           _selectedAge = asInt(userData['age']);
           _ageController.text =
-              _selectedAge != null ? '$_selectedAge Years Old' : '';
+              _selectedAge != null ? '$_selectedAge years' : '';
           _selectedHeight = asInt(userData['height']);
           _heightController.text =
               _selectedHeight != null ? '${_selectedHeight}cm' : '';
@@ -334,13 +382,25 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           _proteinController.text = _proteinGoal?.toString() ?? '';
           _carbsController.text = _carbsGoal?.toString() ?? '';
           _fatsController.text = _fatsGoal?.toString() ?? '';
-          if (userData['goal_source'] == 'manual') _selectedTabIndex = 1;
+          if (userData['goal_source'] == 'manual') {
+            _selectedTabIndex = 1;
+          } else if (storedGoal != null && storedGoal > 0) {
+            // Returning users see their saved goal (and Save) straight away.
+            _showAIResults = true;
+          }
         });
       }
     } catch (e) {
-      // Error getting user data
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                "Couldn't load your details. Check your connection and try again."),
+          ),
+        );
+      }
     } finally {
-      if (context.mounted) {
+      if (mounted) {
         setState(() {
           isLoading = false;
         });
@@ -405,6 +465,24 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     }
   }
 
+  /// What the activity slider shows. (The server gets
+  /// [_getExerciseLevelText], which must not change.)
+  String _exerciseLevelLabel() {
+    switch (_exerciseLevel.round()) {
+      case 1:
+        return '1–3 hours a week';
+      case 2:
+        return '4–6 hours a week';
+      case 3:
+        return '7–9 hours a week';
+      case 4:
+        return '10+ hours a week';
+      default:
+        return 'Little or none';
+    }
+  }
+
+  /// Sent to the server as `exercise_level`; keep these values as they are.
   String _getExerciseLevelText() {
     if (_exerciseLevel == 0) return 'No activity';
     if (_exerciseLevel == 1) return '1-3 hours per week';
@@ -420,7 +498,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         _selectedWeight == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Please fill in age, height, and weight first')),
+            content: Text('Fill in your age, height and weight first.')),
       );
       return;
     }
@@ -437,11 +515,10 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         attempt++;
 
         if (attempt > 1 && mounted) {
-          // Show retry attempt to user
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Retrying... (Attempt $attempt of $maxRetries)'),
-              duration: const Duration(seconds: 2),
+            const SnackBar(
+              content: Text('Trying again…'),
+              duration: Duration(seconds: 2),
             ),
           );
         }
@@ -456,16 +533,14 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             .timeout(
           const Duration(seconds: 30),
           onTimeout: () {
-            throw Exception(
-                'Request timed out. The server may be waking up from sleep. Please try again in a moment.');
+            // The retry check below looks for "timed out".
+            throw const _EstimateError(
+                'That timed out. Please try again in a moment.');
           },
         );
 
-        print('API Status Code: ${response.statusCode}');
-
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
-          print('API Response: $data');
           final targets =
               data['ai']?['final']?['targets'] ?? data['baseline']?['targets'];
 
@@ -512,41 +587,45 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             // Success - exit retry loop
             return;
           } else {
-            throw Exception('Targets data not found in response');
+            throw const _EstimateError(
+                "Couldn't work out your targets just now. Please try again.");
           }
         } else if (response.statusCode == 503 && attempt < maxRetries) {
-          // Server is cold starting, wait and retry
-          print('Server cold starting, will retry...');
+          // Busy for a moment: wait and retry.
+          debugPrint('macro-targets: 503, retrying');
           await Future.delayed(Duration(seconds: 5 * attempt));
           continue;
         } else {
-          // Log detailed error information
-          print('API Error - Status: ${response.statusCode}');
-          print('API Error - Body: ${response.body}');
+          debugPrint('macro-targets failed: status ${response.statusCode}');
 
-          String errorMessage = 'Server error';
+          String errorMessage;
           if (response.statusCode == 503) {
             errorMessage =
-                'Server is starting up. Please wait 30 seconds and try again.';
+                "The server's busy right now. Please try again in a minute.";
           } else if (response.statusCode == 500) {
-            errorMessage = 'Server error. Please try again or contact support.';
+            errorMessage = 'Something went wrong on our side. Please try again.';
           } else if (response.statusCode == 400) {
             errorMessage =
-                'Invalid request data. Please check your profile information.';
+                'Some of your details look wrong. Check your age, height and weight.';
           } else {
             errorMessage =
-                'Error ${response.statusCode}: ${response.body.length > 100 ? '${response.body.substring(0, 100)}...' : response.body}';
+                "Couldn't work out your targets just now. Please try again.";
           }
 
-          throw Exception(errorMessage);
+          throw _EstimateError(errorMessage);
         }
       } catch (e) {
-        print('AI Estimation Error (attempt $attempt): $e');
+        debugPrint('macro-targets error (attempt $attempt): $e');
+
+        // Only our own messages are shown; anything else (no connection,
+        // a bad reply) gets a friendly fallback.
+        final userMessage = e is _EstimateError
+            ? e.message
+            : "Couldn't reach the server. Check your connection and try again.";
 
         // If this is the last attempt or not a retryable error, show error to user
-        if (attempt >= maxRetries || !e.toString().contains('timed out')) {
+        if (attempt >= maxRetries || !userMessage.contains('timed out')) {
           if (mounted) {
-            String userMessage = e.toString().replaceFirst('Exception: ', '');
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(userMessage),
@@ -575,33 +654,19 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   Future<void> updateCalories() async {
     _markFieldsChanged();
     _aiTargets = null;
-    var genderAdjustment = genderSelections.first ? 5 : -161;
-    double activityMultiplier = 0;
 
-    switch (_exerciseLevel.round()) {
-      case 0:
-        activityMultiplier = 1.2;
-      case 1:
-        activityMultiplier = 1.375;
-      case 2:
-        activityMultiplier = 1.55;
-      case 3:
-        activityMultiplier = 1.725;
-      case 4:
-        activityMultiplier = 1.9;
-    }
-
-    try {
-      var baseCalories =
-          ((((10 * _selectedWeight!) + (6.25 * _selectedHeight!)) -
-                  (5 * _selectedAge!) +
-                  genderAdjustment) *
-              activityMultiplier);
-
-      calorieDeficit = (baseCalories * 0.85).round();
-      calorieMaintenance = baseCalories.round();
-      calorieSurplus = (baseCalories * 1.15).round();
-    } catch (e) {
+    final base = maintenanceCalories(
+      age: _selectedAge,
+      heightCm: _selectedHeight,
+      weightKg: _selectedWeight,
+      male: genderSelections.first,
+      exerciseLevel: _exerciseLevel,
+    );
+    if (base != null && base.isFinite) {
+      calorieDeficit = suggestedCalorieGoal(base, 'lose');
+      calorieMaintenance = suggestedCalorieGoal(base, 'maintain');
+      calorieSurplus = suggestedCalorieGoal(base, 'gain');
+    } else {
       calorieDeficit = 0;
       calorieMaintenance = 0;
       calorieSurplus = 0;
@@ -612,9 +677,80 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
   bool isLoading = false;
 
-  Future<void> wait(BuildContext context, VoidCallback onSuccess) async {
-    await Future.delayed(const Duration(seconds: 1));
-    onSuccess.call();
+  bool get _hasGoal => (cardActiveCalories ?? 0) > 0;
+
+  void _selectGoal(int index) {
+    setState(() {
+      for (int i = 0; i < calorieSelections.length; i++) {
+        calorieSelections[i] = i == index;
+      }
+    });
+    if (calorieSelections.first) {
+      calorieMode = 'lose';
+    } else if (calorieSelections[1]) {
+      calorieMode = 'maintain';
+    } else if (calorieSelections[2]) {
+      calorieMode = 'gain';
+    }
+    updateCardActiveCalories();
+  }
+
+  Widget _goalOption(IconData icon, String label, int? kcal) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          Text(
+            '${kcal ?? 0}',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The card preview, which jiggles when you flip to the macros side.
+  Widget _cardPreview() {
+    return Center(
+      // Keep the card at its natural size; the stretch column
+      // would otherwise pull it to full width.
+      child: AnimatedBuilder(
+        animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
+        builder: (context, child) {
+          return Transform.rotate(
+            angle: _jiggleAnimation?.value ?? 0.0,
+            child: child,
+          );
+        },
+        child: CreditCard(
+          design: _cardDesign,
+          key: ValueKey(
+              '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
+          initialCalories: cardActiveCalories ?? 0,
+          caloriesOverride: cardActiveCalories ?? 0,
+          proteinOverride: (_proteinGoal ?? 0).toDouble(),
+          carbsOverride: (_carbsGoal ?? 0).toDouble(),
+          fatsOverride: (_fatsGoal ?? 0).toDouble(),
+          skipFetch: true,
+          onToggleMacros: (showMacros) {
+            _jiggleAnimationController?.forward(from: 0);
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildAICalculatedTab() {
@@ -623,7 +759,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Back Button
           OutlinedButton.icon(
             onPressed: () {
               setState(() {
@@ -631,32 +766,22 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               });
             },
             icon: const Icon(Icons.arrow_back, size: 18),
-            label: const Text(
-              'Back to Inputs',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.primary,
-              side: const BorderSide(color: AppColors.primary),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
+            label: const Text('Back to my details'),
           ),
           const SizedBox(height: 20),
-          // Goal Selection
           const Text(
-            'Select Your Goal',
+            'Your goal',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF1F2937),
+              color: AppColors.gray800,
             ),
           ),
           const SizedBox(height: 16),
           Center(
-            child: IntrinsicWidth(
+            // Shrinks to fit on very narrow phones instead of overflowing.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
               child: ToggleButtons(
                 isSelected: calorieSelections,
                 selectedColor: Colors.white,
@@ -664,104 +789,21 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 borderColor: AppColors.primary,
                 selectedBorderColor: AppColors.primary,
                 borderRadius: BorderRadius.circular(10),
-                onPressed: (int index) {
-                  setState(() {
-                    for (int i = 0; i < calorieSelections.length; i++) {
-                      calorieSelections[i] = i == index;
-                    }
-                  });
-                  if (calorieSelections.first) {
-                    calorieMode = 'lose';
-                  } else if (calorieSelections[1]) {
-                    calorieMode = 'maintain';
-                  } else if (calorieSelections[2]) {
-                    calorieMode = 'gain';
-                  }
-                  updateCardActiveCalories();
-                },
+                onPressed: _selectGoal,
                 constraints: const BoxConstraints(
-                  minWidth: 90,
+                  minWidth: 84,
                   minHeight: 52,
                 ),
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.trending_down, size: 18),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Lose',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                        Text(
-                          '${calorieDeficit ?? 0}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.horizontal_rule, size: 18),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Maintain',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                        Text(
-                          '${calorieMaintenance ?? 0}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.trending_up, size: 18),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Gain',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                        Text(
-                          '${calorieSurplus ?? 0}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _goalOption(Icons.trending_down, 'Lose', calorieDeficit),
+                  _goalOption(
+                      Icons.horizontal_rule, 'Maintain', calorieMaintenance),
+                  _goalOption(Icons.trending_up, 'Gain', calorieSurplus),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 24),
-          // Macros Section
           const Text(
             'Macros',
             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
@@ -778,134 +820,12 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _buildReadOnlyMacroField('Fats', _fatsGoal ?? 0),
+                child: _buildReadOnlyMacroField('Fat', _fatsGoal ?? 0),
               ),
             ],
           ),
           const SizedBox(height: 24),
-          // Credit Card Preview
-          Center(
-            // Keep the card at its natural size; the stretch column
-            // would otherwise pull it to full width.
-            child: AnimatedBuilder(
-              animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
-              builder: (context, child) {
-                return Transform.rotate(
-                  angle: _jiggleAnimation?.value ?? 0.0,
-                  child: child,
-                );
-              },
-              child: CreditCard(
-                design: _cardDesign,
-                key: ValueKey(
-                    '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
-                initialCalories: cardActiveCalories ?? 0,
-                caloriesOverride: cardActiveCalories ?? 0,
-                proteinOverride: (_proteinGoal ?? 0).toDouble(),
-                carbsOverride: (_carbsGoal ?? 0).toDouble(),
-                fatsOverride: (_fatsGoal ?? 0).toDouble(),
-                skipFetch: true,
-                onToggleMacros: (showMacros) {
-                  _jiggleAnimationController?.forward(from: 0);
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Clear Today\'s Food'),
-                    content: const Text(
-                        'This will delete all food items logged for today. This action cannot be undone. Continue?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text('Cancel'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.red600,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('Clear All'),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirm == true) {
-                  await _clearAllTodaysFoodItems();
-                }
-              },
-              icon: const Icon(Icons.delete_sweep),
-              label: const Text('Clear Today\'s Food'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.red600,
-                side: const BorderSide(color: AppColors.red600),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            height: 54,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.green.withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: ElevatedButton(
-              onPressed: _isSaving
-                  ? null
-                  : _onSavePressed,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.green,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                elevation: 0,
-                disabledBackgroundColor:
-                    AppColors.green.withValues(alpha: 0.6),
-              ),
-              child: _isSaving
-                  ? const SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.check_circle_rounded, size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'Save Changes',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 17,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ),
+          _cardPreview(),
         ],
       );
     }
@@ -914,7 +834,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Always show input fields
         Row(
           children: [
             MeasurementInputField(
@@ -922,7 +841,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               controller: _ageController,
               focusNode: _ageFocusNode,
               hintText: 'E.g. 30',
-              suffix: ' Years Old',
+              suffix: ' years',
               onChanged: (value) {
                 setState(() {
                   _selectedAge = value;
@@ -961,13 +880,19 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                     });
                   },
                   children: const [
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Icon(Icons.man),
+                    Tooltip(
+                      message: 'Male',
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Icon(Icons.man, semanticLabel: 'Male'),
+                      ),
                     ),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Icon(Icons.woman),
+                    Tooltip(
+                      message: 'Female',
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Icon(Icons.woman, semanticLabel: 'Female'),
+                      ),
                     ),
                   ],
                 ),
@@ -1015,7 +940,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         ),
         const SizedBox(height: 20),
         const Text(
-          'Exercise Level',
+          'Activity',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
         ),
         const SizedBox(height: 8),
@@ -1024,7 +949,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           min: 0,
           max: 4,
           divisions: 4,
-          label: _getExerciseLevelText(),
+          label: _exerciseLevelLabel(),
           activeColor: AppColors.primary,
           inactiveColor: AppColors.gray300,
           onChanged: (double value) {
@@ -1035,9 +960,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           },
         ),
         Text(
-          _getExerciseLevelText(),
+          _exerciseLevelLabel(),
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 14, color: AppColors.gray400),
+          style: const TextStyle(fontSize: 14, color: AppColors.muted),
         ),
         const SizedBox(height: 20),
         SizedBox(
@@ -1052,31 +977,31 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 : null,
             icon: const Icon(Icons.auto_awesome, size: 20),
             label: Text(_macrosFromAI && !_canEstimateWithAI
-                ? 'Estimated!'
-                : 'Estimate Via AI'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
+                ? 'Done'
+                : 'Work out my targets'),
           ),
         ),
-        // Empty state when no estimation yet
-        if (!_macrosFromAI) ...[
+        if (_hasGoal) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton(
+              onPressed: () {
+                setState(() {
+                  _showAIResults = true;
+                });
+              },
+              child: const Text('Review and save'),
+            ),
+          ),
+        ]
+        // Empty state when nothing has been worked out yet
+        else if (!_macrosFromAI) ...[
           const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppColors.border,
-                width: 1,
-              ),
-            ),
+            decoration: AppDecor.inset,
             child: Column(
               children: [
                 Icon(
@@ -1085,8 +1010,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                   color: AppColors.primary.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  'No AI Estimation Yet',
+                const Text(
+                  'Let us work out your targets',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1094,8 +1020,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  'Tap "Estimate Via AI" to calculate\nyour personalized targets',
+                const Text(
+                  'Fill in your details, then tap "Work out my targets".',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
@@ -1123,7 +1049,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         children: [
           Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: AppColors.gray600,
               fontWeight: FontWeight.w500,
@@ -1142,30 +1068,34 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     );
   }
 
+  InputDecoration _numberDecoration(String label, String hint) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 12,
+      ),
+    );
+  }
+
   Widget _buildManualInputTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          'Calorie Balance',
+          'Daily calorie goal',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _manualCalorieController,
           keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: 'Calories',
-            hintText: 'E.g. 2000',
-            floatingLabelBehavior: FloatingLabelBehavior.always,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 12,
-            ),
-          ),
+          decoration: _numberDecoration('Calories', 'E.g. 2000'),
           onChanged: (value) {
             setState(() {
               _manualCalorieGoal = int.tryParse(value);
@@ -1187,18 +1117,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 controller: _proteinController,
                 focusNode: _proteinFocusNode,
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Protein (g)',
-                  hintText: 'Protein',
-                  floatingLabelBehavior: FloatingLabelBehavior.always,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                ),
+                decoration: _numberDecoration('Protein (g)', 'Protein'),
                 onChanged: (value) {
                   setState(() {
                     _proteinGoal = int.tryParse(value);
@@ -1212,18 +1131,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 controller: _carbsController,
                 focusNode: _carbsFocusNode,
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Carbs (g)',
-                  hintText: 'Carbs',
-                  floatingLabelBehavior: FloatingLabelBehavior.always,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                ),
+                decoration: _numberDecoration('Carbs (g)', 'Carbs'),
                 onChanged: (value) {
                   setState(() {
                     _carbsGoal = int.tryParse(value);
@@ -1237,18 +1145,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 controller: _fatsController,
                 focusNode: _fatsFocusNode,
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Fats (g)',
-                  hintText: 'Fats',
-                  floatingLabelBehavior: FloatingLabelBehavior.always,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                ),
+                decoration: _numberDecoration('Fat (g)', 'Fat'),
                 onChanged: (value) {
                   setState(() {
                     _fatsGoal = int.tryParse(value);
@@ -1259,404 +1156,182 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           ],
         ),
         const SizedBox(height: 20),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 0),
-          child: Center(
-            // Keep the card at its natural size; the stretch column
-            // would otherwise pull it to full width.
-            child: AnimatedBuilder(
-              animation: _jiggleAnimation ?? const AlwaysStoppedAnimation(0.0),
-              builder: (context, child) {
-                return Transform.rotate(
-                  angle: _jiggleAnimation?.value ?? 0.0,
-                  child: child,
-                );
-              },
-              child: CreditCard(
-                design: _cardDesign,
-                key: ValueKey(
-                    '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
-                initialCalories: cardActiveCalories ?? 0,
-                caloriesOverride: cardActiveCalories ?? 0,
-                proteinOverride: (_proteinGoal ?? 0).toDouble(),
-                carbsOverride: (_carbsGoal ?? 0).toDouble(),
-                fatsOverride: (_fatsGoal ?? 0).toDouble(),
-                skipFetch: true,
-                onToggleMacros: (showMacros) {
-                  _jiggleAnimationController?.forward(from: 0);
-                },
-              ),
-            ),
+        _cardPreview(),
+      ],
+    );
+  }
+
+  Future<void> _confirmClearToday() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Clear today's food?"),
+        content: const Text(
+            "This removes everything you've logged today and puts your card "
+            'back to your full daily goal. Saved recipes are kept. '
+            "You can't undo this."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-        ),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: OutlinedButton.icon(
-            onPressed: () async {
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Clear Today\'s Food'),
-                  content: const Text(
-                      'This will delete all food items logged for today. This action cannot be undone. Continue?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.red600,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Clear All'),
-                    ),
-                  ],
-                ),
-              );
-              if (confirm == true) {
-                await _clearAllTodaysFoodItems();
-              }
-            },
-            icon: const Icon(Icons.delete_sweep),
-            label: const Text('Clear Today\'s Food'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.red600,
-              side: const BorderSide(color: AppColors.red600),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton(
-            onPressed: _isSaving
-                ? null
-                : _onSavePressed,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.green,
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.red600,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: 4,
             ),
-            child: _isSaving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : const Text(
-                    'Save',
+            child: const Text('Clear today'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _clearAllTodaysFoodItems();
+    }
+  }
+
+  void _selectTab(int index) {
+    setState(() {
+      _selectedTabIndex = index;
+      if (index == 1 && _manualCalorieGoal != null) {
+        cardActiveCalories = _manualCalorieGoal;
+      }
+    });
+  }
+
+  Widget _tabButton(int index, IconData icon, String label) {
+    final selected = _selectedTabIndex == index;
+    return Expanded(
+      child: Material(
+        color: selected ? AppColors.primaryDark : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _selectTab(index),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 18,
+                  color: selected ? Colors.white : AppColors.gray600,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      color: selected ? Colors.white : AppColors.gray700,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
                     ),
                   ),
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 24),
-      ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
     return Scaffold(
+      backgroundColor: AppColors.canvas,
+      appBar: AppBar(title: const Text('Goals and profile')),
       body: Stack(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.primary,
-                  AppColors.violet,
-                ],
-              ),
-            ),
-            child: SafeArea(
+          if (isLoading)
+            const Center(child: CircularProgressIndicator())
+          else
+            SafeArea(
               top: false,
-              child: isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ))
-                  : SingleChildScrollView(
-                      padding: EdgeInsets.zero,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                        maxWidth: Breakpoints.contentMaxWidth),
+                    child: Container(
+                      decoration: AppDecor.card,
+                      padding: const EdgeInsets.all(20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Enhanced Header
                           Container(
-                            padding: EdgeInsets.fromLTRB(
-                                12, topPadding + 12, 12, 16),
+                            padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.white.withValues(alpha: 0.15),
-                                  Colors.white.withValues(alpha: 0.05),
-                                ],
-                              ),
-                              borderRadius: const BorderRadius.only(
-                                bottomLeft: Radius.circular(24),
-                                bottomRight: Radius.circular(24),
-                              ),
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: Colors.white.withValues(alpha: 0.2),
-                                  width: 1,
-                                ),
-                              ),
+                              color: AppColors.gray100,
+                              borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
                               children: [
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: IconButton(
-                                    onPressed: () {
-                                      Navigator.pop(context);
-                                    },
-                                    icon: const Icon(Icons.arrow_back_rounded),
-                                    color: Colors.white,
-                                    splashRadius: 20,
-                                    tooltip: 'Back',
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Column(
-                                    children: [
-                                      const Text(
-                                        'Edit Profile',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Update your information',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.white.withValues(alpha: 0.85),
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 48),
+                                _tabButton(0, Icons.auto_awesome, 'Calculate'),
+                                _tabButton(1, Icons.edit_note, 'Set my own'),
                               ],
                             ),
                           ),
-                          // Main Content
-                          Container(
-                            margin: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: AppColors.gray50,
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.1),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
+                          const SizedBox(height: 24),
+                          if (_selectedTabIndex == 0)
+                            _buildAICalculatedTab()
+                          else
+                            _buildManualInputTab(),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 52,
+                            child: FilledButton(
+                              // _onSavePressed ignores taps while saving.
+                              onPressed: _onSavePressed,
+                              child: _isSaving
+                                  ? const SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                                Colors.white),
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Save goals',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  // Modern Tabs
-                                  Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.border,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: GestureDetector(
-                                            onTap: () {
-                                              setState(() {
-                                                _selectedTabIndex = 0;
-                                              });
-                                            },
-                                            child: AnimatedContainer(
-                                              duration: const Duration(
-                                                  milliseconds: 200),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      vertical: 14),
-                                              decoration: BoxDecoration(
-                                                color: _selectedTabIndex == 0
-                                                    ? AppColors.primary
-                                                    : Colors.transparent,
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                                boxShadow: _selectedTabIndex ==
-                                                        0
-                                                    ? [
-                                                        BoxShadow(
-                                                          color: Color(
-                                                                  0xFF6366F1)
-                                                              .withValues(alpha: 0.3),
-                                                          blurRadius: 8,
-                                                          offset: const Offset(
-                                                              0, 2),
-                                                        ),
-                                                      ]
-                                                    : [],
-                                              ),
-                                              child: Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  Icon(
-                                                    Icons.auto_awesome,
-                                                    size: 18,
-                                                    color: _selectedTabIndex ==
-                                                            0
-                                                        ? Colors.white
-                                                        : AppColors.gray600,
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Text(
-                                                    'AI Calculated',
-                                                    textAlign: TextAlign.center,
-                                                    style: TextStyle(
-                                                      color:
-                                                          _selectedTabIndex == 0
-                                                              ? Colors.white
-                                                              : AppColors.gray700,
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                      fontSize: 15,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        Expanded(
-                                          child: GestureDetector(
-                                            onTap: () {
-                                              setState(() {
-                                                _selectedTabIndex = 1;
-                                                if (_manualCalorieGoal != null) {
-                                                  cardActiveCalories =
-                                                      _manualCalorieGoal;
-                                                }
-                                              });
-                                            },
-                                            child: AnimatedContainer(
-                                              duration: const Duration(
-                                                  milliseconds: 200),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      vertical: 14),
-                                              decoration: BoxDecoration(
-                                                color: _selectedTabIndex == 1
-                                                    ? AppColors.primary
-                                                    : Colors.transparent,
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                                boxShadow: _selectedTabIndex ==
-                                                        1
-                                                    ? [
-                                                        BoxShadow(
-                                                          color: Color(
-                                                                  0xFF6366F1)
-                                                              .withValues(alpha: 0.3),
-                                                          blurRadius: 8,
-                                                          offset: const Offset(
-                                                              0, 2),
-                                                        ),
-                                                      ]
-                                                    : [],
-                                              ),
-                                              child: Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  Icon(
-                                                    Icons.edit_note,
-                                                    size: 18,
-                                                    color: _selectedTabIndex ==
-                                                            1
-                                                        ? Colors.white
-                                                        : AppColors.gray600,
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Text(
-                                                    'Manual Input',
-                                                    textAlign: TextAlign.center,
-                                                    style: TextStyle(
-                                                      color:
-                                                          _selectedTabIndex == 1
-                                                              ? Colors.white
-                                                              : AppColors.gray700,
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                      fontSize: 15,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 24),
-                                  // Tab content
-                                  if (_selectedTabIndex == 0)
-                                    _buildAICalculatedTab()
-                                  else
-                                    _buildManualInputTab(),
-                                ],
+                          ),
+                          const SizedBox(height: 8),
+                          Center(
+                            child: TextButton.icon(
+                              onPressed: _confirmClearToday,
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppColors.red600,
                               ),
+                              icon: const Icon(Icons.delete_sweep),
+                              label: const Text("Clear today's food"),
                             ),
                           ),
                         ],
                       ),
                     ),
+                  ),
+                ),
+              ),
             ),
-          ),
           if (_isEstimatingWithAI && _showMiniGame) const PingPongGame(),
           if (_isEstimatingWithAI && !_showMiniGame)
             Container(
               color: Colors.black.withValues(alpha: 0.5),
               child: Center(
                 child: Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(32),
                     child: Column(
@@ -1668,7 +1343,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                         ),
                         const SizedBox(height: 16),
                         const Text(
-                          'AI is calculating your\nmacros and calories...',
+                          'Working out your calories and macros…',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 16,
@@ -1683,11 +1358,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                             });
                           },
                           icon: const Icon(Icons.sports_esports, size: 18),
-                          label: const Text('Play Solo Ping Pong'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                          ),
+                          label: const Text('Play ping pong while you wait'),
                         ),
                       ],
                     ),

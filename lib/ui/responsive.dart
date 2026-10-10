@@ -37,19 +37,24 @@ class AppColors {
   static const emerald400 = Color(0xFF34D399);
   static const green = Color(0xFF10B981);
   static const emerald600 = Color(0xFF059669);
+  static const emerald700 = Color(0xFF047857);
   static const emerald800 = Color(0xFF065F46);
   static const emerald900 = Color(0xFF064E3B);
 
   // Warning
   static const amber50 = Color(0xFFFFFBEB);
+  static const amber100 = Color(0xFFFEF3C7);
   static const amber200 = Color(0xFFFDE68A);
   static const amber300 = Color(0xFFFCD34D);
   static const amber400 = Color(0xFFFBBF24);
   static const amber = Color(0xFFF59E0B);
   static const amber600 = Color(0xFFD97706);
   static const amber700 = Color(0xFFB45309);
+  static const amber800 = Color(0xFF92400E);
 
   // Over budget / destructive
+  static const red50 = Color(0xFFFEF2F2);
+  static const red100 = Color(0xFFFEE2E2);
   static const red300 = Color(0xFFFCA5A5);
   static const red400 = Color(0xFFF87171);
   static const red = Color(0xFFEF4444);
@@ -57,14 +62,23 @@ class AppColors {
   static const red700 = Color(0xFFB91C1C);
 
   // Extra category accents
+  static const rose50 = Color(0xFFFFF1F2);
   static const rose400 = Color(0xFFFB7185);
   static const rose600 = Color(0xFFE11D48);
+  static const sky50 = Color(0xFFF0F9FF);
+  static const sky100 = Color(0xFFE0F2FE);
   static const sky = Color(0xFF0EA5E9);
+  static const sky700 = Color(0xFF0369A1); // sky text on white (AA)
 
   // Macros, used the same way on every screen.
   static const protein = Color(0xFFEF4444);
   static const carbs = Color(0xFFF59E0B);
   static const fat = Color(0xFF0EA5E9);
+
+  // Macro colours dark enough for text on white.
+  static const proteinText = Color(0xFFDC2626);
+  static const carbsText = Color(0xFFB45309);
+  static const fatText = Color(0xFF0369A1);
 
   // Cool greys
   static const canvas = Color(0xFFF3F4F8);
@@ -83,6 +97,27 @@ class AppColors {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [primary, violet],
+  );
+}
+
+/// Shared shapes, so cards and panels look the same on every screen.
+class AppDecor {
+  AppDecor._();
+
+  static const double radius = 16;
+
+  /// A white card with a hairline border: the app's standard surface.
+  static const card = BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.all(Radius.circular(radius)),
+    border: Border.fromBorderSide(BorderSide(color: AppColors.border)),
+  );
+
+  /// A quiet grey panel inside a card (totals, summaries).
+  static const inset = BoxDecoration(
+    color: AppColors.gray50,
+    borderRadius: BorderRadius.all(Radius.circular(12)),
+    border: Border.fromBorderSide(BorderSide(color: AppColors.border)),
   );
 }
 

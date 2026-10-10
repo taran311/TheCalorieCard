@@ -4,7 +4,67 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/friends_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
+
+/// The navigator chat screens open on.
+///
+/// On phones a chat goes on the root navigator, so it covers the bottom bar
+/// and the Coach button can't sit on top of the message box. On wider
+/// screens it stays inside the current tab. Uses the window width, not
+/// MediaQuery (which is narrowed to the page column on desktop).
+NavigatorState chatNavigator(BuildContext context) {
+  final view = View.of(context);
+  final width = view.physicalSize.width / view.devicePixelRatio;
+  return Navigator.of(context, rootNavigator: width < Breakpoints.tablet);
+}
+
+/// Display names for the other person in direct chats, fetched once each.
+final Map<String, Future<String?>> _personNames = {};
+
+Future<String?> _personName(String uid) {
+  return _personNames.putIfAbsent(uid, () async {
+    try {
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final email = doc.data()?['email'] as String?;
+      if (email == null || email.isEmpty) return null;
+      return FriendsService.displayName(email);
+    } catch (_) {
+      _personNames.remove(uid);
+      return null;
+    }
+  });
+}
+
+/// Group names, fetched once each per session.
+final Map<String, Future<String?>> _groupNames = {};
+
+Future<String?> _groupName(String groupId) {
+  return _groupNames.putIfAbsent(groupId, () async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('friend_groups')
+          .doc(groupId)
+          .get();
+      final name = doc.data()?['name'];
+      return name is String && name.isNotEmpty ? name : null;
+    } catch (_) {
+      _groupNames.remove(groupId);
+      return null;
+    }
+  });
+}
+
+/// The other participant in a one-to-one chat (null if unknown).
+String? _otherParticipant(Map<String, dynamic> data, String myUid) {
+  final ids = data['participant_ids'];
+  if (ids is! List) return null;
+  for (final id in ids) {
+    if (id is String && id != myUid) return id;
+  }
+  return null;
+}
 
 class MessagesPage extends StatelessWidget {
 
@@ -14,12 +74,14 @@ class MessagesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     if (currentUserId == null) {
-      return const Scaffold(
-        body: Center(child: Text('Please log in')),
+      return Scaffold(
+        appBar: AppBar(title: const Text('Messages')),
+        body: const Center(child: Text('Sign in to see your messages.')),
       );
     }
 
     return Scaffold(
+      backgroundColor: AppColors.canvas,
       appBar: AppBar(
         title: const Text('Messages'),
       ),
@@ -29,62 +91,72 @@ class MessagesPage extends StatelessWidget {
             .where('participant_ids', arrayContains: currentUserId)
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
           if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline,
-                      size: 64, color: AppColors.red400),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Error loading conversations',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: AppColors.gray600,
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.error_outline,
+                        size: 64, color: AppColors.red400),
+                    SizedBox(height: 16),
+                    Text(
+                      "Couldn't load your messages",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: AppColors.gray600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Please check your connection',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.muted,
+                    SizedBox(height: 8),
+                    Text(
+                      'Check your connection and try again.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.muted,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           }
 
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.chat_bubble_outline,
-                      size: 64, color: AppColors.gray400),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No conversations yet',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: AppColors.gray600,
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.chat_bubble_outline,
+                        size: 64, color: AppColors.gray400),
+                    SizedBox(height: 16),
+                    Text(
+                      'No conversations yet',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: AppColors.gray600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Start a chat from Friends or Groups',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.muted,
+                    SizedBox(height: 8),
+                    Text(
+                      'Start a chat from Friends or Groups',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.muted,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           }
@@ -105,16 +177,21 @@ class MessagesPage extends StatelessWidget {
           });
 
           return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
             itemCount: conversations.length,
             itemBuilder: (context, index) {
               final conversation = conversations[index];
               final data = conversation.data() as Map<String, dynamic>;
 
-              final conversationName = data['conversation_name'] ?? 'Unknown';
-              final lastMessage = data['last_message'] ?? '';
+              final conversationName =
+                  (data['conversation_name'] ?? 'Unknown').toString();
+              final lastMessage = (data['last_message'] ?? '').toString();
               final lastMessageTime = data['last_message_time'] as Timestamp?;
-              final isGroup = data['is_group'] ?? false;
-              final unreadCount = data['unread_count']?[currentUserId] ?? 0;
+              final isGroup = data['is_group'] == true;
+              final rawUnread = data['unread_count'] is Map
+                  ? (data['unread_count'] as Map)[currentUserId]
+                  : null;
+              final unreadCount = rawUnread is num ? rawUnread.toInt() : 0;
               var groupId = data['group_id'] as String?;
 
               // Extract group ID from conversation ID if not stored
@@ -125,51 +202,53 @@ class MessagesPage extends StatelessWidget {
                     conversation.id.substring(6); // Remove 'group_' prefix
               }
 
-              // For groups, fetch the actual group name from friend_groups
-              if (isGroup && groupId != null) {
-                return FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection('friend_groups')
-                      .doc(groupId)
-                      .get(),
-                  builder: (context, groupSnapshot) {
-                    String displayName = conversationName;
-                    if (groupSnapshot.hasData && groupSnapshot.data != null) {
-                      final groupData =
-                          groupSnapshot.data!.data() as Map<String, dynamic>?;
-                      displayName = groupData?['name'] ?? conversationName;
-                    }
+              // Groups: the group's current name. Direct chats: the other
+              // person's name (the stored name is the creator's view).
+              final Future<String?>? nameFuture;
+              if (isGroup) {
+                nameFuture = groupId == null ? null : _groupName(groupId);
+              } else {
+                final otherId = _otherParticipant(data, currentUserId);
+                nameFuture = otherId == null ? null : _personName(otherId);
+              }
 
-                    return _buildConversationTile(
-                      context,
-                      conversation.id,
-                      displayName,
-                      lastMessage,
-                      lastMessageTime,
-                      isGroup,
-                      unreadCount,
-                    );
-                  },
+              if (nameFuture == null) {
+                return _buildConversationTile(
+                  context,
+                  conversation.id,
+                  conversationName,
+                  lastMessage,
+                  lastMessageTime,
+                  isGroup,
+                  unreadCount,
                 );
               }
 
-              return _buildConversationTile(
-                context,
-                conversation.id,
-                conversationName,
-                lastMessage,
-                lastMessageTime,
-                isGroup,
-                unreadCount,
+              return FutureBuilder<String?>(
+                future: nameFuture,
+                builder: (context, nameSnapshot) {
+                  return _buildConversationTile(
+                    context,
+                    conversation.id,
+                    nameSnapshot.data ?? conversationName,
+                    lastMessage,
+                    lastMessageTime,
+                    isGroup,
+                    unreadCount,
+                  );
+                },
               );
             },
           );
         },
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'messages-new-chat',
+        tooltip: 'New chat',
         onPressed: () => _showNewChatDialog(context, currentUserId),
-        backgroundColor: AppColors.primary,
-        child: const Icon(Icons.add_comment, color: Colors.white),
+        backgroundColor: AppColors.primaryDark,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add_comment),
       ),
     );
   }
@@ -183,82 +262,93 @@ class MessagesPage extends StatelessWidget {
     bool isGroup,
     int unreadCount,
   ) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: AppColors.primary,
-        child: Icon(
-          isGroup ? Icons.group : Icons.person,
-          color: Colors.white,
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        leading: CircleAvatar(
+          backgroundColor: AppColors.primary,
+          child: Icon(
+            isGroup ? Icons.group : Icons.person,
+            color: Colors.white,
+          ),
         ),
-      ),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              conversationName,
-              style: TextStyle(
-                fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.w500,
-              ),
-            ),
-          ),
-          if (lastMessageTime != null)
-            Text(
-              timeago.format(lastMessageTime.toDate()),
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.gray600,
-              ),
-            ),
-        ],
-      ),
-      subtitle: Row(
-        children: [
-          Expanded(
-            child: Text(
-              lastMessage,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight:
-                    unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
-                color: unreadCount > 0 ? Colors.black87 : AppColors.gray600,
-              ),
-            ),
-          ),
-          if (unreadCount > 0)
-            Container(
-              margin: const EdgeInsets.only(left: 8),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 2,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(12),
-              ),
+        title: Row(
+          children: [
+            Expanded(
               child: Text(
-                unreadCount.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
+                conversationName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.ink,
+                  fontWeight:
+                      unreadCount > 0 ? FontWeight.bold : FontWeight.w500,
                 ),
               ),
             ),
-        ],
-      ),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ChatDetailPage(
-              conversationId: conversationId,
-              conversationName: conversationName,
-              isGroup: isGroup,
+            if (lastMessageTime != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  timeago.format(lastMessageTime.toDate()),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.gray600,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Row(
+          children: [
+            Expanded(
+              child: Text(
+                lastMessage,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight:
+                      unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                  color: unreadCount > 0 ? AppColors.ink : AppColors.gray600,
+                ),
+              ),
             ),
-          ),
-        );
-      },
+            if (unreadCount > 0)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.red,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  unreadCount > 99 ? '99+' : unreadCount.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        onTap: () {
+          chatNavigator(context).push(
+            MaterialPageRoute(
+              builder: (_) => ChatDetailPage(
+                conversationId: conversationId,
+                conversationName: conversationName,
+                isGroup: isGroup,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -266,111 +356,113 @@ class MessagesPage extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      showDragHandle: true,
       // Keep `context` = the Messages page: the chat is opened from it after
       // the sheet closes (the sheet's own context is gone by then).
       builder: (sheetContext) => DraggableScrollableSheet(
+        expand: false,
         initialChildSize: 0.7,
         minChildSize: 0.5,
         maxChildSize: 0.95,
-        builder: (_, controller) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.gray300,
-                  borderRadius: BorderRadius.circular(2),
+        builder: (_, controller) => Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'New chat',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.ink,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'Start New Chat',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: DefaultTabController(
-                  length: 2,
-                  child: Column(
-                    children: [
-                      TabBar(
-                        labelColor: AppColors.primary,
-                        unselectedLabelColor: AppColors.gray400,
-                        indicatorColor: AppColors.primary,
-                        tabs: const [
-                          Tab(text: 'Friends'),
-                          Tab(text: 'Groups'),
+            ),
+            Expanded(
+              child: DefaultTabController(
+                length: 2,
+                child: Column(
+                  children: [
+                    const TabBar(
+                      labelColor: AppColors.primaryDark,
+                      unselectedLabelColor: AppColors.muted,
+                      indicatorColor: AppColors.primary,
+                      tabs: [
+                        Tab(text: 'Friends'),
+                        Tab(text: 'Groups'),
+                      ],
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _buildFriendsList(
+                              context, sheetContext, currentUserId),
+                          _buildGroupsList(
+                              context, sheetContext, currentUserId),
                         ],
                       ),
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            _buildFriendsList(context, currentUserId),
-                            _buildGroupsList(context, currentUserId),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildFriendsList(BuildContext context, String currentUserId) {
+  static Widget _loadError() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Text(
+          "Couldn't load this. Check your connection.",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.muted),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFriendsList(
+      BuildContext context, BuildContext sheetContext, String currentUserId) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('users')
           .doc(currentUserId)
           .snapshots(),
-      builder: (context, snapshot) {
+      builder: (_, snapshot) {
+        if (snapshot.hasError) return _loadError();
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
         final userData = snapshot.data!.data() as Map<String, dynamic>?;
-        final friendsList =
-            (userData?['friends'] as List?)?.cast<String>() ?? [];
+        final friendsList = [
+          for (final id in (userData?['friends'] as List?) ?? const [])
+            id.toString()
+        ];
 
         if (friendsList.isEmpty) {
-          return Center(
+          return const Center(
             child: Text(
               'No friends yet',
-              style: TextStyle(color: AppColors.gray400),
+              style: TextStyle(color: AppColors.muted),
             ),
           );
         }
 
         return ListView.builder(
           itemCount: friendsList.length,
-          itemBuilder: (context, index) {
-            return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(friendsList[index])
-                  .get(),
-              builder: (context, friendSnapshot) {
-                if (!friendSnapshot.hasData) return const SizedBox.shrink();
-
-                final friendData =
-                    friendSnapshot.data!.data() as Map<String, dynamic>?;
-                final friendEmail = friendData?['email'] ?? 'Unknown';
-                final friendName = friendEmail.split('@')[0];
+          itemBuilder: (_, index) {
+            final friendId = friendsList[index];
+            return FutureBuilder<String?>(
+              future: _personName(friendId),
+              builder: (_, friendSnapshot) {
+                if (friendSnapshot.connectionState != ConnectionState.done) {
+                  return const SizedBox.shrink();
+                }
+                final friendName = friendSnapshot.data ?? 'Unknown';
 
                 return ListTile(
                   leading: const CircleAvatar(
@@ -379,12 +471,14 @@ class MessagesPage extends StatelessWidget {
                   ),
                   title: Text(
                     friendName,
-                    style: TextStyle(fontWeight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   onTap: () async {
-                    Navigator.pop(context);
+                    Navigator.pop(sheetContext);
                     await _startChatWithFriend(
-                        context, currentUserId, friendsList[index], friendName);
+                        context, currentUserId, friendId, friendName);
                   },
                 );
               },
@@ -395,34 +489,39 @@ class MessagesPage extends StatelessWidget {
     );
   }
 
-  Widget _buildGroupsList(BuildContext context, String currentUserId) {
+  Widget _buildGroupsList(
+      BuildContext context, BuildContext sheetContext, String currentUserId) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('friend_groups')
           .where('members', arrayContains: currentUserId)
           .snapshots(),
-      builder: (context, snapshot) {
+      builder: (_, snapshot) {
+        if (snapshot.hasError) return _loadError();
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.data!.docs.isEmpty) {
-          return Center(
+          return const Center(
             child: Text(
               'No groups yet',
-              style: TextStyle(color: AppColors.gray400),
+              style: TextStyle(color: AppColors.muted),
             ),
           );
         }
 
         return ListView.builder(
           itemCount: snapshot.data!.docs.length,
-          itemBuilder: (context, index) {
+          itemBuilder: (_, index) {
             final group = snapshot.data!.docs[index];
             final groupData = group.data() as Map<String, dynamic>;
-            final groupName = groupData['name'] ?? 'Unknown Group';
-            final memberIds =
-                (groupData['members'] as List?)?.cast<String>() ?? [];
+            final groupName =
+                (groupData['name'] as String?) ?? 'Unnamed group';
+            final memberIds = [
+              for (final id in (groupData['members'] as List?) ?? const [])
+                id.toString()
+            ];
 
             return ListTile(
               leading: const CircleAvatar(
@@ -431,14 +530,16 @@ class MessagesPage extends StatelessWidget {
               ),
               title: Text(
                 groupName,
-                style: TextStyle(fontWeight: FontWeight.w500),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w500),
               ),
               subtitle: Text(
-                '${memberIds.length} members',
-                style: TextStyle(fontSize: 12, color: AppColors.gray400),
+                '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
+                style: const TextStyle(fontSize: 12, color: AppColors.muted),
               ),
               onTap: () async {
-                Navigator.pop(context);
+                Navigator.pop(sheetContext);
                 await _startGroupChat(context, group.id, memberIds, groupName);
               },
             );
@@ -448,31 +549,43 @@ class MessagesPage extends StatelessWidget {
     );
   }
 
+  static void _chatFailed(BuildContext context) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(
+          content: Text("Couldn't open the chat. Please try again.")),
+    );
+  }
+
   Future<void> _startChatWithFriend(BuildContext context, String currentUserId,
       String friendId, String friendName) async {
     final conversationId = currentUserId.compareTo(friendId) < 0
         ? '${currentUserId}_$friendId'
         : '${friendId}_$currentUserId';
 
-    final conversationRef = FirebaseFirestore.instance
-        .collection('conversations')
-        .doc(conversationId);
+    try {
+      final conversationRef = FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId);
 
-    final conversationDoc = await conversationRef.get();
-    if (!conversationDoc.exists) {
-      await conversationRef.set({
-        'participant_ids': [currentUserId, friendId],
-        'conversation_name': friendName,
-        'is_group': false,
-        'last_message': '',
-        'last_message_time': FieldValue.serverTimestamp(),
-        'unread_count': {currentUserId: 0, friendId: 0},
-      });
+      final conversationDoc = await conversationRef.get();
+      if (!conversationDoc.exists) {
+        await conversationRef.set({
+          'participant_ids': [currentUserId, friendId],
+          'conversation_name': friendName,
+          'is_group': false,
+          'last_message': '',
+          'last_message_time': FieldValue.serverTimestamp(),
+          'unread_count': {currentUserId: 0, friendId: 0},
+        });
+      }
+    } catch (_) {
+      _chatFailed(context);
+      return;
     }
 
     if (context.mounted) {
-      Navigator.push(
-        context,
+      chatNavigator(context).push(
         MaterialPageRoute(
           builder: (_) => ChatDetailPage(
             conversationId: conversationId,
@@ -488,40 +601,44 @@ class MessagesPage extends StatelessWidget {
       List<String> memberIds, String groupName) async {
     final conversationId = 'group_$groupId';
 
-    final conversationRef = FirebaseFirestore.instance
-        .collection('conversations')
-        .doc(conversationId);
+    try {
+      final conversationRef = FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId);
 
-    final conversationDoc = await conversationRef.get();
-    if (!conversationDoc.exists) {
-      Map<String, int> unreadCount = {};
-      for (final memberId in memberIds) {
-        unreadCount[memberId] = 0;
-      }
+      final conversationDoc = await conversationRef.get();
+      if (!conversationDoc.exists) {
+        Map<String, int> unreadCount = {};
+        for (final memberId in memberIds) {
+          unreadCount[memberId] = 0;
+        }
 
-      await conversationRef.set({
-        'participant_ids': memberIds,
-        'conversation_name': groupName,
-        'is_group': true,
-        'group_id': groupId,
-        'last_message': '',
-        'last_message_time': FieldValue.serverTimestamp(),
-        'unread_count': unreadCount,
-      });
-    } else {
-      // Update existing conversation with group_id if missing
-      final data = conversationDoc.data();
-      if (data?['group_id'] == null) {
-        await conversationRef.update({
-          'group_id': groupId,
+        await conversationRef.set({
+          'participant_ids': memberIds,
           'conversation_name': groupName,
+          'is_group': true,
+          'group_id': groupId,
+          'last_message': '',
+          'last_message_time': FieldValue.serverTimestamp(),
+          'unread_count': unreadCount,
         });
+      } else {
+        // Update existing conversation with group_id if missing
+        final data = conversationDoc.data();
+        if (data?['group_id'] == null) {
+          await conversationRef.update({
+            'group_id': groupId,
+            'conversation_name': groupName,
+          });
+        }
       }
+    } catch (_) {
+      _chatFailed(context);
+      return;
     }
 
     if (context.mounted) {
-      Navigator.push(
-        context,
+      chatNavigator(context).push(
         MaterialPageRoute(
           builder: (_) => ChatDetailPage(
             conversationId: conversationId,
@@ -562,6 +679,10 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   bool _marking = false;
   bool _sharingCard = false;
 
+  /// For direct chats: the other person's name, looked up from their
+  /// account (the stored conversation name is the creator's view).
+  Future<String?>? _otherName;
+
   /// Only the most recent messages are loaded; older ones aren't needed to
   /// chat and loading everything gets slower as a conversation grows.
   static const _messageLimit = 200;
@@ -578,7 +699,22 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         .orderBy('timestamp', descending: true)
         .limit(_messageLimit)
         .snapshots();
+    if (!widget.isGroup) _otherName = _lookUpOtherName();
     _resetUnreadCount();
+  }
+
+  Future<String?> _lookUpOtherName() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return null;
+    try {
+      final doc = await _conversationRef.get();
+      final data = doc.data();
+      if (data == null) return null;
+      final otherId = _otherParticipant(data, uid);
+      return otherId == null ? null : await _personName(otherId);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _resetUnreadCount() async {
@@ -707,10 +843,20 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           curve: Curves.easeOut,
         );
       }
-    } catch (e) {
+    } catch (_) {
+      // Keep what they typed so they can send it again.
+      if (mounted &&
+          overrideText == null &&
+          _messageController.text.trim().isEmpty) {
+        _messageController.text = messageText;
+        _messageController.selection =
+            TextSelection.collapsed(offset: messageText.length);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending message: $e')),
+          const SnackBar(
+              content: Text(
+                  'Message not sent. Check your connection and try again.')),
         );
       }
     }
@@ -799,10 +945,20 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                widget.conversationName,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: _otherName == null
+                  ? Text(
+                      widget.conversationName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : FutureBuilder<String?>(
+                      future: _otherName,
+                      builder: (context, nameSnapshot) => Text(
+                        nameSnapshot.data ?? widget.conversationName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -820,6 +976,18 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: _messagesStream,
                   builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            "Couldn't load this. Check your connection.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.muted),
+                          ),
+                        ),
+                      );
+                    }
                     if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
@@ -938,7 +1106,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                         decoration: InputDecoration(
                           hintText: 'Message',
                           filled: true,
-                          fillColor: const Color(0xFFF3F4F6),
+                          fillColor: AppColors.gray100,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(22),
                             borderSide: BorderSide.none,
@@ -1204,7 +1372,7 @@ class _SharedCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1F2937), AppColors.ink],
+          colors: [AppColors.gray800, AppColors.ink],
         ),
       ),
       child: Column(
@@ -1217,7 +1385,7 @@ class _SharedCard extends StatelessWidget {
               Text(
                 over ? 'OVER BUDGET' : 'BALANCE TODAY',
                 style: TextStyle(
-                  color: over ? const Color(0xFFFCA5A5) : Colors.white70,
+                  color: over ? AppColors.red300 : Colors.white70,
                   fontSize: 10,
                   letterSpacing: 1.5,
                   fontWeight: FontWeight.w700,

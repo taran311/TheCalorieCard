@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -10,16 +11,19 @@ Future<void> showLogRecipeSheet(
   required String recipeId,
   required Map<String, dynamic> recipe,
 }) async {
-  final logged = await showModalBottomSheet<bool>(
+  // The sheet returns the meal it logged to, or null if closed.
+  final meal = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     backgroundColor: Colors.white,
     builder: (_) => _LogRecipeSheet(recipeId: recipeId, recipe: recipe),
   );
-  if (logged == true && context.mounted) {
+  if (meal != null && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Logged ${recipe['name'] ?? 'recipe'} to today')),
+      SnackBar(
+          content: Text(
+              'Logged ${recipe['name'] ?? 'recipe'} to $meal')),
     );
   }
 }
@@ -45,22 +49,43 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
     super.initState();
     final current =
         Provider.of<CategoryService>(context, listen: false).selectedCategory;
-    _meal = FoodLog.meals.contains(current) ? current : FoodLog.meals.first;
-    final hour = DateTime.now().hour;
-    // Sensible default meal from the time of day.
-    if (hour < 11) {
-      _meal = 'Brekkie';
-    } else if (hour < 15) {
-      _meal = 'Lunch';
-    } else if (hour >= 17 && hour < 22) {
-      _meal = 'Dinner';
+    if (FoodLog.meals.contains(current)) {
+      // Honour the meal already picked elsewhere in the app.
+      _meal = current;
+    } else {
+      // Otherwise a sensible default from the time of day.
+      final hour = DateTime.now().hour;
+      if (hour < 11) {
+        _meal = 'Brekkie';
+      } else if (hour < 15) {
+        _meal = 'Lunch';
+      } else if (hour >= 17 && hour < 22) {
+        _meal = 'Dinner';
+      } else {
+        _meal = 'Snacks';
+      }
     }
   }
 
-  double _n(String key) {
-    final v = widget.recipe[key];
-    return v is num ? v.toDouble() : 0;
+  double _n(String key) => BalanceService.number(widget.recipe[key]) ?? 0;
+
+  String get _serving {
+    final s = widget.recipe['serving_size'];
+    return s is String && s.trim().isNotEmpty ? s : 'Per 1 Serving';
   }
+
+  /// How many servings the whole recipe makes (or its weight in grams).
+  double get _base => FoodLog.servingAmount(_serving);
+
+  bool get _grams => FoodLog.isGrams(_serving);
+
+  /// Share of the whole recipe being logged. For gram recipes the stepper
+  /// counts whole recipes ("portions"); otherwise it counts servings.
+  double get _multiplier => _grams ? _servings : _servings / _base;
+
+  double get _step => _grams ? 0.25 : 0.5;
+
+  double get _maxServings => _grams ? 10.0 : (_base > 10 ? _base : 10.0);
 
   Future<void> _log() async {
     setState(() {
@@ -72,9 +97,9 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
         recipeId: widget.recipeId,
         recipe: widget.recipe,
         meal: _meal,
-        multiplier: _servings,
+        multiplier: _multiplier,
       );
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) Navigator.pop(context, _meal);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -87,12 +112,16 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final kcal = _n('total_calories') * _servings;
-    final serving =
-        (widget.recipe['serving_size'] as String?) ?? 'Per 1 Serving';
+    final multiplier = _multiplier;
+    final kcal = _n('total_calories') * multiplier;
+    final grams = _grams;
+    final base = FoodLog.formatAmount(_base);
+    final subtitle = grams
+        ? 'Whole recipe is $base g'
+        : 'Makes $base serving${_base == 1 ? '' : 's'}';
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
             20, 0, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
         child: Column(
@@ -109,7 +138,7 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'One serving = $serving',
+              subtitle,
               style: const TextStyle(color: AppColors.muted),
             ),
             const SizedBox(height: 20),
@@ -118,6 +147,7 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: [
                 for (final m in FoodLog.meals)
                   ChoiceChip(
@@ -136,21 +166,32 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
             const SizedBox(height: 20),
             Row(
               children: [
-                const Text('Servings',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                const Spacer(),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(grams ? 'Portions' : 'Servings',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      if (grams)
+                        const Text(
+                          '1 = whole recipe',
+                          style:
+                              TextStyle(fontSize: 12, color: AppColors.muted),
+                        ),
+                    ],
+                  ),
+                ),
                 IconButton.outlined(
-                  onPressed: _servings > 0.5
-                      ? () => setState(() => _servings -= 0.5)
+                  tooltip: 'Less',
+                  onPressed: _servings > _step
+                      ? () => setState(() => _servings -= _step)
                       : null,
                   icon: const Icon(Icons.remove),
                 ),
                 SizedBox(
                   width: 56,
                   child: Text(
-                    _servings == _servings.roundToDouble()
-                        ? _servings.toStringAsFixed(0)
-                        : _servings.toStringAsFixed(1),
+                    FoodLog.formatAmount(_servings),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 20,
@@ -159,8 +200,9 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
                   ),
                 ),
                 IconButton.outlined(
-                  onPressed: _servings < 10
-                      ? () => setState(() => _servings += 0.5)
+                  tooltip: 'More',
+                  onPressed: _servings < _maxServings
+                      ? () => setState(() => _servings += _step)
                       : null,
                   icon: const Icon(Icons.add),
                 ),
@@ -179,25 +221,25 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
                   _Figure(label: 'kcal', value: kcal.round().toString()),
                   _Figure(
                     label: 'Protein',
-                    value: '${(_n('total_protein') * _servings).round()}g',
-                    color: AppColors.protein,
+                    value: '${(_n('total_protein') * multiplier).round()}g',
+                    color: AppColors.proteinText,
                   ),
                   _Figure(
                     label: 'Carbs',
-                    value: '${(_n('total_carbs') * _servings).round()}g',
-                    color: AppColors.carbs,
+                    value: '${(_n('total_carbs') * multiplier).round()}g',
+                    color: AppColors.carbsText,
                   ),
                   _Figure(
                     label: 'Fat',
-                    value: '${(_n('total_fat') * _servings).round()}g',
-                    color: AppColors.fat,
+                    value: '${(_n('total_fat') * multiplier).round()}g',
+                    color: AppColors.fatText,
                   ),
                 ],
               ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: AppColors.red)),
+              Text(_error!, style: const TextStyle(color: AppColors.red600)),
             ],
             const SizedBox(height: 20),
             SizedBox(
@@ -205,19 +247,13 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
               height: 52,
               child: FilledButton.icon(
                 onPressed: _saving ? null : _log,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
                 icon: _saving
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white,
+                          color: AppColors.primaryDark,
                         ),
                       )
                     : const Icon(Icons.credit_card),

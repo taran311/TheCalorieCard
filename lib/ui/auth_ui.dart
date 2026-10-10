@@ -15,22 +15,22 @@ class AuthColors {
 
   /// Darker indigo for buttons and links: white text on it passes WCAG AA,
   /// which the lighter brand indigo doesn't quite.
-  static const action = Color(0xFF4F46E5);
-  static const actionPressed = Color(0xFF4338CA);
-  static const backdropTop = Color(0xFF4F46E5);
-  static const backdropBottom = Color(0xFF7C3AED);
-  static const text = Color(0xFF111827);
-  static const muted = Color(0xFF6B7280);
-  static const field = Color(0xFFF9FAFB);
-  static const border = Color(0xFFE5E7EB);
-  static const errorText = Color(0xFFB91C1C);
-  static const errorBg = Color(0xFFFEF2F2);
+  static const action = AppColors.primaryDark;
+  static const actionPressed = AppColors.indigo700;
+  static const backdropTop = AppColors.primaryDark;
+  static const backdropBottom = AppColors.violet600;
+  static const text = AppColors.ink;
+  static const muted = AppColors.muted;
+  static const field = AppColors.gray50;
+  static const border = AppColors.border;
+  static const errorText = AppColors.red700;
+  static const errorBg = AppColors.red50;
   static const errorBorder = Color(0xFFFECACA);
-  static const successText = Color(0xFF047857);
-  static const successBg = Color(0xFFECFDF5);
+  static const successText = AppColors.emerald700;
+  static const successBg = AppColors.emerald50;
   static const successBorder = Color(0xFFA7F3D0);
-  static const infoText = Color(0xFF3730A3);
-  static const infoBg = Color(0xFFEEF2FF);
+  static const infoText = AppColors.indigo800;
+  static const infoBg = AppColors.indigo50;
   static const infoBorder = Color(0xFFC7D2FE);
 }
 
@@ -326,7 +326,7 @@ class _AuthFieldState extends State<AuthField> {
           style: const TextStyle(fontSize: 16, color: AuthColors.text),
           decoration: InputDecoration(
             hintText: widget.hint,
-            hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
+            hintStyle: const TextStyle(color: AppColors.gray400),
             prefixIcon: Icon(widget.icon, color: AuthColors.muted, size: 20),
             suffixIcon: widget.password
                 ? IconButton(
@@ -459,9 +459,9 @@ class AuthLink extends StatelessWidget {
       onPressed: onPressed,
       style: TextButton.styleFrom(
         foregroundColor: AuthColors.action,
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        minimumSize: const Size(44, 44),
+        tapTargetSize: MaterialTapTargetSize.padded,
         textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
       child: Text(label),
@@ -533,9 +533,15 @@ class AuthNotice extends StatelessWidget {
                   ),
                   if (actionLabel != null && onAction != null)
                     Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: InkWell(
-                        onTap: onAction,
+                      padding: const EdgeInsets.only(top: 2),
+                      child: TextButton(
+                        onPressed: onAction,
+                        style: TextButton.styleFrom(
+                          foregroundColor: fg,
+                          minimumSize: const Size(44, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 0),
+                          alignment: Alignment.centerLeft,
+                        ),
                         child: Text(
                           actionLabel!,
                           style: TextStyle(

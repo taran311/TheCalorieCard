@@ -12,15 +12,47 @@ class CardDesignService {
   static DocumentReference<Map<String, dynamic>> _user(String uid) =>
       BalanceService.db.collection('users').doc(uid);
 
-  static bool isUnlocked(CardDesign design, Map<String, dynamic>? user) {
-    final best = (BalanceService.number(user?['best_streak']) ?? 0).round();
-    final unlocks = user?['card_unlocks'];
-    final earned = unlocks is List && unlocks.contains(design.id);
+  /// The streak (in days) that unlocks [design], or null if it isn't
+  /// unlocked by a streak.
+  static int? streakNeeded(CardDesign design) {
     switch (design.id) {
       case 'emerald':
-        return best >= 7;
+        return 7;
       case 'metal':
-        return best >= 30;
+        return 30;
+      default:
+        return null;
+    }
+  }
+
+  /// Your longest streak so far, from `users/{uid}`.
+  static int bestStreak(Map<String, dynamic>? user) =>
+      (BalanceService.number(user?['best_streak']) ?? 0).round();
+
+  /// How far your longest streak is towards unlocking [design]: 0 to 1, or
+  /// null if it isn't unlocked by a streak.
+  static double? unlockProgress(CardDesign design, Map<String, dynamic>? user) {
+    final needed = streakNeeded(design);
+    if (needed == null) return null;
+    return (bestStreak(user) / needed).clamp(0.0, 1.0).toDouble();
+  }
+
+  /// Days of streak still to go before [design] unlocks (0 once it's
+  /// reached), or null if it isn't unlocked by a streak.
+  static int? daysToUnlock(CardDesign design, Map<String, dynamic>? user) {
+    final needed = streakNeeded(design);
+    if (needed == null) return null;
+    final left = needed - bestStreak(user);
+    return left > 0 ? left : 0;
+  }
+
+  static bool isUnlocked(CardDesign design, Map<String, dynamic>? user) {
+    final best = bestStreak(user);
+    final unlocks = user?['card_unlocks'];
+    final earned = unlocks is List && unlocks.contains(design.id);
+    final needed = streakNeeded(design);
+    if (needed != null) return best >= needed;
+    switch (design.id) {
       case 'sunset':
         return earned;
       default:

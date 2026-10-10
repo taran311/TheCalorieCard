@@ -13,11 +13,17 @@ class LiveStatement extends StatefulWidget {
   final int days;
   final Widget Function(BuildContext context, Statement? statement) builder;
 
+  /// Shown instead of [builder] when the first load fails (there's nothing
+  /// to show yet). [retry] loads again. Without it, [builder] keeps
+  /// getting a null statement.
+  final Widget Function(BuildContext context, VoidCallback retry)? onError;
+
   const LiveStatement({
     super.key,
     required this.userId,
     required this.builder,
     this.days = 7,
+    this.onError,
   });
 
   @override
@@ -27,6 +33,7 @@ class LiveStatement extends StatefulWidget {
 class _LiveStatementState extends State<LiveStatement> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
   Statement? _statement;
+  bool _failed = false;
   Timer? _debounce;
   int _loadToken = 0;
 
@@ -52,10 +59,21 @@ class _LiveStatementState extends State<LiveStatement> {
     try {
       final s = await StatementService.load(widget.userId, days: widget.days);
       if (!mounted || token != _loadToken) return;
-      setState(() => _statement = s);
+      setState(() {
+        _statement = s;
+        _failed = false;
+      });
     } catch (_) {
-      // Keep showing the last good statement.
+      // Keep showing the last good statement; only flag a failure when
+      // there's nothing to show.
+      if (!mounted || token != _loadToken) return;
+      if (_statement == null) setState(() => _failed = true);
     }
+  }
+
+  void _retry() {
+    setState(() => _failed = false);
+    _reload();
   }
 
   @override
@@ -66,7 +84,13 @@ class _LiveStatementState extends State<LiveStatement> {
   }
 
   @override
-  Widget build(BuildContext context) => widget.builder(context, _statement);
+  Widget build(BuildContext context) {
+    final onError = widget.onError;
+    if (_failed && _statement == null && onError != null) {
+      return onError(context, _retry);
+    }
+    return widget.builder(context, _statement);
+  }
 }
 
 /// Right-hand column on wide desktop screens: today's balance, the week's
@@ -89,6 +113,28 @@ class TodayPanel extends StatelessWidget {
         const SizedBox(height: 16),
         LiveStatement(
           userId: userId,
+          onError: (context, retry) => PanelCard(
+            title: 'This week',
+            child: SizedBox(
+              height: 160,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      "Couldn't load this week.",
+                      style: TextStyle(color: AppColors.muted),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: retry,
+                      child: const Text('Try again'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           builder: (context, statement) {
             if (statement == null) {
               return const PanelCard(
@@ -118,18 +164,10 @@ class TodayPanel extends StatelessWidget {
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          Container(
-                            width: 14,
-                            height: 2,
-                            color: AppColors.green,
-                          ),
-                          const SizedBox(width: 6),
-                          const Text('Daily budget',
-                              style: TextStyle(
-                                  fontSize: 11, color: AppColors.muted)),
+                          const BudgetLegend(),
                           const Spacer(),
                           Text(
-                            '${statement.daysUnderBudget} days on budget',
+                            '${formatDays(statement.daysUnderBudget)} on budget',
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,

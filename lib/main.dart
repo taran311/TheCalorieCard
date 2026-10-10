@@ -37,11 +37,89 @@ class MyApp extends StatelessWidget {
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
             elevation: 0,
+            scrolledUnderElevation: 0,
             centerTitle: true,
+            titleTextStyle: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
           ),
+          // One button style app-wide: brand filled buttons, quiet outlines.
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryDark,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(48, 44),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryDark,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              minimumSize: const Size(48, 44),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primaryDark,
+              minimumSize: const Size(48, 44),
+              side: const BorderSide(color: AppColors.gray300),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              textStyle: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primaryDark,
+              textStyle: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          floatingActionButtonTheme: const FloatingActionButtonThemeData(
+            backgroundColor: AppColors.primaryDark,
+            foregroundColor: Colors.white,
+            elevation: 2,
+          ),
+          // Flat white cards with a hairline border, not tinted shadows.
+          cardTheme: const CardThemeData(
+            color: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+              side: BorderSide(color: AppColors.border),
+            ),
+          ),
+          dialogTheme: const DialogThemeData(
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(20)),
+            ),
+            titleTextStyle: TextStyle(
+              color: AppColors.ink,
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          popupMenuTheme: const PopupMenuThemeData(
+            color: Colors.white,
+            surfaceTintColor: Colors.transparent,
+          ),
+          dividerTheme: const DividerThemeData(color: AppColors.border),
           // Sheets and dialogs shouldn't stretch across a whole monitor.
           bottomSheetTheme: const BottomSheetThemeData(
             constraints: BoxConstraints(maxWidth: 640),
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
           ),
           snackBarTheme: const SnackBarThemeData(
             behavior: SnackBarBehavior.floating,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,18 +8,22 @@ import 'package:provider/provider.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/add_food_page.dart';
+import 'package:namer_app/pages/coach_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/card_design_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
+import 'package:namer_app/ui/coach_nudge.dart';
 import 'package:namer_app/ui/home_inbox.dart';
 import 'package:namer_app/ui/home_widgets.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/spotlight_tour.dart';
+import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 
 class HomePage extends StatefulWidget {
   final bool readOnly;
@@ -39,7 +44,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _SelectExistingRecipePage extends StatefulWidget {
-  const _SelectExistingRecipePage();
+  /// The meal the recipe will be logged to (for the button label).
+  final String meal;
+
+  const _SelectExistingRecipePage({required this.meal});
 
   @override
   State<_SelectExistingRecipePage> createState() =>
@@ -49,7 +57,23 @@ class _SelectExistingRecipePage extends StatefulWidget {
 class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
   int? _editingRecipeIndex;
   final TextEditingController _portionController = TextEditingController();
-  int _selectedTabIndex = 0; // 0 = My Recipes, 1 = Shared with Me
+  int _selectedTabIndex = 0; // 0 = My recipes, 1 = Shared with me
+
+  // Created once, so typing a portion (which rebuilds the page) doesn't
+  // re-subscribe and drop the text field's focus.
+  late final Stream<QuerySnapshot> _myRecipes = FirebaseFirestore.instance
+      .collection('recipes')
+      .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+      .snapshots();
+  late final Stream<QuerySnapshot> _sharedRecipes = FirebaseFirestore.instance
+      .collection('shared_recipes')
+      .where('shared_with_user_id',
+          isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+      .snapshots();
+
+  // Shared recipe details, cached for the current set of shared docs.
+  Future<List<Map<String, dynamic>>>? _sharedDetails;
+  String? _sharedDetailsKey;
 
   @override
   void dispose() {
@@ -57,89 +81,90 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
     super.dispose();
   }
 
+  Future<List<Map<String, dynamic>>> _sharedDetailsFor(
+      List<QueryDocumentSnapshot> docs) {
+    final key = docs.map((d) => d.id).join(',');
+    final cached = _sharedDetails;
+    if (cached != null && key == _sharedDetailsKey) return cached;
+    _sharedDetailsKey = key;
+    final future = _loadSharedRecipeDetailsForHome(docs);
+    _sharedDetails = future;
+    return future;
+  }
+
+  Widget _tab(int index, String label) {
+    final selected = _selectedTabIndex == index;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _selectedTabIndex = index;
+            _editingRecipeIndex = null;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: selected ? AppColors.primary : AppColors.border,
+                width: 3,
+              ),
+            ),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: selected ? AppColors.primaryDark : AppColors.gray600,
+              fontSize: 14,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _message(String text, {IconData icon = Icons.menu_book_outlined}) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 40, color: AppColors.gray400),
+            const SizedBox(height: 12),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.gray600, fontSize: 15),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _errorMessage() => _message(
+        "Couldn't load your recipes. Please try again.",
+        icon: Icons.cloud_off_outlined,
+      );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.canvas,
       appBar: AppBar(
-        title: const Text('Select Recipe'),
+        title: const Text('Add a recipe'),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Container(
+          preferredSize: const Size.fromHeight(48),
+          child: Material(
             color: Colors.white,
             child: Row(
               children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedTabIndex = 0;
-                        _editingRecipeIndex = null;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                            color: _selectedTabIndex == 0
-                                ? AppColors.primary
-                                : AppColors.gray300,
-                            width: 3,
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        'My Recipes',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: _selectedTabIndex == 0
-                              ? AppColors.primary
-                              : AppColors.gray600,
-                          fontSize: 14,
-                          fontWeight: _selectedTabIndex == 0
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedTabIndex = 1;
-                        _editingRecipeIndex = null;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                            color: _selectedTabIndex == 1
-                                ? AppColors.primary
-                                : AppColors.gray300,
-                            width: 3,
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        'Shared with Me',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: _selectedTabIndex == 1
-                              ? AppColors.primary
-                              : AppColors.gray600,
-                          fontSize: 14,
-                          fontWeight: _selectedTabIndex == 1
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                _tab(0, 'My recipes'),
+                _tab(1, 'Shared with me'),
               ],
             ),
           ),
@@ -153,19 +178,18 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
 
   Widget _buildMyRecipesTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('recipes')
-          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-          .snapshots(),
+      stream: _myRecipes,
       builder: (context, snapshot) {
+        if (snapshot.hasError) return _errorMessage();
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Text('No recipes yet.'));
+          return _message(
+              "No recipes yet. Save one on the Recipes tab and it'll show here.");
         }
 
-        final recipes = snapshot.data!.docs;
+        final recipes = List<QueryDocumentSnapshot>.from(snapshot.data!.docs);
         // Sort by created_at descending (client-side)
         recipes.sort((a, b) {
           // data()[...] rather than doc[...]: older recipes may be missing
@@ -177,6 +201,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
         });
 
         return ListView.builder(
+          padding: const EdgeInsets.only(top: 8, bottom: 48),
           itemCount: recipes.length,
           itemBuilder: (context, index) {
             final recipe = recipes[index];
@@ -195,14 +220,20 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
             final originalServingValue = FoodLog.servingAmount(servingSize);
             final unit = isGrams
                 ? 'g'
-                : 'Serving${originalServingValue != 1 ? 's' : ''}';
+                : 'serving${originalServingValue != 1 ? 's' : ''}';
 
             return Column(
               children: [
                 ListTile(
-                  title: Text((r['name'] ?? 'Recipe').toString()),
+                  title: Text(
+                    (r['name'] ?? 'Recipe').toString(),
+                    style: const TextStyle(
+                        color: AppColors.ink, fontWeight: FontWeight.w600),
+                  ),
                   subtitle: Text(
-                      '${calories.toStringAsFixed(0)} kcal ($servingSize)'),
+                    '${calories.toStringAsFixed(0)} kcal ($servingSize)',
+                    style: const TextStyle(color: AppColors.muted),
+                  ),
                   trailing: const Icon(Icons.add_circle_outline,
                       color: AppColors.primary),
                   onTap: () {
@@ -234,39 +265,37 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
   }
 
   Widget _buildSharedRecipesTab() {
-    final currentUserId = FirebaseAuth.instance.currentUser!.uid;
-
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('shared_recipes')
-          .where('shared_with_user_id', isEqualTo: currentUserId)
-          .snapshots(),
+      stream: _sharedRecipes,
       builder: (context, snapshot) {
+        if (snapshot.hasError) return _errorMessage();
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(
-            child: Text('No recipes shared with you yet.'),
-          );
+          return _message('Nothing shared with you yet.',
+              icon: Icons.people_outline);
         }
 
         final sharedRecipeDocs = snapshot.data!.docs;
 
         return FutureBuilder<List<Map<String, dynamic>>>(
-          future: _loadSharedRecipeDetailsForHome(sharedRecipeDocs),
+          future: _sharedDetailsFor(sharedRecipeDocs),
           builder: (context, detailSnapshot) {
+            if (detailSnapshot.hasError) return _errorMessage();
             if (detailSnapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
 
             if (!detailSnapshot.hasData || detailSnapshot.data!.isEmpty) {
-              return const Center(child: Text('No recipes available'));
+              return _message("Those recipes aren't available any more.",
+                  icon: Icons.people_outline);
             }
 
             final recipes = detailSnapshot.data!;
 
             return ListView.builder(
+              padding: const EdgeInsets.only(top: 8, bottom: 48),
               itemCount: recipes.length,
               itemBuilder: (context, index) {
                 final item = recipes[index];
@@ -288,14 +317,22 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                     FoodLog.servingAmount(servingSize);
                 final unit = isGrams
                     ? 'g'
-                    : 'Serving${originalServingValue != 1 ? 's' : ''}';
+                    : 'serving${originalServingValue != 1 ? 's' : ''}';
+                final sharedBy = FriendsService.displayName(
+                    item['sharedByEmail'] as String?);
 
                 return Column(
                   children: [
                     ListTile(
-                      title: Text(recipe['name'] ?? 'Recipe'),
+                      title: Text(
+                        (recipe['name'] ?? 'Recipe').toString(),
+                        style: const TextStyle(
+                            color: AppColors.ink, fontWeight: FontWeight.w600),
+                      ),
                       subtitle: Text(
-                          '${calories.toStringAsFixed(0)} kcal ($servingSize)\n${item['sharedByEmail']}'),
+                        '${calories.toStringAsFixed(0)} kcal ($servingSize)\nShared by $sharedBy',
+                        style: const TextStyle(color: AppColors.muted),
+                      ),
                       isThreeLine: true,
                       trailing: const Icon(Icons.add_circle_outline,
                           color: AppColors.primary),
@@ -308,14 +345,13 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                       },
                     ),
                     if (isEditing)
-                      _buildRecipeExpandedView(
+                      _buildExpandedPortionView(
                         recipeId,
                         recipe,
                         calories,
                         protein,
                         carbs,
                         fat,
-                        servingSize,
                         originalServingValue,
                         isGrams,
                         unit,
@@ -330,28 +366,49 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
     );
   }
 
-  Widget _buildRecipeExpandedView(
-    String recipeId,
-    Map<String, dynamic> recipe,
-    num calories,
-    double protein,
-    double carbs,
-    double fat,
-    String servingSize,
-    double originalServingValue,
-    bool isGrams,
-    String unit,
-  ) {
-    return _buildExpandedPortionView(
-      recipeId,
-      recipe,
-      calories,
-      protein,
-      carbs,
-      fat,
-      originalServingValue,
-      isGrams,
-      unit,
+  Widget _macroBox(String name, Color color, double grams) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: AppDecor.inset,
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration:
+                      BoxDecoration(color: color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${grams.toStringAsFixed(1)}g',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -369,35 +426,33 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.indigo50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.indigo300, width: 1.5),
-      ),
+      decoration: AppDecor.card,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               const Text(
-                'per ',
+                'Amount',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
+                  color: AppColors.ink,
                 ),
               ),
+              const SizedBox(width: 12),
               SizedBox(
-                width: 70,
+                width: 80,
                 child: TextField(
                   controller: _portionController,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
                     isDense: true,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 12),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                   onChanged: (_) => setState(() {}),
@@ -414,6 +469,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
+                  color: AppColors.gray700,
                 ),
               ),
             ],
@@ -436,38 +492,23 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
               return Column(
                 children: [
                   Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppColors.amber400,
-                          AppColors.amber600,
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.amber.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      color: AppColors.indigo50,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
                       children: [
-                        const Icon(
-                          Icons.local_fire_department,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 8),
                         Text(
                           '$adjustedCalories',
                           style: const TextStyle(
                             fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primaryDark,
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -476,7 +517,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                            color: AppColors.primaryDark,
                           ),
                         ),
                       ],
@@ -485,113 +526,11 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 10, horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: AppColors.indigo100,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppColors.indigo300,
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                'Protein',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.indigo800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${adjustedProtein.toStringAsFixed(1)}g',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.indigo900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      _macroBox('Protein', AppColors.protein, adjustedProtein),
                       const SizedBox(width: 8),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 10, horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: AppColors.emerald100,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppColors.emerald300,
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                'Carbs',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.emerald800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${adjustedCarbs.toStringAsFixed(1)}g',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.emerald900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      _macroBox('Carbs', AppColors.carbs, adjustedCarbs),
                       const SizedBox(width: 8),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 10, horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: AppColors.violet100,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppColors.violet300,
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                'Fat',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.violet800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${adjustedFat.toStringAsFixed(1)}g',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.violet900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      _macroBox('Fat', AppColors.fat, adjustedFat),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -607,21 +546,23 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                         child: const Text('Cancel'),
                       ),
                       const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: !validPortion
-                            ? null
-                            : () {
-                          final multiplier = ratio;
-                          Navigator.pop(context, {
-                            'recipeId': recipeId,
-                            'multiplier': multiplier,
-                          });
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
+                      Flexible(
+                        child: FilledButton(
+                          onPressed: !validPortion
+                              ? null
+                              : () {
+                                  final multiplier = ratio;
+                                  Navigator.pop(context, {
+                                    'recipeId': recipeId,
+                                    'multiplier': multiplier,
+                                  });
+                                },
+                          child: Text(
+                            'Add to ${widget.meal}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        child: const Text('Add'),
                       ),
                     ],
                   ),
@@ -710,7 +651,7 @@ class _HomePageState extends State<HomePage>
   final _tourDay = GlobalKey(debugLabel: 'tour-home-day');
   final _tourMeals = GlobalKey(debugLabel: 'tour-home-meals');
   final _tourAdd = GlobalKey(debugLabel: 'tour-home-add');
-  bool _deleteMode = false;
+  final _tourTutorials = GlobalKey(debugLabel: 'tour-home-tutorials');
   bool _isDayFinished = false;
   bool _isUpdatingDailyLog = false;
   double _cardDragDx = 0;
@@ -729,6 +670,22 @@ class _HomePageState extends State<HomePage>
   double _totalProtein = 0.0;
   double _totalCarbs = 0.0;
   double _totalFat = 0.0;
+
+  /// Calories logged per meal on the selected day (for the meal tabs).
+  Map<String, int> _mealKcal = const {};
+
+  /// Today's live balance, as the card loaded it (null until it has).
+  int? _liveBalance;
+
+  /// Foods swiped away whose Undo snackbar is still showing. They're hidden
+  /// now and only deleted once the snackbar closes without Undo.
+  final Set<String> _pendingRemoval = {};
+  Future<void> _removalChain = Future<void>.value();
+
+  /// Yesterday's food (for "Copy yesterday's ..."), cached per day.
+  List<Map<String, dynamic>> _yesterdayEntries = const [];
+  String? _yesterdayKey;
+  bool _copyingYesterday = false;
 
   // Individual food item macro visibility tracking
   Map<String, bool> _foodMacrosVisibility = {};
@@ -987,9 +944,17 @@ class _HomePageState extends State<HomePage>
         TourStep(
           target: _tourAdd,
           title: 'Add food',
-          body: 'Search or scan a food, or add one of your saved recipes. '
-              'The bin removes something you logged by mistake.',
-          radius: 30,
+          body: "Add food to the meal you've picked, or log a saved recipe. "
+              'Swipe a food left to remove it.',
+          radius: 16,
+        ),
+        TourStep(
+          target: _tourTutorials,
+          title: 'Tutorials',
+          body: 'Tap the headphones any time to watch how things work on a '
+              "practice card. It never touches your real data.",
+          padding: 4,
+          radius: 28,
         ),
         if (shell != null)
           TourStep(
@@ -1027,7 +992,6 @@ class _HomePageState extends State<HomePage>
   Future<void> _changeDay(DateTime day) async {
     setState(() {
       _selectedLogDate = day;
-      _deleteMode = false;
     });
     await Future.wait([
       populateFoodItems(),
@@ -1134,9 +1098,6 @@ class _HomePageState extends State<HomePage>
     if (!mounted) return;
     setState(() {
       _isDayFinished = finished;
-      if (_isDayFinished) {
-        _deleteMode = false;
-      }
     });
   }
 
@@ -1224,6 +1185,8 @@ class _HomePageState extends State<HomePage>
   Future<bool> _showConfirmDialog({
     required String title,
     required String message,
+    String cancelLabel = 'Cancel',
+    String confirmLabel = 'OK',
   }) async {
     final result = await showDialog<bool>(
       context: context,
@@ -1234,14 +1197,11 @@ class _HomePageState extends State<HomePage>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('No'),
+              child: Text(cancelLabel),
             ),
-            ElevatedButton(
+            FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Yes'),
+              child: Text(confirmLabel),
             ),
           ],
         );
@@ -1255,8 +1215,10 @@ class _HomePageState extends State<HomePage>
     if (!_isSelectedDateToday || !_isOwnCard) return;
     if (_isDayFinished) {
       final confirm = await _showConfirmDialog(
-        title: 'Continue logging',
-        message: 'Are you sure you wish to continue logging for today?',
+        title: 'Reopen today?',
+        message: "You can add or remove food again. Close it when you're done.",
+        cancelLabel: 'Cancel',
+        confirmLabel: 'Reopen',
       );
       if (!confirm) return;
       setState(() {
@@ -1268,14 +1230,16 @@ class _HomePageState extends State<HomePage>
     }
 
     final confirm = await _showConfirmDialog(
-      title: 'Finish logging',
-      message: 'Are you sure you wish to finish logging for today?',
+      title: 'Close today?',
+      message: "This locks today's card and counts it towards your streak. "
+          'You can reopen it if you need to.',
+      cancelLabel: 'Not yet',
+      confirmLabel: 'Close day',
     );
     if (!confirm) return;
 
     setState(() {
       _isDayFinished = true;
-      _deleteMode = false;
     });
     await _upsertDailyLogForDate(_selectedLogDate);
     await _setDailyLogFinished(_selectedLogDate, true);
@@ -1332,8 +1296,18 @@ class _HomePageState extends State<HomePage>
         });
       final mealTotals = BalanceService.totalOf(mealDocs.map((d) => d.data()));
 
+      final mealKcal = <String, int>{};
+      for (final m in _tabs) {
+        mealKcal[m] = BalanceService.totalOf(dayDocs
+                .where((d) => (d.data()['foodCategory'] ?? 'Brekkie') == m)
+                .map((d) => d.data()))
+            .calories
+            .round();
+      }
+
       setState(() {
         _foodDocs = mealDocs;
+        _mealKcal = mealKcal;
         _dayTotals = BalanceService.totalOf(dayDocs.map((d) => d.data()));
         _totalCalories = mealTotals.calories.round();
         _totalProtein = mealTotals.protein;
@@ -1343,11 +1317,13 @@ class _HomePageState extends State<HomePage>
           ..clear()
           ..addEntries(mealDocs.map((d) => MapEntry(d.id, _showMacrosTotal)));
       });
+      if (mealDocs.isEmpty) _loadYesterday();
       await _fetchReactionsForFoodItems();
     } catch (e) {
       if (!mounted || token != _foodLoadToken) return;
       setState(() {
         _foodDocs = [];
+        _mealKcal = const {};
         _dayTotals = Macros.zero;
         _totalCalories = 0;
         _totalProtein = 0;
@@ -1467,7 +1443,8 @@ class _HomePageState extends State<HomePage>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error adding reaction: $e')),
+          const SnackBar(
+              content: Text("Couldn't add your reaction. Please try again.")),
         );
       }
     }
@@ -1486,21 +1463,27 @@ class _HomePageState extends State<HomePage>
       });
     }
   }
-  Future<void> _deleteFoodItem(String docId) async {
-    if (_isDeletingItem || !_canEditSelectedDay) return;
+  /// Removes a logged food (and refunds the card). [swiped] removals were
+  /// checked when the row was swiped and confirmed by the Undo snackbar
+  /// closing, so they skip the editable-day check and the extra snackbar.
+  Future<void> _deleteFoodItem(String docId, {bool swiped = false}) async {
+    if (_isDeletingItem) return;
+    if (!swiped && !_canEditSelectedDay) return;
 
-    setState(() {
-      _isDeletingItem = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isDeletingItem = true;
+      });
+    }
 
     try {
       // One write removes the food and refunds today's card.
       await FoodLog.remove(docId);
       // The change signal has already started a refresh; wait for it.
-      await (_refreshing ?? _refreshAfterChange());
-      if (mounted) {
+      if (mounted) await (_refreshing ?? _refreshAfterChange());
+      if (mounted && !swiped) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Food item removed')),
+          const SnackBar(content: Text('Food removed')),
         );
       }
     } catch (e) {
@@ -1517,6 +1500,144 @@ class _HomePageState extends State<HomePage>
         });
       }
     }
+  }
+
+  /// A food was swiped away: hide it now, offer Undo, and only delete it
+  /// once the snackbar has closed without Undo (so Undo never re-logs).
+  void _onFoodSwiped(String docId, String name) {
+    if (!_canEditSelectedDay) return;
+    setState(() => _pendingRemoval.add(docId));
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        content: Text('Removed $name'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(label: 'Undo', onPressed: () {}),
+      ),
+    );
+    // Snackbars with an action can stay up in newer Flutter; this one must
+    // close on its own so the removal goes through.
+    var closed = false;
+    Timer(const Duration(seconds: 5), () {
+      if (!closed) messenger.hideCurrentSnackBar();
+    });
+    controller.closed.then((reason) {
+      closed = true;
+      if (reason == SnackBarClosedReason.action) {
+        if (mounted) setState(() => _pendingRemoval.remove(docId));
+        return;
+      }
+      // One removal at a time, in the order they were swiped.
+      _removalChain = _removalChain.then((_) async {
+        await _deleteFoodItem(docId, swiped: true);
+        if (mounted) setState(() => _pendingRemoval.remove(docId));
+      });
+    });
+  }
+
+  /// Loads yesterday's food once per day, for the "Copy yesterday's"
+  /// shortcut on an empty meal.
+  Future<void> _loadYesterday() async {
+    if (!_isOwnCard || !_isSelectedDateToday) return;
+    final yesterday = BalanceService.addDays(BalanceService.now(), -1);
+    final key = _dateKey(yesterday);
+    if (_yesterdayKey == key) return;
+    _yesterdayKey = key;
+    try {
+      final docs = await BalanceService.entriesOn(_activeUserId, yesterday);
+      if (!mounted || _yesterdayKey != key) return;
+      setState(() {
+        _yesterdayEntries = [for (final d in docs) d.data()];
+      });
+    } catch (_) {
+      // Just a shortcut; try again next time.
+      if (_yesterdayKey == key) _yesterdayKey = null;
+    }
+  }
+
+  List<Map<String, dynamic>> _yesterdayFor(String meal) => [
+        for (final e in _yesterdayEntries)
+          if ((e['foodCategory'] ?? 'Brekkie') == meal) e
+      ];
+
+  Future<void> _copyYesterday(
+      String meal, List<Map<String, dynamic>> entries) async {
+    if (_copyingYesterday || !_canEditSelectedDay || entries.isEmpty) return;
+    setState(() => _copyingYesterday = true);
+    try {
+      await FoodLog.logFoods(
+        items: [
+          for (final e in entries)
+            {
+              'name': (e['food_description'] ?? 'Food').toString(),
+              'portion': (e['food_portion'] ?? '').toString(),
+              'calories': BalanceService.number(e['food_calories']) ?? 0,
+              'protein': BalanceService.number(e['food_protein']) ?? 0,
+              'carbs': BalanceService.number(e['food_carbs']) ?? 0,
+              'fat': BalanceService.number(e['food_fat']) ?? 0,
+            }
+        ],
+        meal: meal,
+      );
+      if (mounted) await (_refreshing ?? _refreshAfterChange());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Added yesterday's $meal")),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Couldn't copy that. Please try again.")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _copyingYesterday = false);
+    }
+  }
+
+  /// True on a phone-sized window. Uses the real window width: on desktop
+  /// MediaQuery.size is narrowed to the page column.
+  bool get _isPhone {
+    final view = View.of(context);
+    return view.physicalSize.width / view.devicePixelRatio <
+        Breakpoints.tablet;
+  }
+
+  Future<void> _openAddFood() async {
+    if (!_canEditSelectedDay) return;
+    // On phones, open above the bottom bar so the Coach button doesn't
+    // cover the page's buttons.
+    final saved = await Navigator.of(context, rootNavigator: _isPhone)
+        .push<bool>(
+      MaterialPageRoute(builder: (_) => const AddFoodPage()),
+    );
+    // Logging signals a refresh on its own; this covers the rest.
+    if (saved == true && mounted) {
+      await (_refreshing ?? _refreshAfterChange());
+    }
+  }
+
+  Future<void> _openRecipePicker() async {
+    if (!_canEditSelectedDay) return;
+    final meal =
+        Provider.of<CategoryService>(context, listen: false).selectedCategory;
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _SelectExistingRecipePage(meal: meal),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final category =
+        Provider.of<CategoryService>(context, listen: false).selectedCategory;
+    await _addRecipeToHome(
+      result['recipeId'] as String,
+      category,
+      multiplier: result['multiplier'] as double,
+    );
   }
 
   /// Long-press a food: have it every day? Set up a direct debit.
@@ -1605,896 +1726,725 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        body: Container(
-          color: Colors.white,
-          child: const Center(
-            child: CircularProgressIndicator(),
+  /// The card was flipped: jiggle it and match every food row to it.
+  void _onCardFlipped(bool showMacros) {
+    _jiggleAnimationController?.forward(from: 0);
+    setState(() {
+      _showMacrosTotal = showMacros;
+      for (var doc in _foodDocs) {
+        _foodMacrosVisibility[doc.id] = showMacros;
+      }
+    });
+  }
+
+  /// The meal header was tapped: switch between kcal and macros.
+  void _toggleMacros() {
+    setState(() {
+      _showMacrosTotal = !_showMacrosTotal;
+      // Flip all food items to match.
+      for (var doc in _foodDocs) {
+        _foodMacrosVisibility[doc.id] = _showMacrosTotal;
+      }
+    });
+  }
+
+  Widget _buildBanner(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        8,
+        MediaQuery.of(context).padding.top + 8,
+        8,
+        8,
+      ),
+      decoration: const BoxDecoration(
+        color: AppColors.primary,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(16),
+          bottomRight: Radius.circular(16),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).maybePop();
+            },
+            icon: const Icon(Icons.arrow_back),
+            color: Colors.white,
+            tooltip: 'Back',
           ),
+          Expanded(
+            child: Center(
+              child: Text(
+                widget.bannerTitle ?? 'Card',
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard() {
+    final validThru =
+        '${_selectedLogDate.day}/${_selectedLogDate.month}/${_selectedLogDate.year}';
+    return Center(
+      child: AnimatedBuilder(
+        animation: Listenable.merge([
+          _jiggleAnimationController!,
+          _cardDragResetController!,
+        ]),
+        builder: (context, child) {
+          final resetValue = _cardDragResetController?.value ?? 0.0;
+          final effectiveDx = _isResettingCard
+              ? _dragEndDx * (1 - Curves.easeOut.transform(resetValue))
+              : _cardDragDx;
+          return Transform.translate(
+            offset: Offset(effectiveDx, 0),
+            child: Transform.rotate(
+              angle: _jiggleAnimation?.value ?? 0.0,
+              child: child,
+            ),
+          );
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragStart: (_) {
+            _cardDragDx = 0;
+            _cardDragResetController?.stop();
+            _isResettingCard = false;
+          },
+          onHorizontalDragUpdate: (details) {
+            setState(() {
+              _cardDragDx += details.delta.dx;
+            });
+          },
+          onHorizontalDragEnd: (_) {
+            final shouldPrompt = _cardDragDx.abs() > 40;
+            _resetCardPosition(promptAfterReset: shouldPrompt);
+          },
+          child: Stack(
+            key: _tourCard,
+            children: [
+              _isSelectedDateToday
+                  ? CreditCard(
+                      key: ValueKey(_creditCardRefreshKey),
+                      userIdOverride: widget.userIdOverride,
+                      cardUserNameOverride: widget.bannerTitle,
+                      design: _cardDesign,
+                      validThruDate: validThru,
+                      onToggleMacros: _onCardFlipped,
+                      onBalance: (calories) {
+                        if (mounted && calories != _liveBalance) {
+                          setState(() => _liveBalance = calories);
+                        }
+                      },
+                    )
+                  : CreditCard(
+                      key: ValueKey(
+                          '$_creditCardRefreshKey-${_selectedLogDate.toIso8601String()}'),
+                      skipFetch: true,
+                      caloriesOverride: _selectedDayBalance.calories.round(),
+                      proteinOverride: _selectedDayBalance.protein,
+                      carbsOverride: _selectedDayBalance.carbs,
+                      fatsOverride: _selectedDayBalance.fat,
+                      userIdOverride: widget.userIdOverride,
+                      cardUserNameOverride: widget.bannerTitle,
+                      design: _cardDesign,
+                      validThruDate: validThru,
+                      onToggleMacros: _onCardFlipped,
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMealHeader(String meal) {
+    final macros = '${_roundMacro(_totalProtein)}g protein · '
+        '${_roundMacro(_totalCarbs)}g carbs · ${_roundMacro(_totalFat)}g fat';
+
+    Widget? balanceLine;
+    final left = _liveBalance;
+    if (_isOwnCard && _isSelectedDateToday && left != null) {
+      final goal = _goalsForSelectedDay.calories;
+      final Color leftColor = left < 0
+          ? AppColors.red600
+          : (goal > 0 && left <= goal * 0.1)
+              ? AppColors.amber700
+              : AppColors.emerald700;
+      balanceLine = Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: '$meal: $_totalCalories kcal · '),
+              TextSpan(
+                text: left < 0
+                    ? '${-left} kcal over today'
+                    : '$left kcal left today',
+                style: TextStyle(
+                  color: leftColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
         ),
       );
     }
 
-    return Scaffold(
-      body: Stack(
+    return Material(
+      color: AppColors.gray50,
+      child: InkWell(
+        onTap: _toggleMacros,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    meal,
+                    style: const TextStyle(
+                      color: AppColors.ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    fit: FlexFit.tight,
+                    child: Text(
+                      _showMacrosTotal ? macros : '$_totalCalories kcal',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        color: AppColors.gray700,
+                        fontWeight: FontWeight.w600,
+                        fontSize: _showMacrosTotal ? 12 : 14,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    _showMacrosTotal
+                        ? Icons.local_fire_department_outlined
+                        : Icons.show_chart,
+                    color: AppColors.muted,
+                    size: 18,
+                  ),
+                ],
+              ),
+              if (balanceLine != null) balanceLine,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyMeal(String meal) {
+    final String title;
+    String? subtitle;
+    if (!_isSelectedDateToday) {
+      title = 'Nothing logged for $meal that day.';
+    } else if (!_isOwnCard) {
+      title = 'Nothing logged for $meal yet.';
+    } else {
+      title = 'Nothing on $meal yet.';
+      if (_canEditSelectedDay) {
+        subtitle = 'Add what you had and it comes off your card.';
+      }
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+      child: Column(
         children: [
-          Container(
-            color: AppColors.canvas,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (widget.showBanner) ...[
+          const Icon(Icons.restaurant_outlined,
+              size: 32, color: AppColors.gray400),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.ink,
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _reactionEmoji(String foodId, String emoji) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: () => _addReaction(foodId, emoji),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Text(emoji, style: const TextStyle(fontSize: 32)),
+      ),
+    );
+  }
+
+  Widget _buildFoodRow(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc, bool canEdit) {
+    final data = doc.data();
+    final name = (data['food_description'] ?? 'Food').toString();
+    final portion = (data['food_portion'] ?? '').toString();
+    final showMacros = _foodMacrosVisibility[doc.id] ?? _showMacrosTotal;
+    final reactions = _foodReactions[doc.id];
+
+    final row = Material(
+      color: Colors.white,
+      child: InkWell(
+        onTap: () {
+          _handleFoodItemTap(doc.id);
+        },
+        onLongPress: _isOwnCard ? () => _offerDirectDebit(data) : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.ink,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 15,
+                          ),
+                        ),
+                        if (portion.isNotEmpty)
+                          Text(
+                            portion,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Container(
-                    padding: EdgeInsets.fromLTRB(
-                      8,
-                      MediaQuery.of(context).padding.top + 8,
-                      8,
-                      8,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: showMacros ? 3 : 5,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                      color: AppColors.indigo50,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: () {
-                            Navigator.of(context).maybePop();
-                          },
-                          icon: const Icon(Icons.arrow_back),
-                          color: Colors.white,
-                          splashRadius: 20,
-                          tooltip: 'Back',
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: Text(
-                              widget.bannerTitle ?? 'Card',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 48),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ] else ...[
-                  const SizedBox(height: 16),
-                ],
-                Center(
-                  child: AnimatedBuilder(
-                    animation: Listenable.merge([
-                      _jiggleAnimationController!,
-                      _cardDragResetController!,
-                    ]),
-                    builder: (context, child) {
-                      final resetValue = _cardDragResetController?.value ?? 0.0;
-                      final effectiveDx = _isResettingCard
-                          ? _dragEndDx *
-                              (1 - Curves.easeOut.transform(resetValue))
-                          : _cardDragDx;
-                      return Transform.translate(
-                        offset: Offset(effectiveDx, 0),
-                        child: Transform.rotate(
-                          angle: _jiggleAnimation?.value ?? 0.0,
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onHorizontalDragStart: (_) {
-                        _cardDragDx = 0;
-                        _cardDragResetController?.stop();
-                        _isResettingCard = false;
-                      },
-                      onHorizontalDragUpdate: (details) {
-                        setState(() {
-                          _cardDragDx += details.delta.dx;
-                        });
-                      },
-                      onHorizontalDragEnd: (_) {
-                        final shouldPrompt = _cardDragDx.abs() > 40;
-                        _resetCardPosition(promptAfterReset: shouldPrompt);
-                      },
-                      child: Stack(
-                        key: _tourCard,
-                        children: [
-                          _isSelectedDateToday
-                              ? CreditCard(
-                                  key: ValueKey(_creditCardRefreshKey),
-                                  userIdOverride: widget.userIdOverride,
-                                  cardUserNameOverride: widget.bannerTitle,
-                                  design: _cardDesign,
-                                  validThruDate:
-                                      '${_selectedLogDate.day}/${_selectedLogDate.month}/${_selectedLogDate.year}',
-                                  onToggleMacros: (showMacros) {
-                                    // Trigger jiggle when card is flipped
-                                    _jiggleAnimationController?.forward(
-                                        from: 0);
-                                    setState(() {
-                                      _showMacrosTotal = showMacros;
-                                      for (var doc in _foodDocs) {
-                                        _foodMacrosVisibility[doc.id] =
-                                            showMacros;
-                                      }
-                                    });
-                                  },
-                                )
-                              : CreditCard(
-                                  key: ValueKey(
-                                      '$_creditCardRefreshKey-${_selectedLogDate.toIso8601String()}'),
-                                  skipFetch: true,
-                                  caloriesOverride:
-                                      _selectedDayBalance.calories.round(),
-                                  proteinOverride: _selectedDayBalance.protein,
-                                  carbsOverride: _selectedDayBalance.carbs,
-                                  fatsOverride: _selectedDayBalance.fat,
-                                  userIdOverride: widget.userIdOverride,
-                                  cardUserNameOverride: widget.bannerTitle,
-                                  design: _cardDesign,
-                                  validThruDate:
-                                      '${_selectedLogDate.day}/${_selectedLogDate.month}/${_selectedLogDate.year}',
-                                  onToggleMacros: (showMacros) {
-                                    _jiggleAnimationController?.forward(
-                                        from: 0);
-                                    setState(() {
-                                      _showMacrosTotal = showMacros;
-                                      for (var doc in _foodDocs) {
-                                        _foodMacrosVisibility[doc.id] =
-                                            showMacros;
-                                      }
-                                    });
-                                  },
-                                ),
-                          if (_isDayFinished)
-                            Positioned(
-                              top: 10,
-                              right: 12,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  shape: BoxShape.circle,
-                                ),
-                                padding: const EdgeInsets.all(4),
-                                child: const Icon(
-                                  Icons.check_circle,
-                                  color: AppColors.green,
-                                  size: 22,
+                    child: showMacros
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${_roundMacro(data['food_protein'])}g protein',
+                                style: const TextStyle(
+                                  color: AppColors.primaryDark,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 10.5,
+                                  height: 1.25,
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: DayStepper(
-                    key: _tourDay,
-                    selected: _selectedLogDate,
-                    onChanged: _changeDay,
-                  ),
-                ),
-                if (_isOwnCard && _isSelectedDateToday)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                    child: HomeInbox(
-                      userId: _activeUserId,
-                      isDayFinished: _isDayFinished,
-                      hasFoodToday: _dayTotals.calories > 0,
-                      onFinishDay: _handleCardSwipe,
-                      onBalanceChanged: _refreshAfterChange,
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                // Meals
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Consumer<CategoryService>(
-                    key: _tourMeals,
-                    builder: (context, categoryService, _) => MealTabs(
-                      meals: _tabs,
-                      selected: categoryService.selectedCategory,
-                      onSelected: (tab) {
-                        categoryService.setSelectedCategory(tab);
-                        populateFoodItems();
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              AppColors.indigo700,
-                              AppColors.indigo900,
+                              Text(
+                                '${_roundMacro(data['food_carbs'])}g carbs',
+                                style: const TextStyle(
+                                  color: AppColors.primaryDark,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 10.5,
+                                  height: 1.25,
+                                ),
+                              ),
+                              Text(
+                                '${_roundMacro(data['food_fat'])}g fat',
+                                style: const TextStyle(
+                                  color: AppColors.primaryDark,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 10.5,
+                                  height: 1.25,
+                                ),
+                              ),
                             ],
+                          )
+                        : Text(
+                            '${_roundMacro(data['food_calories'])} kcal',
+                            style: const TextStyle(
+                              color: AppColors.primaryDark,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            // Friends viewing your card: pick a reaction.
+            if (widget.readOnly && (_showEmojiPicker[doc.id] ?? false))
+              Container(
+                padding: const EdgeInsets.all(8),
+                color: AppColors.gray100,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _reactionEmoji(doc.id, '🔥'),
+                    _reactionEmoji(doc.id, '😈'),
+                    _reactionEmoji(doc.id, '💪'),
+                    _reactionEmoji(doc.id, '❤️'),
+                  ],
+                ),
+              ),
+            // Reaction just added (friend's view).
+            if (widget.readOnly &&
+                _reactionConfirmationFoodId == doc.id &&
+                _reactionFadeAnimation != null)
+              FadeTransition(
+                opacity: _reactionFadeAnimation!,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: AppColors.emerald50,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _reactionConfirmationUsername ?? '',
+                          style: const TextStyle(
+                            color: AppColors.gray700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                        child: Stack(
+                      ),
+                      Text(
+                        _reactionConfirmationEmoji ?? '',
+                        style: const TextStyle(fontSize: 24),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            // Owner tapped a food: who reacted to it.
+            if (!widget.readOnly &&
+                (_showReactions[doc.id] ?? false) &&
+                reactions != null &&
+                reactions.isNotEmpty)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: AppColors.indigo50,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final reaction in reactions)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
                           children: [
-                            Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                children: [
-                                  // Category Totals Header
-                                  GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _showMacrosTotal = !_showMacrosTotal;
-                                        // When card is tapped, flip all food items to match card state
-                                        for (var doc in _foodDocs) {
-                                          _foodMacrosVisibility[doc.id] =
-                                              _showMacrosTotal;
-                                        }
-                                      });
-                                    },
-                                    child: Builder(
-                                      builder: (context) {
-                                        return Padding(
-                                          padding:
-                                              const EdgeInsets.only(bottom: 12),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 10,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.15),
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              border: Border.all(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.3),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment
-                                                      .spaceBetween,
-                                              children: [
-                                                const Text(
-                                                  'Total',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
-                                                Row(
-                                                  children: [
-                                                    if (!_showMacrosTotal)
-                                                      Text(
-                                                        '$_totalCalories kcal',
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          fontSize: 14,
-                                                        ),
-                                                      )
-                                                    else
-                                                      Text(
-                                                        'Protein: ${_roundMacro(_totalProtein)}g | Carbs: ${_roundMacro(_totalCarbs)}g | Fat: ${_roundMacro(_totalFat)}g',
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          fontSize: 11,
-                                                        ),
-                                                      ),
-                                                    const SizedBox(width: 8),
-                                                    Icon(
-                                                      _showMacrosTotal
-                                                          ? Icons.fastfood
-                                                          : Icons.show_chart,
-                                                      color: Colors.white,
-                                                      size: 20,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Stack(
-                                      children: [
-                                        ListView.builder(
-                                          itemCount: _foodDocs.length,
-                                          itemBuilder: (context, index) {
-                                            final doc = _foodDocs[index];
-                                            final data = doc.data();
-                                            final portion =
-                                                (data['food_portion'] ?? '')
-                                                    .toString();
-                                            return Container(
-                                              margin:
-                                                  const EdgeInsets.symmetric(
-                                                      vertical: 6),
-                                              decoration: BoxDecoration(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                color: Colors.white,
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(alpha: 0.1),
-                                                    blurRadius: 4,
-                                                    offset: const Offset(0, 2),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: GestureDetector(
-                                                onTap: () {
-                                                  _handleFoodItemTap(doc.id);
-                                                },
-                                                onLongPress: _isOwnCard
-                                                    ? () => _offerDirectDebit(
-                                                        data)
-                                                    : null,
-                                                child: Column(
-                                                  children: [
-                                                    ListTile(
-                                                      contentPadding:
-                                                          const EdgeInsets
-                                                              .symmetric(
-                                                        horizontal: 16,
-                                                        vertical: 8,
-                                                      ),
-                                                      visualDensity:
-                                                          VisualDensity.compact,
-                                                      title: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Text(
-                                                            (data['food_description'] ??
-                                                                    'Food')
-                                                                .toString(),
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                            style:
-                                                                const TextStyle(
-                                                              color: Colors
-                                                                  .black87,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w500,
-                                                            ),
-                                                          ),
-                                                          if (portion
-                                                              .isNotEmpty)
-                                                            Text(
-                                                              '($portion)',
-                                                              style: TextStyle(
-                                                                color: Colors
-                                                                    .grey
-                                                                    .shade600,
-                                                                fontSize: 12,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w400,
-                                                              ),
-                                                            ),
-                                                        ],
-                                                      ),
-                                                      trailing: Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .center,
-                                                        children: [
-                                                          if (_deleteMode &&
-                                                              _canEditSelectedDay)
-                                                            GestureDetector(
-                                                              onTap: () async {
-                                                                await _deleteFoodItem(
-                                                                    doc.id);
-                                                              },
-                                                              child: Icon(
-                                                                Icons
-                                                                    .delete_outline,
-                                                                color: Colors
-                                                                    .red
-                                                                    .shade400,
-                                                                size: 24,
-                                                              ),
-                                                            )
-                                                          else
-                                                            Container(
-                                                              padding: EdgeInsets
-                                                                  .symmetric(
-                                                                horizontal: 12,
-                                                                vertical: (_foodMacrosVisibility[
-                                                                            doc.id] ??
-                                                                        _showMacrosTotal)
-                                                                    ? 1
-                                                                    : 4,
-                                                              ),
-                                                              decoration:
-                                                                  BoxDecoration(
-                                                                gradient:
-                                                                    LinearGradient(
-                                                                  colors: [
-                                                                    Colors
-                                                                        .orange
-                                                                        .shade400,
-                                                                    Colors
-                                                                        .orange
-                                                                        .shade600,
-                                                                  ],
-                                                                ),
-                                                                borderRadius:
-                                                                    BorderRadius
-                                                                        .circular(
-                                                                            12),
-                                                              ),
-                                                              child: (_foodMacrosVisibility[
-                                                                          doc.id] ??
-                                                                      _showMacrosTotal)
-                                                                  ? Column(
-                                                                      mainAxisAlignment:
-                                                                          MainAxisAlignment
-                                                                              .center,
-                                                                      mainAxisSize:
-                                                                          MainAxisSize
-                                                                              .min,
-                                                                      children: [
-                                                                        Text(
-                                                                          '${_roundMacro(data['food_protein'])}g Protein',
-                                                                          style:
-                                                                              const TextStyle(
-                                                                            color:
-                                                                                Colors.white,
-                                                                            fontWeight:
-                                                                                FontWeight.bold,
-                                                                            fontSize:
-                                                                                10,
-                                                                            height:
-                                                                                1.2,
-                                                                          ),
-                                                                        ),
-                                                                        Text(
-                                                                          '${_roundMacro(data['food_carbs'])}g Carbs',
-                                                                          style:
-                                                                              const TextStyle(
-                                                                            color:
-                                                                                Colors.white,
-                                                                            fontWeight:
-                                                                                FontWeight.bold,
-                                                                            fontSize:
-                                                                                10,
-                                                                            height:
-                                                                                1.2,
-                                                                          ),
-                                                                        ),
-                                                                        Text(
-                                                                          '${_roundMacro(data['food_fat'])}g Fat',
-                                                                          style:
-                                                                              const TextStyle(
-                                                                            color:
-                                                                                Colors.white,
-                                                                            fontWeight:
-                                                                                FontWeight.bold,
-                                                                            fontSize:
-                                                                                10,
-                                                                            height:
-                                                                                1.2,
-                                                                          ),
-                                                                        ),
-                                                                      ],
-                                                                    )
-                                                                  : Text(
-                                                                      '${_roundMacro(data['food_calories'])} kcal',
-                                                                      style:
-                                                                          const TextStyle(
-                                                                        color: Colors
-                                                                            .white,
-                                                                        fontWeight:
-                                                                            FontWeight.bold,
-                                                                        fontSize:
-                                                                            12,
-                                                                      ),
-                                                                    ),
-                                                            ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    // Show emoji picker when in readOnly mode
-                                                    if (widget.readOnly &&
-                                                        (_showEmojiPicker[
-                                                                doc.id] ??
-                                                            false))
-                                                      Container(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .all(12),
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: Colors
-                                                              .grey.shade100,
-                                                          borderRadius:
-                                                              const BorderRadius
-                                                                  .only(
-                                                            bottomLeft:
-                                                                Radius.circular(
-                                                                    12),
-                                                            bottomRight:
-                                                                Radius.circular(
-                                                                    12),
-                                                          ),
-                                                        ),
-                                                        child: Row(
-                                                          mainAxisAlignment:
-                                                              MainAxisAlignment
-                                                                  .spaceEvenly,
-                                                          children: [
-                                                            GestureDetector(
-                                                              onTap: () =>
-                                                                  _addReaction(
-                                                                      doc.id,
-                                                                      '🔥'),
-                                                              child: const Text(
-                                                                  '🔥',
-                                                                  style: TextStyle(
-                                                                      fontSize:
-                                                                          32)),
-                                                            ),
-                                                            GestureDetector(
-                                                              onTap: () =>
-                                                                  _addReaction(
-                                                                      doc.id,
-                                                                      '😈'),
-                                                              child: const Text(
-                                                                  '😈',
-                                                                  style: TextStyle(
-                                                                      fontSize:
-                                                                          32)),
-                                                            ),
-                                                            GestureDetector(
-                                                              onTap: () =>
-                                                                  _addReaction(
-                                                                      doc.id,
-                                                                      '💪'),
-                                                              child: const Text(
-                                                                  '💪',
-                                                                  style: TextStyle(
-                                                                      fontSize:
-                                                                          32)),
-                                                            ),
-                                                            GestureDetector(
-                                                              onTap: () =>
-                                                                  _addReaction(
-                                                                      doc.id,
-                                                                      '❤️'),
-                                                              child: const Text(
-                                                                  '❤️',
-                                                                  style: TextStyle(
-                                                                      fontSize:
-                                                                          32)),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    // Show reaction confirmation when in readOnly mode after adding emoji
-                                                    if (widget.readOnly &&
-                                                        _reactionConfirmationFoodId ==
-                                                            doc.id &&
-                                                        _reactionFadeAnimation !=
-                                                            null)
-                                                      FadeTransition(
-                                                        opacity:
-                                                            _reactionFadeAnimation!,
-                                                        child: Container(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .symmetric(
-                                                            horizontal: 16,
-                                                            vertical: 8,
-                                                          ),
-                                                          decoration:
-                                                              BoxDecoration(
-                                                            color: Colors
-                                                                .green.shade50,
-                                                            borderRadius:
-                                                                const BorderRadius
-                                                                    .only(
-                                                              bottomLeft: Radius
-                                                                  .circular(12),
-                                                              bottomRight:
-                                                                  Radius
-                                                                      .circular(
-                                                                          12),
-                                                            ),
-                                                          ),
-                                                          child: Row(
-                                                            children: [
-                                                              Expanded(
-                                                                child: Text(
-                                                                  _reactionConfirmationUsername ??
-                                                                      '',
-                                                                  style:
-                                                                      TextStyle(
-                                                                    color: Colors
-                                                                        .grey
-                                                                        .shade700,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w500,
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                              Text(
-                                                                _reactionConfirmationEmoji ??
-                                                                    '',
-                                                                style:
-                                                                    const TextStyle(
-                                                                        fontSize:
-                                                                            24),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    // Show reactions when owner taps food item
-                                                    if (!widget.readOnly &&
-                                                        (_showReactions[
-                                                                doc.id] ??
-                                                            false) &&
-                                                        _foodReactions[
-                                                                doc.id] !=
-                                                            null &&
-                                                        _foodReactions[doc.id]!
-                                                            .isNotEmpty)
-                                                      Container(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                          horizontal: 16,
-                                                          vertical: 8,
-                                                        ),
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: Colors
-                                                              .blue.shade50,
-                                                          borderRadius:
-                                                              const BorderRadius
-                                                                  .only(
-                                                            bottomLeft:
-                                                                Radius.circular(
-                                                                    12),
-                                                            bottomRight:
-                                                                Radius.circular(
-                                                                    12),
-                                                          ),
-                                                        ),
-                                                        child: Column(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .start,
-                                                          children: _foodReactions[
-                                                                  doc.id]!
-                                                              .map(
-                                                                  (reaction) =>
-                                                                      Padding(
-                                                                        padding:
-                                                                            const EdgeInsets.symmetric(
-                                                                          vertical:
-                                                                              2,
-                                                                        ),
-                                                                        child:
-                                                                            Row(
-                                                                          children: [
-                                                                            Expanded(
-                                                                              child: Text(
-                                                                                reaction['username'] ?? 'Unknown',
-                                                                                style: TextStyle(
-                                                                                  color: AppColors.gray700,
-                                                                                  fontWeight: FontWeight.w500,
-                                                                                ),
-                                                                              ),
-                                                                            ),
-                                                                            Text(
-                                                                              reaction['emoji'] ?? '',
-                                                                              style: const TextStyle(fontSize: 20),
-                                                                            ),
-                                                                          ],
-                                                                        ),
-                                                                      ))
-                                                              .toList(),
-                                                        ),
-                                                      ),
-                                                  ],
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                        if (_isDeletingItem)
-                                          Container(
-                                            color:
-                                                Colors.black.withValues(alpha: 0.3),
-                                            child: const Center(
-                                              child: CircularProgressIndicator(
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<
-                                                        Color>(Colors.white),
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  if (_isOwnCard && !_isSelectedDateToday)
-                                    _PastDayNotice(
-                                      onToday: () =>
-                                          _changeDay(BalanceService.now()),
-                                    )
-                                  else if (_isOwnCard)
-                                    Row(
-                                      key: _tourAdd,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceEvenly,
-                                      children: <Widget>[
-                                        FloatingActionButton.extended(
-                                          onPressed: !_canEditSelectedDay
-                                              ? null
-                                              : () async {
-                                                  setState(() {
-                                                    _deleteMode = false;
-                                                  });
-                                                  final saved =
-                                                      await Navigator.push<
-                                                          bool>(
-                                                    context,
-                                                    MaterialPageRoute(
-                                                      builder: (_) =>
-                                                          const AddFoodPage(),
-                                                    ),
-                                                  );
-                                                  // Logging signals a refresh
-                                                  // on its own; this covers
-                                                  // the rest.
-                                                  if (saved == true &&
-                                                      mounted) {
-                                                    await (_refreshing ??
-                                                        _refreshAfterChange());
-                                                  }
-                                                },
-                                          heroTag: 'addFood',
-                                          backgroundColor: !_canEditSelectedDay
-                                              ? AppColors.gray400
-                                              : AppColors.emerald600,
-                                          foregroundColor: Colors.white,
-                                          icon: const Icon(Icons.add),
-                                          label: const Text('Food'),
-                                        ),
-                                        FloatingActionButton.extended(
-                                          onPressed: !_canEditSelectedDay
-                                              ? null
-                                              : () async {
-                                                  setState(() {
-                                                    _deleteMode = false;
-                                                  });
-                                                  final result =
-                                                      await Navigator.push<
-                                                          Map<String, dynamic>>(
-                                                    context,
-                                                    MaterialPageRoute(
-                                                      builder: (_) =>
-                                                          const _SelectExistingRecipePage(),
-                                                    ),
-                                                  );
-                                                  if (result == null ||
-                                                      !context.mounted) {
-                                                    return;
-                                                  }
-                                                  final category = Provider.of<
-                                                              CategoryService>(
-                                                          context,
-                                                          listen: false)
-                                                      .selectedCategory;
-                                                  await _addRecipeToHome(
-                                                    result['recipeId']
-                                                        as String,
-                                                    category,
-                                                    multiplier:
-                                                        result['multiplier']
-                                                            as double,
-                                                  );
-                                                },
-                                          heroTag: 'addRecipe',
-                                          backgroundColor: !_canEditSelectedDay
-                                              ? AppColors.gray400
-                                              : AppColors.violet600,
-                                          foregroundColor: Colors.white,
-                                          icon: const Icon(Icons.add),
-                                          label: const Text('Recipe'),
-                                        ),
-                                        FloatingActionButton(
-                                          onPressed: !_canEditSelectedDay ||
-                                                  _foodDocs.isEmpty
-                                              ? null
-                                              : () {
-                                                  setState(() {
-                                                    _deleteMode = !_deleteMode;
-                                                  });
-                                                },
-                                          heroTag: 'delete',
-                                          tooltip: _deleteMode
-                                              ? 'Done removing'
-                                              : 'Remove food',
-                                          backgroundColor: !_canEditSelectedDay ||
-                                                  _foodDocs.isEmpty
-                                              ? AppColors.gray400
-                                              : _deleteMode
-                                                  ? AppColors.red700
-                                                  : AppColors.red600,
-                                          foregroundColor: Colors.white,
-                                          child: Icon(_deleteMode
-                                              ? Icons.close
-                                              : Icons.delete_outline),
-                                        ),
-                                      ],
-                                    ),
-                                ],
+                            Expanded(
+                              child: Text(
+                                (reaction['username'] ?? 'Unknown').toString(),
+                                style: const TextStyle(
+                                  color: AppColors.gray700,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
+                            ),
+                            Text(
+                              (reaction['emoji'] ?? '').toString(),
+                              style: const TextStyle(fontSize: 20),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-              ],
+              ),
+          ],
+        ),
+      ),
+    );
+
+    if (!canEdit) return row;
+    return Dismissible(
+      key: ValueKey('food-${doc.id}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        color: AppColors.red600,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      onDismissed: (_) => _onFoodSwiped(doc.id, name),
+      child: row,
+    );
+  }
+
+  Widget _buildAddActions(String meal, bool showCopy) {
+    final canEdit = _canEditSelectedDay;
+    final yesterday =
+        showCopy ? _yesterdayFor(meal) : const <Map<String, dynamic>>[];
+    final yesterdayKcal =
+        BalanceService.totalOf(yesterday).calories.round();
+    return Column(
+      key: _tourAdd,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: canEdit ? _openAddFood : null,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                ),
+                icon: const Icon(Icons.add),
+                label: Text(
+                  'Add to $meal',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: canEdit ? _openRecipePicker : null,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 48),
+              ),
+              icon: const Icon(Icons.menu_book_outlined),
+              label: const Text('Recipe'),
+            ),
+          ],
+        ),
+        if (canEdit && yesterday.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _copyingYesterday
+                ? null
+                : () => _copyYesterday(meal, yesterday),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 48),
+            ),
+            icon: const Icon(Icons.history),
+            label: Text(
+              "Copy yesterday's $meal ($yesterdayKcal kcal)",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildFoodPanel(String meal) {
+    final visible = [
+      for (final d in _foodDocs)
+        if (!_pendingRemoval.contains(d.id)) d
+    ];
+    final canEdit = _canEditSelectedDay;
+
+    Widget? footer;
+    if (_isOwnCard && !_isSelectedDateToday) {
+      footer = _PastDayNotice(onToday: () => _changeDay(BalanceService.now()));
+    } else if (_isOwnCard) {
+      footer = _buildAddActions(meal, visible.isEmpty);
+    }
+
+    return Container(
+      decoration: AppDecor.card,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildMealHeader(meal),
+          const Divider(height: 1, thickness: 1, color: AppColors.border),
+          if (_isDeletingItem || _copyingYesterday)
+            const LinearProgressIndicator(minHeight: 2),
+          if (visible.isEmpty)
+            _buildEmptyMeal(meal)
+          else
+            for (var i = 0; i < visible.length; i++) ...[
+              if (i > 0)
+                const Divider(height: 1, thickness: 1, color: AppColors.border),
+              _buildFoodRow(visible[i], canEdit),
+            ],
+          if (footer != null) ...[
+            if (visible.isNotEmpty)
+              const Divider(height: 1, thickness: 1, color: AppColors.border),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: footer,
+            ),
+          ] else
+            const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topGap = widget.showBanner
+        ? 12.0
+        : 16.0 + MediaQuery.paddingOf(context).top;
+
+    if (_isLoading) {
+      // Same size as the real card, so nothing jumps when it loads.
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final cardWidth = math.min(screenWidth - 32, 380.0);
+      final cardHeight = math.max(cardWidth / 1.7, 190.0);
+      return Scaffold(
+        backgroundColor: AppColors.canvas,
+        body: Column(
+          children: [
+            if (widget.showBanner) _buildBanner(context),
+            SizedBox(height: topGap),
+            Center(
+              child: SizedBox(
+                width: cardWidth,
+                height: cardHeight,
+                child: CalorieCardSkeleton(design: _cardDesign),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final meal = Provider.of<CategoryService>(context).selectedCategory;
+
+    final ownHome = _isOwnCard && !widget.showBanner;
+    final overBy = _liveBalance == null ? 0 : -_liveBalance!;
+
+    return Scaffold(
+      backgroundColor: AppColors.canvas,
+      // Tutorials, bottom-left so it never sits under the Coach button.
+      floatingActionButton: ownHome
+          ? KeyedSubtree(key: _tourTutorials, child: const TutorialButton())
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+      body: Column(
+        children: [
+          if (widget.showBanner) _buildBanner(context),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _refreshAfterChange,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.only(top: topGap, bottom: ownHome ? 96 : 48),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildCard(),
+                    if (_isOwnCard && _isSelectedDateToday && _isDayFinished)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: _ClosedDayStrip(onReopen: _handleCardSwipe),
+                      ),
+                    // Over budget: a kind note with a plan to even it out.
+                    if (_isOwnCard &&
+                        _isSelectedDateToday &&
+                        !_isDayFinished &&
+                        overBy > 0)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: CoachNudge(
+                          overBy: overBy,
+                          goal: _goalsForSelectedDay.calories,
+                          today: BalanceService.now(),
+                          onAsk: (question) => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  CoachPage(initialQuestion: question),
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: DayStepper(
+                        key: _tourDay,
+                        selected: _selectedLogDate,
+                        onChanged: _changeDay,
+                      ),
+                    ),
+                    if (_isOwnCard && _isSelectedDateToday)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                        child: HomeInbox(
+                          userId: _activeUserId,
+                          isDayFinished: _isDayFinished,
+                          hasFoodToday: _dayTotals.calories > 0,
+                          onFinishDay: _handleCardSwipe,
+                          onBalanceChanged: _refreshAfterChange,
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    // Meals
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Consumer<CategoryService>(
+                        key: _tourMeals,
+                        builder: (context, categoryService, _) => MealTabs(
+                          meals: _tabs,
+                          selected: categoryService.selectedCategory,
+                          totals: _mealKcal,
+                          onSelected: (tab) {
+                            categoryService.setSelectedCategory(tab);
+                            populateFoodItems();
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _buildFoodPanel(meal),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -2503,7 +2453,46 @@ class _HomePageState extends State<HomePage>
   }
 }
 
-/// Shown instead of the add/remove buttons on a past day.
+/// Under the card once today is closed, with a way to reopen it.
+class _ClosedDayStrip extends StatelessWidget {
+  final VoidCallback onReopen;
+
+  const _ClosedDayStrip({required this.onReopen});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
+      decoration: BoxDecoration(
+        color: AppColors.emerald50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.emerald300),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, color: AppColors.emerald600, size: 20),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              "Today's closed. Nice work.",
+              style: TextStyle(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onReopen,
+            child: const Text('Reopen'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown instead of the add buttons on a past day.
 class _PastDayNotice extends StatelessWidget {
   final VoidCallback onToday;
 
@@ -2512,27 +2501,23 @@ class _PastDayNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
+        color: AppColors.indigo50,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
-          const Icon(Icons.lock_clock, color: Colors.white70, size: 20),
+          const Icon(Icons.lock_clock, color: AppColors.primary, size: 20),
           const SizedBox(width: 10),
           const Expanded(
             child: Text(
               'Past days are read-only. Food you add goes on today.',
-              style: TextStyle(color: Colors.white, fontSize: 13),
+              style: TextStyle(color: AppColors.ink, fontSize: 13),
             ),
           ),
           TextButton(
             onPressed: onToday,
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white,
-              backgroundColor: Colors.white.withValues(alpha: 0.18),
-            ),
             child: const Text('Go to today'),
           ),
         ],

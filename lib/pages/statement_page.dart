@@ -30,9 +30,36 @@ class _StatementPageState extends State<StatementPage> {
               key: ValueKey(_days),
               userId: uid,
               days: _days,
+              onError: (context, retry) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.cloud_off,
+                          size: 40, color: AppColors.muted),
+                      const SizedBox(height: 12),
+                      const Text(
+                        "Couldn't load your statement.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: retry,
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               builder: (context, statement) {
                 return ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
                   children: [
                     Center(
                       child: SegmentedButton<int>(
@@ -58,6 +85,9 @@ class _StatementPageState extends State<StatementPage> {
                       const SizedBox(height: 16),
                       PanelCard(
                         title: 'Spending',
+                        trailing: (statement.dailyBudget ?? 0) <= 0
+                            ? null
+                            : const BudgetLegend(),
                         child: WeeklySpendChart(
                           statement: statement,
                           height: 150,
@@ -143,7 +173,7 @@ class _DayTotal extends StatelessWidget {
             ),
             child: Text(
               over
-                  ? '+${formatKcal(spent - budget!)}'
+                  ? '${formatKcal(spent - budget!)} over'
                   : '${formatKcal(budget! - spent)} left',
               style: TextStyle(
                 fontSize: 11,
@@ -178,7 +208,7 @@ class _SummaryRow extends StatelessWidget {
         Expanded(
           child: _Stat(
             label: 'On budget',
-            value: '${statement.daysUnderBudget} days',
+            value: formatDays(statement.daysUnderBudget),
             color: AppColors.green,
           ),
         ),
