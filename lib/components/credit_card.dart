@@ -237,10 +237,6 @@ class _CreditCardWidgetState extends State<CreditCard>
     final label = calories < 0
         ? (_isToday ? 'Over budget today' : 'Over budget')
         : (_isToday ? 'Left to spend today' : 'Left that day');
-    // Shorter, on the card itself, so it's clear what the number means.
-    final caption = calories < 0
-        ? 'OVER BUDGET'
-        : (_isToday ? 'LEFT TODAY' : 'LEFT THAT DAY');
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -332,8 +328,10 @@ class _CreditCardWidgetState extends State<CreditCard>
           ),
         ];
         final front = CalorieCardFront(
+          // No caption on the card itself: the line under it says what's
+          // left, and over budget shows in red. Screen readers still hear
+          // [label] (see Semantics below).
           amount: calories,
-          label: caption,
           macros: macros,
           holder: holder,
           validThru: _validThru(),
