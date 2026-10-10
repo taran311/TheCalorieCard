@@ -19,19 +19,22 @@ class AuthColors {
   static const actionPressed = AppColors.indigo700;
   static const backdropTop = AppColors.primaryDark;
   static const backdropBottom = AppColors.violet600;
-  static const text = AppColors.ink;
-  static const muted = AppColors.muted;
-  static const field = AppColors.gray50;
-  static const border = AppColors.border;
-  static const errorText = AppColors.red700;
-  static const errorBg = AppColors.red50;
-  static const errorBorder = Color(0xFFFECACA);
-  static const successText = AppColors.emerald700;
-  static const successBg = AppColors.emerald50;
-  static const successBorder = Color(0xFFA7F3D0);
-  static const infoText = AppColors.indigo800;
-  static const infoBg = AppColors.indigo50;
-  static const infoBorder = Color(0xFFC7D2FE);
+  static Color get text => AppColors.ink;
+  static Color get muted => AppColors.muted;
+  static Color get field => AppColors.gray50;
+  static Color get border => AppColors.border;
+  static Color get errorText => AppText.red700;
+  static Color get errorBg => AppColors.red50;
+  static Color get errorBorder =>
+      AppColors.dark ? const Color(0xFF5B2530) : const Color(0xFFFECACA);
+  static Color get successText => AppText.emerald700;
+  static Color get successBg => AppColors.emerald50;
+  static Color get successBorder =>
+      AppColors.dark ? const Color(0xFF1F5244) : const Color(0xFFA7F3D0);
+  static Color get infoText => AppText.indigo800;
+  static Color get infoBg => AppColors.indigo50;
+  static Color get infoBorder =>
+      AppColors.dark ? const Color(0xFF3A3F7A) : const Color(0xFFC7D2FE);
 }
 
 bool _brandPanelVisible(BuildContext context) {
@@ -75,7 +78,7 @@ class AuthScaffold extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 26,
               height: 1.15,
               fontWeight: FontWeight.w800,
@@ -87,7 +90,7 @@ class AuthScaffold extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               subtitle!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 height: 1.45,
                 color: AuthColors.muted,
@@ -107,7 +110,7 @@ class AuthScaffold extends StatelessWidget {
     if (framed) {
       // Desktop: the brand panel beside us already carries the identity.
       return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -135,13 +138,13 @@ class AuthScaffold extends StatelessWidget {
     // pulled up over the header so its rounded corners sit on indigo, and
     // the page itself is white so the sheet always reaches the bottom.
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SingleChildScrollView(
         child: Column(
           children: [
             Container(
               width: double.infinity,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -191,8 +194,8 @@ class AuthScaffold extends StatelessWidget {
               offset: const Offset(0, -28),
               child: Container(
                 width: double.infinity,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
                 ),
                 child: SafeArea(top: false, child: form),
@@ -304,7 +307,7 @@ class _AuthFieldState extends State<AuthField> {
       children: [
         Text(
           widget.label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AuthColors.text,
@@ -323,10 +326,10 @@ class _AuthFieldState extends State<AuthField> {
           textInputAction: widget.textInputAction,
           onSubmitted: widget.onSubmitted,
           onChanged: widget.onChanged,
-          style: const TextStyle(fontSize: 16, color: AuthColors.text),
+          style: TextStyle(fontSize: 16, color: AuthColors.text),
           decoration: InputDecoration(
             hintText: widget.hint,
-            hintStyle: const TextStyle(color: AppColors.gray400),
+            hintStyle: TextStyle(color: AppColors.gray400),
             prefixIcon: Icon(widget.icon, color: AuthColors.muted, size: 20),
             suffixIcon: widget.password
                 ? IconButton(
@@ -343,7 +346,7 @@ class _AuthFieldState extends State<AuthField> {
                 : null,
             errorText: widget.errorText,
             errorMaxLines: 3,
-            errorStyle: const TextStyle(
+            errorStyle: TextStyle(
               color: AuthColors.errorText,
               fontSize: 13,
             ),
@@ -430,8 +433,8 @@ class AuthSecondaryButton extends StatelessWidget {
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
-          foregroundColor: AuthColors.action,
-          side: const BorderSide(color: AuthColors.border, width: 1.5),
+          foregroundColor: AppText.primaryDark,
+          side: BorderSide(color: AuthColors.border, width: 1.5),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -458,7 +461,7 @@ class AuthLink extends StatelessWidget {
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        foregroundColor: AuthColors.action,
+        foregroundColor: AppText.primaryDark,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         minimumSize: const Size(44, 44),
         tapTargetSize: MaterialTapTargetSize.padded,
@@ -574,15 +577,15 @@ class AuthDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Expanded(child: Divider(color: AuthColors.border)),
+        Expanded(child: Divider(color: AuthColors.border)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
             text,
-            style: const TextStyle(color: AuthColors.muted, fontSize: 14),
+            style: TextStyle(color: AuthColors.muted, fontSize: 14),
           ),
         ),
-        const Expanded(child: Divider(color: AuthColors.border)),
+        Expanded(child: Divider(color: AuthColors.border)),
       ],
     );
   }
@@ -608,13 +611,13 @@ class AuthSteps extends StatelessWidget {
                   width: 24,
                   height: 24,
                   alignment: Alignment.center,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AuthColors.infoBg,
                     shape: BoxShape.circle,
                   ),
                   child: Text(
                     '${i + 1}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AuthColors.infoText,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -627,7 +630,7 @@ class AuthSteps extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
                       steps[i],
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AuthColors.text,
                         fontSize: 15,
                         height: 1.35,

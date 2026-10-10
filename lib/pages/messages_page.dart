@@ -92,7 +92,7 @@ class MessagesPage extends StatelessWidget {
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Column(
@@ -129,7 +129,7 @@ class MessagesPage extends StatelessWidget {
           }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Column(
@@ -293,7 +293,7 @@ class MessagesPage extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 8),
                 child: Text(
                   timeago.format(lastMessageTime.toDate()),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppColors.gray600,
                   ),
@@ -366,7 +366,7 @@ class MessagesPage extends StatelessWidget {
         maxChildSize: 0.95,
         builder: (_, controller) => Column(
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
                 'New chat',
@@ -382,8 +382,8 @@ class MessagesPage extends StatelessWidget {
                 length: 2,
                 child: Column(
                   children: [
-                    const TabBar(
-                      labelColor: AppColors.primaryDark,
+                    TabBar(
+                      labelColor: AppText.primaryDark,
                       unselectedLabelColor: AppColors.muted,
                       indicatorColor: AppColors.primary,
                       tabs: [
@@ -412,7 +412,7 @@ class MessagesPage extends StatelessWidget {
   }
 
   static Widget _loadError() {
-    return const Center(
+    return Center(
       child: Padding(
         padding: EdgeInsets.all(24),
         child: Text(
@@ -444,7 +444,7 @@ class MessagesPage extends StatelessWidget {
         ];
 
         if (friendsList.isEmpty) {
-          return const Center(
+          return Center(
             child: Text(
               'No friends yet',
               style: TextStyle(color: AppColors.muted),
@@ -503,7 +503,7 @@ class MessagesPage extends StatelessWidget {
         }
 
         if (snapshot.data!.docs.isEmpty) {
-          return const Center(
+          return Center(
             child: Text(
               'No groups yet',
               style: TextStyle(color: AppColors.muted),
@@ -536,7 +536,7 @@ class MessagesPage extends StatelessWidget {
               ),
               subtitle: Text(
                 '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
-                style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                style: TextStyle(fontSize: 12, color: AppColors.muted),
               ),
               onTap: () async {
                 Navigator.pop(sheetContext);
@@ -977,7 +977,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                   stream: _messagesStream,
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
-                      return const Center(
+                      return Center(
                         child: Padding(
                           padding: EdgeInsets.all(24),
                           child: Text(
@@ -1074,8 +1074,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             top: false,
             child: Container(
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
                 border: Border(top: BorderSide(color: AppColors.border)),
               ),
               child: Row(
@@ -1091,7 +1091,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.credit_card),
-                    color: AppColors.primary,
+                    color: AppText.primary,
                   ),
                   Expanded(
                     child: Focus(
@@ -1233,13 +1233,13 @@ class _DaySeparator extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.border),
           ),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppColors.muted,
@@ -1297,7 +1297,7 @@ class _MessageBubble extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
         constraints: BoxConstraints(maxWidth: maxWidth),
         decoration: BoxDecoration(
-          color: isMe ? AppColors.primary : Colors.white,
+          color: isMe ? AppColors.primary : AppColors.surface,
           borderRadius: BorderRadius.only(
             topLeft: radius,
             topRight: radius,
@@ -1317,10 +1317,10 @@ class _MessageBubble extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 2),
                   child: Text(
                     (data['sender_name'] ?? 'Unknown').toString(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
+                      color: AppText.primary,
                     ),
                   ),
                 ),
@@ -1369,10 +1369,11 @@ class _SharedCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
+        // Always dark (white text on it), in light and dark mode.
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AppColors.gray800, AppColors.ink],
+          colors: [Color(0xFF1F2937), Color(0xFF111827)],
         ),
       ),
       child: Column(
@@ -1410,7 +1411,7 @@ class _SharedCard extends StatelessWidget {
               minHeight: 5,
               backgroundColor: Colors.white12,
               valueColor: AlwaysStoppedAnimation(
-                over ? AppColors.red : AppColors.green,
+                over ? AppText.red : AppText.green,
               ),
             ),
           ),

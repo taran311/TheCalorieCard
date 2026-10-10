@@ -169,7 +169,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.red600),
+            style: TextButton.styleFrom(foregroundColor: AppText.red600),
             child: Text(action),
           ),
         ],
@@ -303,11 +303,11 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                         child: Text('Leave group'),
                       ),
                     if (isCreator)
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'delete',
                         child: Text(
                           'Delete group',
-                          style: TextStyle(color: AppColors.red600),
+                          style: TextStyle(color: AppText.red600),
                         ),
                       ),
                   ],
@@ -389,14 +389,14 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: AppColors.gray800,
                         ),
                       ),
                       const SizedBox(height: 2),
-                      const Text(
+                      Text(
                         'Eaten today',
                         style: TextStyle(
                           fontSize: 12,
@@ -470,9 +470,9 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                       ),
                     );
                   },
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.emoji_events_outlined,
-                    color: AppColors.violet600,
+                    color: AppText.violet600,
                   ),
                   tooltip: 'Achievements',
                 ),
@@ -480,9 +480,9 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                   IconButton(
                     onPressed: () =>
                         _startChatWithMember(memberId, memberEmail),
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.chat_bubble_outline,
-                      color: AppColors.primary,
+                      color: AppText.primary,
                     ),
                     tooltip: 'Chat',
                   ),
@@ -593,7 +593,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
@@ -623,7 +623,7 @@ class _Note extends StatelessWidget {
         child: Text(
           text,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: AppColors.muted),
+          style: TextStyle(color: AppColors.muted),
         ),
       ),
     );

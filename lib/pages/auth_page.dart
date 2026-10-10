@@ -118,13 +118,13 @@ class _RetryView extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.wifi_off_rounded,
                       size: 40,
-                      color: AppColors.primary,
+                      color: AppText.primary,
                     ),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       "We couldn't reach your card. Check your connection.",
                       textAlign: TextAlign.center,
                       style: TextStyle(

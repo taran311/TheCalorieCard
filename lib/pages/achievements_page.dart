@@ -95,7 +95,7 @@ class _AchievementsPageState extends State<AchievementsPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
+                          Text(
                             "Couldn't load achievements.",
                             textAlign: TextAlign.center,
                             style: TextStyle(color: AppColors.muted),
@@ -209,13 +209,13 @@ class _AchievementsPageState extends State<AchievementsPage> {
         child: Row(
           children: [
             Text('${category.emoji}  ${category.label}',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: AppColors.ink)),
             const Spacer(),
             Text('$done / ${all.length}',
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w700, color: AppColors.muted)),
           ],
         ),
@@ -356,8 +356,8 @@ class _JustUnlocked extends StatelessWidget {
               achievements.length == 1
                   ? 'New: ${achievements.first.title}!'
                   : 'New: ${achievements.map((a) => a.title).join(', ')}!',
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, color: AppColors.amber700),
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, color: AppText.amber700),
             ),
           ),
         ],
@@ -397,7 +397,7 @@ class _AchievementTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: unlocked ? Colors.white : AppColors.gray50,
+        color: unlocked ? AppColors.surface : AppColors.gray50,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: unlocked ? tierColor.withValues(alpha: 0.6) : AppColors.border,
@@ -464,23 +464,23 @@ class _AchievementTile extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   a.description,
-                  style: const TextStyle(fontSize: 13, color: AppColors.muted),
+                  style: TextStyle(fontSize: 13, color: AppColors.muted),
                 ),
                 const SizedBox(height: 8),
                 if (unlocked)
                   Row(
                     children: [
-                      const Icon(Icons.check_circle,
-                          size: 16, color: AppColors.green),
+                      Icon(Icons.check_circle,
+                          size: 16, color: AppText.green),
                       const SizedBox(width: 4),
                       Text(
                         unlockedAt == null
                             ? 'Unlocked'
                             : 'Unlocked ${_date(unlockedAt!)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.emerald600),
+                            color: AppText.emerald600),
                       ),
                     ],
                   )
@@ -501,7 +501,7 @@ class _AchievementTile extends StatelessWidget {
                       const SizedBox(width: 10),
                       Text(
                         '$shown / ${a.target}${a.unit.isEmpty ? '' : ' ${a.unit}'}',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: AppColors.gray600),
@@ -509,7 +509,7 @@ class _AchievementTile extends StatelessWidget {
                     ],
                   )
                 else
-                  const Text(
+                  Text(
                     'Locked',
                     style: TextStyle(
                         fontSize: 12,

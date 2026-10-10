@@ -526,7 +526,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: AppColors.ink,
@@ -534,7 +534,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
               ),
               Text(
                 subtitle,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   color: AppColors.gray600,
                 ),
@@ -554,12 +554,12 @@ class _GetStartedPageState extends State<GetStartedPage> {
     String? detail,
     required VoidCallback onTap,
   }) {
-    final Color fg = selected ? AppColors.primaryDark : AppColors.gray700;
+    final Color fg = selected ? AppText.primaryDark : AppColors.gray700;
     return Semantics(
       button: true,
       selected: selected,
       child: Material(
-        color: selected ? AppColors.indigo50 : Colors.white,
+        color: selected ? AppColors.indigo50 : AppColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
@@ -598,7 +598,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                       child: Text(
                         detail,
                         maxLines: 1,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                           color: AppColors.muted,
@@ -914,7 +914,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'How active are you?',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
@@ -939,10 +939,10 @@ class _GetStartedPageState extends State<GetStartedPage> {
                 child: Text(
                   _exerciseText,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.primaryDark,
+                    color: AppText.primaryDark,
                   ),
                 ),
               ),
@@ -964,7 +964,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'How should we set your budget?',
             style: TextStyle(
               fontWeight: FontWeight.w600,
@@ -997,7 +997,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
           ),
           if (!_inputsValid) ...[
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Fill in your age, height and weight to continue',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: AppColors.muted),
@@ -1080,7 +1080,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Daily calorie budget',
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
@@ -1117,7 +1117,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                 )
               else ...[
                 // Goal selection (Coach's results)
-                const Text(
+                Text(
                   'Pick your goal',
                   style: TextStyle(
                     fontSize: 16,
@@ -1162,7 +1162,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                 const SizedBox(height: 20),
               ],
               // Macros
-              const Text(
+              Text(
                 'Daily macros',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
@@ -1264,7 +1264,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
               '${_carbsGoal ?? 0}g carbs · '
               '${_fatsGoal ?? 0}g fat',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppColors.gray700,
@@ -1324,12 +1324,12 @@ class _GetStartedPageState extends State<GetStartedPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const CircularProgressIndicator(
+                  CircularProgressIndicator(
                     valueColor:
-                        AlwaysStoppedAnimation<Color>(AppColors.primary),
+                        AlwaysStoppedAnimation<Color>(AppText.primary),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'Coach is working out\nyour daily budget…',
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -1374,7 +1374,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                   // Main content sheet
                   Expanded(
                     child: Container(
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: AppColors.canvas,
                         borderRadius: BorderRadius.only(
                           topLeft: Radius.circular(32),

@@ -366,7 +366,7 @@ class _CoachPageState extends State<CoachPage> {
                           if (_error != null)
                             _ErrorBubble(message: _error!, onRetry: _retry),
                           const SizedBox(height: 8),
-                          const Text(
+                          Text(
                             'Coach gives general tips, not medical advice. '
                             'Nothing changes until you tap Accept.',
                             textAlign: TextAlign.center,
@@ -455,10 +455,10 @@ class _PromptChip extends StatelessWidget {
       avatar: Text(prompt.emoji),
       label: Text(prompt.label),
       onPressed: onTap,
-      backgroundColor: Colors.white,
-      side: const BorderSide(color: AppColors.indigo100),
-      labelStyle: const TextStyle(
-          color: AppColors.primaryDark, fontWeight: FontWeight.w600),
+      backgroundColor: AppColors.surface,
+      side: BorderSide(color: AppColors.indigo100),
+      labelStyle: TextStyle(
+          color: AppText.primaryDark, fontWeight: FontWeight.w600),
     );
   }
 }
@@ -495,7 +495,7 @@ class _ProposalCard extends StatelessWidget {
             margin: const EdgeInsets.only(top: 4, bottom: 8, right: 24),
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: done
@@ -508,7 +508,7 @@ class _ProposalCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (p.state == _ProposalState.preparing)
-                  const Row(
+                  Row(
                     children: [
                       CoachGlyph(
                           size: 22, thinking: true, color: AppColors.primary),
@@ -521,7 +521,7 @@ class _ProposalCard extends StatelessWidget {
                   )
                 else if (p.state == _ProposalState.failed)
                   Text(p.message ?? "Couldn't work that out.",
-                      style: const TextStyle(color: AppColors.amber700))
+                      style: TextStyle(color: AppText.amber700))
                 else if (prepared != null) ...[
                   Row(
                     children: [
@@ -530,7 +530,7 @@ class _ProposalCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           prepared.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
                             color: AppColors.ink,
@@ -550,7 +550,7 @@ class _ProposalCard extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: prepared.total!.calories < 0
-                                ? AppColors.emerald600
+                                ? AppText.emerald600
                                 : AppColors.ink,
                           ),
                         ),
@@ -560,7 +560,7 @@ class _ProposalCard extends StatelessWidget {
                             '${prepared.total!.protein.abs().round()}g protein · '
                             '${prepared.total!.carbs.abs().round()}g carbs · '
                             '${prepared.total!.fat.abs().round()}g fat',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 12, color: AppColors.muted),
                           ),
                         ),
@@ -570,7 +570,7 @@ class _ProposalCard extends StatelessWidget {
                   if (prepared.note != null) ...[
                     const SizedBox(height: 6),
                     Text(prepared.note!,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12, color: AppColors.muted)),
                   ],
                   const SizedBox(height: 10),
@@ -613,7 +613,7 @@ class _ProposalCard extends StatelessWidget {
                               ? Icons.check_circle
                               : Icons.do_not_disturb_on_outlined,
                           size: 18,
-                          color: done ? AppColors.emerald600 : AppColors.muted,
+                          color: done ? AppText.emerald600 : AppColors.muted,
                         ),
                         const SizedBox(width: 6),
                         Expanded(
@@ -624,7 +624,7 @@ class _ProposalCard extends StatelessWidget {
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               color:
-                                  done ? AppColors.emerald600 : AppColors.muted,
+                                  done ? AppText.emerald600 : AppColors.muted,
                             ),
                           ),
                         ),
@@ -657,7 +657,7 @@ class _ProposalLineRow extends StatelessWidget {
             child: Icon(
               line.skipped ? Icons.warning_amber_rounded : Icons.circle,
               size: line.skipped ? 15 : 7,
-              color: line.skipped ? AppColors.amber700 : AppColors.primary,
+              color: line.skipped ? AppText.amber700 : AppText.primary,
             ),
           ),
           const SizedBox(width: 8),
@@ -680,7 +680,7 @@ class _ProposalLineRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       color:
-                          line.skipped ? AppColors.amber700 : AppColors.muted,
+                          line.skipped ? AppText.amber700 : AppColors.muted,
                     ),
                   ),
               ],
@@ -709,7 +709,7 @@ class _Bubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: BoxConstraints(maxWidth: width > 560 ? 560 : width),
         decoration: BoxDecoration(
-          color: fromUser ? AppColors.primaryDark : Colors.white,
+          color: fromUser ? AppColors.primaryDark : AppColors.surface,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
@@ -794,11 +794,11 @@ class _Thinking extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 5),
         padding: const EdgeInsets.fromLTRB(12, 8, 16, 8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.border),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             CoachGlyph(size: 28, thinking: true, color: AppColors.primary),
@@ -833,7 +833,7 @@ class _ErrorBubble extends StatelessWidget {
         children: [
           Expanded(
             child: Text(message,
-                style: const TextStyle(color: AppColors.amber700)),
+                style: TextStyle(color: AppText.amber700)),
           ),
           TextButton(onPressed: onRetry, child: const Text('Try again')),
         ],
@@ -881,16 +881,16 @@ class _InputBar extends StatelessWidget {
                   hintText: 'Ask anything, or "add 2 eggs to brekkie"',
                   counterText: '',
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: AppColors.surface,
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: AppColors.border),
+                    borderSide: BorderSide(color: AppColors.border),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: AppColors.border),
+                    borderSide: BorderSide(color: AppColors.border),
                   ),
                 ),
               ),

@@ -482,9 +482,9 @@ class _AddRecipePageState extends State<AddRecipePage> {
         children: [
           Text(
             'Whole recipe: ${kcal.round()} kcal · $perLabel: ${perKcal.round()} kcal',
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: AppColors.primaryDark,
+              color: AppText.primaryDark,
             ),
           ),
           const SizedBox(height: 6),
@@ -494,17 +494,17 @@ class _AddRecipePageState extends State<AddRecipePage> {
             children: [
               Text(
                 'Protein ${t('total_protein').round()}g',
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w600, color: AppColors.proteinText),
               ),
               Text(
                 'Carbs ${t('total_carbs').round()}g',
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w600, color: AppColors.carbsText),
               ),
               Text(
                 'Fat ${t('total_fat').round()}g',
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w600, color: AppColors.fatText),
               ),
             ],
@@ -543,7 +543,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
   Widget _buildSelectedIngredients() {
     if (_ingredients.isEmpty) {
-      return const Text(
+      return Text(
         'No ingredients yet. Type them below, e.g. "200g chicken, 1 onion".',
         style: TextStyle(color: AppColors.muted),
       );
@@ -580,21 +580,21 @@ class _AddRecipePageState extends State<AddRecipePage> {
                   children: [
                     Text(
                       '${ing.calories.toStringAsFixed(0)} kcal',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
+                        color: AppText.primary,
                       ),
                     ),
                     IconButton(
                       tooltip: 'Change amount',
-                      icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
+                      icon: Icon(Icons.edit_outlined, color: AppText.primary),
                       onPressed: () {
                         _startEditingIngredient(idx, ing.portion);
                       },
                     ),
                     IconButton(
                       tooltip: 'Remove',
-                      icon: const Icon(Icons.delete_outline, color: AppColors.red600),
+                      icon: Icon(Icons.delete_outline, color: AppText.red600),
                       onPressed: () => _removeIngredient(idx),
                     ),
                   ],
@@ -1001,13 +1001,13 @@ class _AddRecipePageState extends State<AddRecipePage> {
             child: FilledButton.icon(
               onPressed: _calculatingAi ? null : _calculateAllWithAi,
               icon: _calculatingAi
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         valueColor:
-                            AlwaysStoppedAnimation<Color>(AppColors.primaryDark),
+                            AlwaysStoppedAnimation<Color>(AppText.primaryDark),
                       ),
                     )
                   : const Icon(Icons.auto_awesome),

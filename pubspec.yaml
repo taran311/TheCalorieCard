@@ -16,8 +16,12 @@ dependencies:
   firebase_core: ^3.4.1
   firebase_auth: ^5.2.1
   cloud_firestore: ^5.4.1
+  # Evening "log today's food" reminder.
+  firebase_messaging: ^15.1.0
   http: ^1.2.2
   timeago: ^3.6.1
+  # Remembers light/dark on this device.
+  shared_preferences: ^2.3.2
   # Contactless logging: barcode scanning and meal photos.
   mobile_scanner: ^5.2.3
   image_picker: ^1.1.2

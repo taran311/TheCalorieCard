@@ -402,7 +402,7 @@ class _Caption extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 10, 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
@@ -438,7 +438,7 @@ class _Caption extends StatelessWidget {
                   Text(
                     '${index + 1} of $count',
                     style:
-                        const TextStyle(fontSize: 12, color: AppColors.muted),
+                        TextStyle(fontSize: 12, color: AppColors.muted),
                   ),
                   const SizedBox(width: 8),
                 ],
@@ -446,7 +446,7 @@ class _Caption extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 step.title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                   color: AppColors.ink,
@@ -457,7 +457,7 @@ class _Caption extends StatelessWidget {
                 padding: const EdgeInsets.only(right: 8),
                 child: Text(
                   step.body,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     height: 1.4,
                     color: AppColors.gray600,

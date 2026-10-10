@@ -275,7 +275,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: review ? AppColors.amber300 : AppColors.border,
@@ -296,7 +296,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       multiplier == 1.0
                           ? item['name'].toString()
                           : '${item['name']}  ×${multiplier == multiplier.roundToDouble() ? multiplier.toStringAsFixed(0) : multiplier}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
                         color: AppColors.ink,
@@ -346,7 +346,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                 children: [
                   Text(
                     '${(item['calories'] as num).round()}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                       color: AppColors.ink,
@@ -629,15 +629,15 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
                 Text(item.query,
-                    style: const TextStyle(color: AppColors.muted)),
+                    style: TextStyle(color: AppColors.muted)),
                 const SizedBox(height: 20),
                 Center(
                   child: Text(
                     '${value.round()} kcal',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.primaryDark,
+                      color: AppText.primaryDark,
                     ),
                   ),
                 ),
@@ -659,7 +659,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Scores count towards your Calorie Sense on the hiscores.',
                   style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
@@ -863,7 +863,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
       decoration: BoxDecoration(
-        color: settled ? Colors.white : AppColors.indigo50,
+        color: settled ? AppColors.surface : AppColors.indigo50,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: p.failed
@@ -883,7 +883,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   p.query,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontWeight: FontWeight.w700, color: AppColors.ink),
                 ),
                 const SizedBox(height: 4),
@@ -893,11 +893,11 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style:
-                        const TextStyle(fontSize: 12, color: AppColors.muted),
+                        TextStyle(fontSize: 12, color: AppColors.muted),
                   )
                 else if (p.failed)
-                  const Text("Couldn't look this up",
-                      style: TextStyle(fontSize: 12, color: AppColors.red600))
+                  Text("Couldn't look this up",
+                      style: TextStyle(fontSize: 12, color: AppText.red600))
                 else
                   const _PendingPill(),
               ],
@@ -909,15 +909,15 @@ class _AddFoodPageState extends State<AddFoodPage> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text('${r.calories.round()} kcal',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w800, color: AppColors.ink)),
                 if (score != null)
                   Text(
                     '🎯 $score% · ${CalorieSense.verdict(score)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.emerald600),
+                        color: AppText.emerald600),
                   ),
               ],
             )
@@ -929,9 +929,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
             )
           else if (guess != null)
             Text('Your guess: ${guess.round()}',
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: AppColors.primaryDark)),
+                    color: AppText.primaryDark)),
         ],
       ),
     );
@@ -1045,7 +1045,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
+                  Text(
                     "Type everything you had. We'll work out the calories.",
                     style: TextStyle(
                       fontSize: 15,
@@ -1142,7 +1142,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   ),
                   const SizedBox(height: 16),
                   if (_ingredients.isNotEmpty) ...[
-                    const Text(
+                    Text(
                       'Ready to look up',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
@@ -1175,16 +1175,16 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Icon(Icons.schedule,
-                            size: 18, color: AppColors.primaryDark),
+                        Icon(Icons.schedule,
+                            size: 18, color: AppText.primaryDark),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             'Pending ($_progressDone/$_progressTotal settled) · '
                             'guess the calories while you wait',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.primaryDark),
+                                color: AppText.primaryDark),
                           ),
                         ),
                       ],
@@ -1196,7 +1196,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     const SizedBox(height: 16),
                     const Divider(),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Ready to add',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
@@ -1216,13 +1216,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: AppColors.border),
                       ),
                       child: Text(
                         'Total: ${_totalCalories.round()} kcal  ·  P ${_totalProtein.round()}g  C ${_totalCarbs.round()}g  F ${_totalFat.round()}g',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 16,
                           color: AppColors.ink,
@@ -1343,12 +1343,12 @@ class _PendingPillState extends State<_PendingPill>
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AppColors.amber300),
         ),
-        child: const Text(
+        child: Text(
           'Pending',
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: AppColors.amber700,
+            color: AppText.amber700,
           ),
         ),
       ),
@@ -1395,7 +1395,7 @@ class _SplitSheetState extends State<_SplitSheet> {
                 _chosen.isEmpty
                     ? 'Who did you share it with?'
                     : 'Split $people ways: everyone gets $share kcal',
-                style: const TextStyle(color: AppColors.muted),
+                style: TextStyle(color: AppColors.muted),
               ),
               const SizedBox(height: 8),
               Flexible(

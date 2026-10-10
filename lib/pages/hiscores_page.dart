@@ -136,7 +136,7 @@ class _HiscoresPageState extends State<HiscoresPage> {
         stream: _userStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Text(
@@ -170,7 +170,7 @@ class _HiscoresPageState extends State<HiscoresPage> {
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(24, 80, 24, 96),
-                    children: const [
+                    children: [
                       Text(
                         "Couldn't load hiscores.\nPull down to try again.",
                         textAlign: TextAlign.center,
@@ -211,7 +211,7 @@ class _HiscoresPageState extends State<HiscoresPage> {
                     Text(
                       board.description,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AppColors.muted, fontSize: 13),
                     ),
                     const SizedBox(height: 18),
@@ -220,7 +220,7 @@ class _HiscoresPageState extends State<HiscoresPage> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 24),
                         decoration: AppDecor.card,
-                        child: const Text(
+                        child: Text(
                           'No scores yet. Finish today to get on the board!',
                           textAlign: TextAlign.center,
                           style: TextStyle(
@@ -326,7 +326,7 @@ class _Podium extends StatelessWidget {
                       ranked[i].name.isEmpty
                           ? '?'
                           : ranked[i].name[0].toUpperCase(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.primary,
                         fontWeight: FontWeight.w800,
                         fontSize: 18,
@@ -397,7 +397,7 @@ class _RankRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: player.isMe
             ? AppColors.primary.withValues(alpha: 0.08)
-            : Colors.white,
+            : AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: player.isMe ? AppColors.primary : AppColors.border,
@@ -410,7 +410,7 @@ class _RankRow extends StatelessWidget {
             width: 28,
             child: Text(
               '#$rank',
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w800,
                 color: AppColors.muted,
               ),
@@ -425,7 +425,7 @@ class _RankRow extends StatelessWidget {
                   player.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppColors.ink,
                   ),
@@ -438,7 +438,7 @@ class _RankRow extends StatelessWidget {
                     minHeight: 6,
                     backgroundColor: AppColors.border,
                     valueColor:
-                        const AlwaysStoppedAnimation(AppColors.primary),
+                        AlwaysStoppedAnimation(AppText.primary),
                   ),
                 ),
               ],
@@ -447,7 +447,7 @@ class _RankRow extends StatelessWidget {
           const SizedBox(width: 14),
           Text(
             '$value $unit',
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w800,
               color: AppColors.ink,
             ),
@@ -471,9 +471,9 @@ class _NoFriends extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.group_off, size: 80, color: AppColors.gray400),
+            Icon(Icons.group_off, size: 80, color: AppColors.gray400),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No friends yet',
               style: TextStyle(
                 fontSize: 20,
@@ -482,7 +482,7 @@ class _NoFriends extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               "Add a friend to see who's on top.",
               style: TextStyle(fontSize: 14, color: AppColors.muted),
               textAlign: TextAlign.center,

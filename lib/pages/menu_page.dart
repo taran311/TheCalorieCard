@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/calorie_card.dart';
+import 'package:namer_app/ui/appearance_sheet.dart';
+import 'package:namer_app/ui/reminder_sheet.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -134,7 +136,7 @@ class _MenuPageState extends State<MenuPage> {
     final weight = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       builder: (context) => _UpdateWeightSheet(initialKg: initialKg),
     );
     if (weight == null || !mounted) return;
@@ -202,7 +204,7 @@ class _MenuPageState extends State<MenuPage> {
       padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
           color: AppColors.muted,
@@ -223,11 +225,11 @@ class _MenuPageState extends State<MenuPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: Colors.white,
+        color: AppColors.surface,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDecor.radius),
-          side: const BorderSide(color: AppColors.border),
+          side: BorderSide(color: AppColors.border),
         ),
         child: InkWell(
           onTap: onTap,
@@ -250,7 +252,7 @@ class _MenuPageState extends State<MenuPage> {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: AppColors.ink,
@@ -259,7 +261,7 @@ class _MenuPageState extends State<MenuPage> {
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           color: AppColors.gray600,
                         ),
@@ -268,7 +270,7 @@ class _MenuPageState extends State<MenuPage> {
                   ),
                 ),
                 if (chevron)
-                  const Icon(
+                  Icon(
                     Icons.chevron_right,
                     size: 20,
                     color: AppColors.muted,
@@ -426,7 +428,7 @@ class _MenuPageState extends State<MenuPage> {
                   _sectionHeader('Your card'),
                   _buildMenuCard(
                     icon: Icons.receipt_long,
-                    iconColor: AppColors.primary,
+                    iconColor: AppText.primary,
                     title: 'Statement',
                     subtitle: 'Your spending, day by day',
                     onTap: () {
@@ -440,21 +442,21 @@ class _MenuPageState extends State<MenuPage> {
                   ),
                   _buildMenuCard(
                     icon: Icons.savings_outlined,
-                    iconColor: AppColors.emerald600,
+                    iconColor: AppText.emerald600,
                     title: 'Pots',
                     subtitle: 'Save a little each day for a treat',
                     onTap: () => _open(const PotsPage()),
                   ),
                   _buildMenuCard(
                     icon: Icons.autorenew,
-                    iconColor: AppColors.sky,
+                    iconColor: AppText.sky,
                     title: 'Direct debits',
                     subtitle: 'Foods you have every day',
                     onTap: () => _open(const DirectDebitsPage()),
                   ),
                   _buildMenuCard(
                     icon: Icons.credit_card,
-                    iconColor: AppColors.violet,
+                    iconColor: AppText.violet,
                     title: 'Card design',
                     subtitle: 'Unlock new finishes with streaks',
                     onTap: () => _open(const CardDesignPage()),
@@ -462,21 +464,21 @@ class _MenuPageState extends State<MenuPage> {
                   _sectionHeader('Progress'),
                   _buildMenuCard(
                     icon: Icons.emoji_events,
-                    iconColor: AppColors.amber600,
+                    iconColor: AppText.amber600,
                     title: 'Achievements',
                     subtitle: 'The badges you have unlocked',
                     onTap: () => _open(const AchievementsPage()),
                   ),
                   _buildMenuCard(
                     icon: Icons.auto_graph,
-                    iconColor: AppColors.violet600,
+                    iconColor: AppText.violet600,
                     title: 'Monthly Wrapped',
                     subtitle: 'Your month in review, ready to share',
                     onTap: () => _open(const WrappedPage()),
                   ),
                   _buildMenuCard(
                     icon: Icons.leaderboard,
-                    iconColor: AppColors.rose600,
+                    iconColor: AppText.rose600,
                     title: 'Hiscores',
                     subtitle: 'See how you rank against friends',
                     onTap: () {
@@ -488,24 +490,39 @@ class _MenuPageState extends State<MenuPage> {
                       _open(const HiscoresPage());
                     },
                   ),
+                  _sectionHeader('Settings'),
+                  _buildMenuCard(
+                    icon: Icons.notifications_active_outlined,
+                    iconColor: AppText.amber700,
+                    title: 'Evening reminder',
+                    subtitle: "A friendly nudge if you haven't logged",
+                    onTap: () => showReminderSheet(context),
+                  ),
+                  _buildMenuCard(
+                    icon: Icons.dark_mode_outlined,
+                    iconColor: AppText.violet600,
+                    title: 'Appearance',
+                    subtitle: 'Light, dark or match your device',
+                    onTap: () => showAppearanceSheet(context),
+                  ),
                   _sectionHeader('Account'),
                   _buildMenuCard(
                     icon: Icons.tune,
-                    iconColor: AppColors.primary,
+                    iconColor: AppText.primary,
                     title: 'Goals and profile',
                     subtitle: 'Calorie goal, macros and your details',
                     onTap: _openSettings,
                   ),
                   _buildMenuCard(
                     icon: Icons.monitor_weight_outlined,
-                    iconColor: AppColors.emerald600,
+                    iconColor: AppText.emerald600,
                     title: 'Update my weight',
                     subtitle: 'Keep your suggested goal up to date',
                     onTap: _updateWeight,
                   ),
                   _buildMenuCard(
                     icon: Icons.logout,
-                    iconColor: AppColors.red600,
+                    iconColor: AppText.red600,
                     title: 'Sign out',
                     subtitle: 'You can sign back in any time',
                     chevron: false,
@@ -569,7 +586,7 @@ class _UpdateWeightSheetState extends State<_UpdateWeightSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
+            Text(
               'Update my weight',
               style: TextStyle(
                 fontSize: 18,

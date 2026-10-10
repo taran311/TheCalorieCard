@@ -101,7 +101,7 @@ class _TutorialButtonState extends State<TutorialButton>
   @override
   Widget build(BuildContext context) {
     final button = Material(
-      color: Colors.white,
+      color: AppColors.surface,
       shape: StadiumBorder(
         side: BorderSide(
           color: _fresh ? AppColors.primary : AppColors.border,
@@ -119,14 +119,14 @@ class _TutorialButtonState extends State<TutorialButton>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.headphones_rounded,
-                  color: AppColors.primaryDark, size: 22),
+              Icon(Icons.headphones_rounded,
+                  color: AppText.primaryDark, size: 22),
               if (_fresh) ...[
                 const SizedBox(width: 6),
-                const Text(
+                Text(
                   'Tutorials',
                   style: TextStyle(
-                    color: AppColors.primaryDark,
+                    color: AppText.primaryDark,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -190,9 +190,9 @@ Future<void> showTutorialsSheet(BuildContext context) {
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.headphones_rounded, color: AppColors.primary),
+                Icon(Icons.headphones_rounded, color: AppText.primary),
                 SizedBox(width: 8),
                 Text(
                   'Tutorials',
@@ -205,7 +205,7 @@ Future<void> showTutorialsSheet(BuildContext context) {
               ],
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Watch how things work on a practice card. Your real card, '
               'diary and friends are never touched.',
               style: TextStyle(color: AppColors.muted),
@@ -246,7 +246,7 @@ class _TutorialTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final finished = TutorialProgress.done.contains(tutorial.id);
     return Material(
-      color: Colors.white,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(AppDecor.radius),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppDecor.radius),
@@ -277,7 +277,7 @@ class _TutorialTile extends StatelessWidget {
                   children: [
                     Text(
                       tutorial.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: AppColors.ink,
                       ),
@@ -285,7 +285,7 @@ class _TutorialTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '${tutorial.subtitle} · ${tutorial.steps.length} steps',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12.5, color: AppColors.muted),
                     ),
                   ],
@@ -293,7 +293,7 @@ class _TutorialTile extends StatelessWidget {
               ),
               Icon(
                 finished ? Icons.check_circle : Icons.play_circle_outline,
-                color: finished ? AppColors.emerald600 : AppColors.primary,
+                color: finished ? AppText.emerald600 : AppText.primary,
               ),
             ],
           ),

@@ -769,7 +769,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             label: const Text('Back to my details'),
           ),
           const SizedBox(height: 20),
-          const Text(
+          Text(
             'Your goal',
             style: TextStyle(
               fontSize: 16,
@@ -962,7 +962,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         Text(
           _exerciseLevelLabel(),
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 14, color: AppColors.muted),
+          style: TextStyle(fontSize: 14, color: AppColors.muted),
         ),
         const SizedBox(height: 20),
         SizedBox(
@@ -1007,10 +1007,10 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 Icon(
                   Icons.auto_awesome,
                   size: 48,
-                  color: AppColors.primary.withValues(alpha: 0.3),
+                  color: AppText.primary.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'Let us work out your targets',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -1020,7 +1020,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Fill in your details, then tap "Work out my targets".',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -1049,7 +1049,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               color: AppColors.gray600,
               fontWeight: FontWeight.w500,
@@ -1313,7 +1313,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                             child: TextButton.icon(
                               onPressed: _confirmClearToday,
                               style: TextButton.styleFrom(
-                                foregroundColor: AppColors.red600,
+                                foregroundColor: AppText.red600,
                               ),
                               icon: const Icon(Icons.delete_sweep),
                               label: const Text("Clear today's food"),
@@ -1337,9 +1337,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const CircularProgressIndicator(
+                        CircularProgressIndicator(
                           valueColor:
-                              AlwaysStoppedAnimation<Color>(AppColors.primary),
+                              AlwaysStoppedAnimation<Color>(AppText.primary),
                         ),
                         const SizedBox(height: 16),
                         const Text(

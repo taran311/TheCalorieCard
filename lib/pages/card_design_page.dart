@@ -38,7 +38,7 @@ class CardDesignPage extends StatelessWidget {
             BalanceService.db.collection('users').doc(user.uid).snapshots(),
         builder: (context, snap) {
           if (snap.hasError) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Text(
@@ -61,7 +61,7 @@ class CardDesignPage extends StatelessWidget {
             children: [
               Text(
                 'Longest streak: $best day${best == 1 ? '' : 's'}',
-                style: const TextStyle(color: AppColors.muted),
+                style: TextStyle(color: AppColors.muted),
               ),
               const SizedBox(height: 12),
               for (final design in CardDesign.all)
@@ -169,7 +169,7 @@ class _DesignOption extends StatelessWidget {
                             style: const TextStyle(
                                 fontWeight: FontWeight.w800, fontSize: 16)),
                         Text(design.requirement,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 12, color: AppColors.muted)),
                       ],
                     ),
@@ -196,8 +196,8 @@ class _DesignOption extends StatelessWidget {
                     value: progress!,
                     minHeight: 6,
                     backgroundColor: AppColors.border,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                        AppColors.primary),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        AppText.primary),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -205,7 +205,7 @@ class _DesignOption extends StatelessWidget {
                   daysToUnlock == 1
                       ? '1 more day to unlock'
                       : '$daysToUnlock more days to unlock',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: AppColors.gray700),

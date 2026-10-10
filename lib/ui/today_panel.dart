@@ -121,7 +121,7 @@ class TodayPanel extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
+                    Text(
                       "Couldn't load this week.",
                       style: TextStyle(color: AppColors.muted),
                     ),
@@ -155,7 +155,7 @@ class TodayPanel extends StatelessWidget {
                   trailing: Text(
                     'avg ${formatKcal(statement.averageCalories)} kcal',
                     style:
-                        const TextStyle(fontSize: 12, color: AppColors.muted),
+                        TextStyle(fontSize: 12, color: AppColors.muted),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -168,10 +168,10 @@ class TodayPanel extends StatelessWidget {
                           const Spacer(),
                           Text(
                             '${formatDays(statement.daysUnderBudget)} on budget',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.green,
+                              color: AppText.green,
                             ),
                           ),
                         ],
@@ -189,7 +189,7 @@ class TodayPanel extends StatelessWidget {
                           child: const Text('Statement'),
                         ),
                   child: recent.isEmpty
-                      ? const Padding(
+                      ? Padding(
                           padding: EdgeInsets.symmetric(vertical: 12),
                           child: Text(
                             'Nothing logged this week yet.',

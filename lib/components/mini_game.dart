@@ -101,7 +101,7 @@ class _PingPongGameState extends State<PingPongGame> {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            const Text(
+                            Text(
                               'Coach is working out your numbers…',
                               textAlign: TextAlign.center,
                               style: TextStyle(
@@ -113,10 +113,10 @@ class _PingPongGameState extends State<PingPongGame> {
                             const SizedBox(height: 8),
                             Text(
                               'Score: $score',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: AppColors.primaryDark,
+                                color: AppText.primaryDark,
                               ),
                             ),
                           ],
@@ -137,7 +137,8 @@ class _PingPongGameState extends State<PingPongGame> {
                             width: courtWidth,
                             height: courtHeight,
                             decoration: BoxDecoration(
-                              color: AppColors.ink,
+                              // Always a dark court, in light and dark mode.
+                              color: const Color(0xFF111827),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Stack(
@@ -171,7 +172,7 @@ class _PingPongGameState extends State<PingPongGame> {
                           ),
                         ),
                       ),
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.all(16),
                         child: Text(
                           'Drag to move the paddle',

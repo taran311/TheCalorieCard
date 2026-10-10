@@ -17,7 +17,7 @@ class DirectDebitsPage extends StatelessWidget {
         stream: DirectDebitService.forUser(uid),
         builder: (context, snap) {
           if (snap.hasError) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Text(
@@ -33,7 +33,7 @@ class DirectDebitsPage extends StatelessWidget {
           }
           final debits = snap.data!;
           if (debits.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Column(
@@ -62,14 +62,14 @@ class DirectDebitsPage extends StatelessWidget {
               for (final d in debits)
                 Card(
                   margin: const EdgeInsets.only(bottom: 10),
-                  color: Colors.white,
+                  color: AppColors.surface,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppDecor.radius),
-                    side: const BorderSide(color: AppColors.border),
+                    side: BorderSide(color: AppColors.border),
                   ),
                   child: ListTile(
-                    leading: const Icon(Icons.autorenew, color: AppColors.sky),
+                    leading: Icon(Icons.autorenew, color: AppText.sky),
                     title: Text(d.name),
                     subtitle: Text(
                       '${d.macros.calories.round()} kcal · ${d.meal} · '
@@ -77,7 +77,7 @@ class DirectDebitsPage extends StatelessWidget {
                     ),
                     trailing: IconButton(
                       tooltip: 'Cancel direct debit',
-                      color: AppColors.red600,
+                      color: AppText.red600,
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () async {
                         final ok = await showDialog<bool>(
@@ -95,7 +95,7 @@ class DirectDebitsPage extends StatelessWidget {
                                   onPressed: () =>
                                       Navigator.pop(dialogContext, true),
                                   style: TextButton.styleFrom(
-                                      foregroundColor: AppColors.red600),
+                                      foregroundColor: AppText.red600),
                                   child: const Text('Cancel direct debit')),
                             ],
                           ),

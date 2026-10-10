@@ -49,14 +49,14 @@ class DayStepper extends StatelessWidget {
               ? () => onChanged(BalanceService.addDays(day, delta))
               : null,
           icon: Icon(icon),
-          color: AppColors.primary,
+          color: AppText.primary,
           disabledColor: AppColors.border,
         );
 
     return Container(
       height: 48,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
       ),
@@ -78,15 +78,19 @@ class DayStepper extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.calendar_today_rounded,
+                  Icon(Icons.calendar_today_rounded,
                       size: 16, color: AppColors.muted),
                   const SizedBox(width: 8),
-                  Text(
-                    _label(day),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.ink,
+                  Flexible(
+                    child: Text(
+                      _label(day),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                      ),
                     ),
                   ),
                 ],
@@ -136,7 +140,7 @@ class MealTabs extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
       ),

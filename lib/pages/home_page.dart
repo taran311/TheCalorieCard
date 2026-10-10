@@ -19,6 +19,7 @@ import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/coach_nudge.dart';
+import 'package:namer_app/ui/streak_pill.dart';
 import 'package:namer_app/ui/home_inbox.dart';
 import 'package:namer_app/ui/home_widgets.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -116,7 +117,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: selected ? AppColors.primaryDark : AppColors.gray600,
+              color: selected ? AppText.primaryDark : AppColors.gray600,
               fontSize: 14,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             ),
@@ -138,7 +139,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.gray600, fontSize: 15),
+              style: TextStyle(color: AppColors.gray600, fontSize: 15),
             ),
           ],
         ),
@@ -160,7 +161,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Material(
-            color: Colors.white,
+            color: AppColors.surface,
             child: Row(
               children: [
                 _tab(0, 'My recipes'),
@@ -227,15 +228,15 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                 ListTile(
                   title: Text(
                     (r['name'] ?? 'Recipe').toString(),
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppColors.ink, fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
                     '${calories.toStringAsFixed(0)} kcal ($servingSize)',
-                    style: const TextStyle(color: AppColors.muted),
+                    style: TextStyle(color: AppColors.muted),
                   ),
-                  trailing: const Icon(Icons.add_circle_outline,
-                      color: AppColors.primary),
+                  trailing: Icon(Icons.add_circle_outline,
+                      color: AppText.primary),
                   onTap: () {
                     setState(() {
                       _editingRecipeIndex = index;
@@ -326,16 +327,16 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                     ListTile(
                       title: Text(
                         (recipe['name'] ?? 'Recipe').toString(),
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AppColors.ink, fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
                         '${calories.toStringAsFixed(0)} kcal ($servingSize)\nShared by $sharedBy',
-                        style: const TextStyle(color: AppColors.muted),
+                        style: TextStyle(color: AppColors.muted),
                       ),
                       isThreeLine: true,
-                      trailing: const Icon(Icons.add_circle_outline,
-                          color: AppColors.primary),
+                      trailing: Icon(Icons.add_circle_outline,
+                          color: AppText.primary),
                       onTap: () {
                         setState(() {
                           _editingRecipeIndex = index;
@@ -388,7 +389,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: AppColors.muted,
@@ -400,7 +401,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
             const SizedBox(height: 4),
             Text(
               '${grams.toStringAsFixed(1)}g',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
                 color: AppColors.ink,
@@ -432,7 +433,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Amount',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
@@ -466,7 +467,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
               const SizedBox(width: 8),
               Text(
                 unit,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                   color: AppColors.gray700,
@@ -505,19 +506,19 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
                       children: [
                         Text(
                           '$adjustedCalories',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.primaryDark,
+                            color: AppText.primaryDark,
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Text(
+                        Text(
                           'kcal',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.primaryDark,
+                            color: AppText.primaryDark,
                           ),
                         ),
                       ],
@@ -1227,6 +1228,7 @@ class _HomePageState extends State<HomePage>
       });
       await _setDailyLogFinished(_selectedLogDate, false);
       await _fetchDailyLogForDate(_selectedLogDate);
+      MyStreak.load(_activeUserId, force: true);
       return;
     }
 
@@ -1662,7 +1664,7 @@ class _HomePageState extends State<HomePage>
               Text(
                 'Set up a direct debit for $name. Each morning it waits on '
                 'your Card screen for a one-tap Pay (or Skip).',
-                style: const TextStyle(color: AppColors.muted),
+                style: TextStyle(color: AppColors.muted),
               ),
               const SizedBox(height: 16),
               SizedBox(
@@ -1896,11 +1898,11 @@ class _HomePageState extends State<HomePage>
           padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
           child: Row(
             children: [
-              Icon(_mealIcon(meal), size: 20, color: AppColors.primary),
+              Icon(_mealIcon(meal), size: 20, color: AppText.primary),
               const SizedBox(width: 8),
               Text(
                 meal,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.ink,
                   fontWeight: FontWeight.w700,
                   fontSize: 15,
@@ -1981,7 +1983,7 @@ class _HomePageState extends State<HomePage>
       ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: const TextStyle(fontSize: 13, color: AppColors.muted),
+      style: TextStyle(fontSize: 13, color: AppColors.muted),
     );
   }
 
@@ -1999,7 +2001,7 @@ class _HomePageState extends State<HomePage>
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Text(
         text,
-        style: const TextStyle(color: AppColors.muted, fontSize: 13),
+        style: TextStyle(color: AppColors.muted, fontSize: 13),
       ),
     );
   }
@@ -2024,7 +2026,7 @@ class _HomePageState extends State<HomePage>
     final reactions = _foodReactions[doc.id];
 
     final row = Material(
-      color: Colors.white,
+      color: AppColors.surface,
       child: InkWell(
         onTap: () {
           _handleFoodItemTap(doc.id);
@@ -2046,7 +2048,7 @@ class _HomePageState extends State<HomePage>
                           name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.ink,
                             fontWeight: FontWeight.w500,
                             fontSize: 15,
@@ -2057,7 +2059,7 @@ class _HomePageState extends State<HomePage>
                             portion,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.muted,
                               fontSize: 12,
                             ),
@@ -2082,8 +2084,8 @@ class _HomePageState extends State<HomePage>
                             children: [
                               Text(
                                 '${_roundMacro(data['food_protein'])}g protein',
-                                style: const TextStyle(
-                                  color: AppColors.primaryDark,
+                                style: TextStyle(
+                                  color: AppText.primaryDark,
                                   fontWeight: FontWeight.w700,
                                   fontSize: 10.5,
                                   height: 1.25,
@@ -2091,8 +2093,8 @@ class _HomePageState extends State<HomePage>
                               ),
                               Text(
                                 '${_roundMacro(data['food_carbs'])}g carbs',
-                                style: const TextStyle(
-                                  color: AppColors.primaryDark,
+                                style: TextStyle(
+                                  color: AppText.primaryDark,
                                   fontWeight: FontWeight.w700,
                                   fontSize: 10.5,
                                   height: 1.25,
@@ -2100,8 +2102,8 @@ class _HomePageState extends State<HomePage>
                               ),
                               Text(
                                 '${_roundMacro(data['food_fat'])}g fat',
-                                style: const TextStyle(
-                                  color: AppColors.primaryDark,
+                                style: TextStyle(
+                                  color: AppText.primaryDark,
                                   fontWeight: FontWeight.w700,
                                   fontSize: 10.5,
                                   height: 1.25,
@@ -2111,8 +2113,8 @@ class _HomePageState extends State<HomePage>
                           )
                         : Text(
                             '${_roundMacro(data['food_calories'])} kcal',
-                            style: const TextStyle(
-                              color: AppColors.primaryDark,
+                            style: TextStyle(
+                              color: AppText.primaryDark,
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
                             ),
@@ -2151,7 +2153,7 @@ class _HomePageState extends State<HomePage>
                       Expanded(
                         child: Text(
                           _reactionConfirmationUsername ?? '',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.gray700,
                             fontWeight: FontWeight.w500,
                           ),
@@ -2185,7 +2187,7 @@ class _HomePageState extends State<HomePage>
                             Expanded(
                               child: Text(
                                 (reaction['username'] ?? 'Unknown').toString(),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.gray700,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -2294,18 +2296,18 @@ class _HomePageState extends State<HomePage>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildMealHeader(meal, visible),
-          const Divider(height: 1, thickness: 1, color: AppColors.border),
+          Divider(height: 1, thickness: 1, color: AppColors.border),
           if (visible.isEmpty)
             _buildEmptyMeal(meal)
           else
             for (var i = 0; i < visible.length; i++) ...[
               if (i > 0)
-                const Divider(height: 1, thickness: 1, color: AppColors.border),
+                Divider(height: 1, thickness: 1, color: AppColors.border),
               _buildFoodRow(visible[i], canEdit),
             ],
           if (footer != null) ...[
             if (visible.isNotEmpty)
-              const Divider(height: 1, thickness: 1, color: AppColors.border),
+              Divider(height: 1, thickness: 1, color: AppColors.border),
             Padding(
               padding: const EdgeInsets.all(12),
               child: footer,
@@ -2398,10 +2400,20 @@ class _HomePageState extends State<HomePage>
                     const SizedBox(height: 16),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: DayStepper(
-                        key: _tourDay,
-                        selected: _selectedLogDate,
-                        onChanged: _changeDay,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: DayStepper(
+                              key: _tourDay,
+                              selected: _selectedLogDate,
+                              onChanged: _changeDay,
+                            ),
+                          ),
+                          if (_isOwnCard) ...[
+                            const SizedBox(width: 8),
+                            StreakPill(userId: _activeUserId),
+                          ],
+                        ],
                       ),
                     ),
                     if (_isOwnCard && _isSelectedDateToday)
@@ -2467,9 +2479,9 @@ class _ClosedDayStrip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.check_circle, color: AppColors.emerald600, size: 20),
+          Icon(Icons.check_circle, color: AppText.emerald600, size: 20),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
               "Today's closed. Nice work.",
               style: TextStyle(
@@ -2505,9 +2517,9 @@ class _PastDayNotice extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.lock_clock, color: AppColors.primary, size: 20),
+          Icon(Icons.lock_clock, color: AppText.primary, size: 20),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
               'Past days are read-only. Food you add goes on today.',
               style: TextStyle(color: AppColors.ink, fontSize: 13),

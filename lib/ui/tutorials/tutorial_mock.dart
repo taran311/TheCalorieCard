@@ -319,8 +319,8 @@ class MockApp extends StatelessWidget {
 
     return Container(
       height: 60,
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
       child: Row(
@@ -444,17 +444,17 @@ class MockApp extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle,
-                          color: AppColors.emerald600, size: 20),
+                      Icon(Icons.check_circle,
+                          color: AppText.emerald600, size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           s.pot > 0
                               ? "Today's closed. ${s.pot} kcal went in your Pot."
                               : "Today's closed. Nice work.",
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: AppColors.emerald800),
+                              color: AppText.emerald800),
                         ),
                       ),
                     ],
@@ -475,7 +475,7 @@ class MockApp extends StatelessWidget {
               Container(
                 height: 44,
                 decoration: AppDecor.card,
-                child: const Row(
+                child: Row(
                   children: [
                     SizedBox(width: 12),
                     Icon(Icons.chevron_left, color: AppColors.muted),
@@ -497,7 +497,7 @@ class MockApp extends StatelessWidget {
                 s.left < 0
                     ? 'Eaten today: ${s.eaten} kcal · ${-s.left} kcal over'
                     : 'Eaten today: ${s.eaten} kcal · ${s.left} kcal left',
-                style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+                style: TextStyle(fontSize: 12.5, color: AppColors.muted),
               ),
             ),
             const SizedBox(height: 10),
@@ -527,19 +527,19 @@ class MockApp extends StatelessWidget {
               child: Row(
                 children: [
                   Text(meal,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontWeight: FontWeight.w800, color: AppColors.ink)),
                   const Spacer(),
                   if (items.isNotEmpty)
                     Text('${s.kcalIn(meal)} kcal',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: AppColors.ink)),
                 ],
               ),
             ),
             if (items.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(14, 10, 14, 0),
                 child: Text('Nothing yet.',
                     style: TextStyle(color: AppColors.muted, fontSize: 13)),
@@ -549,7 +549,7 @@ class MockApp extends StatelessWidget {
                 _mark(
                   'food_${f.name}',
                   Container(
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       border: Border(top: BorderSide(color: AppColors.border)),
                     ),
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
@@ -560,11 +560,11 @@ class MockApp extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(f.name,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontWeight: FontWeight.w600,
                                       color: AppColors.ink)),
                               Text(f.portion,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontSize: 12, color: AppColors.muted)),
                             ],
                           ),
@@ -618,13 +618,13 @@ class MockApp extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Text("Type everything you had. We'll work out the calories.",
+              Text("Type everything you had. We'll work out the calories.",
                   style: TextStyle(color: AppColors.muted)),
               const SizedBox(height: 12),
               _mark('input', _fakeField(s.typed, 'e.g. 2 eggs, toast, coffee')),
               const SizedBox(height: 16),
               if (s.found.isNotEmpty) ...[
-                const Text('Ready to add',
+                Text('Ready to add',
                     style: TextStyle(
                         fontWeight: FontWeight.w700, color: AppColors.ink)),
                 const SizedBox(height: 8),
@@ -644,7 +644,7 @@ class MockApp extends StatelessWidget {
                                       fontWeight: FontWeight.w600)),
                               Text(
                                   '${f.portion} · ${f.protein.round()}g protein',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontSize: 12, color: AppColors.muted)),
                             ],
                           ),
@@ -731,11 +731,11 @@ class MockApp extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     padding: const EdgeInsets.fromLTRB(10, 6, 14, 6),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: AppColors.border),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         CoachGlyph(
@@ -777,7 +777,7 @@ class MockApp extends StatelessWidget {
       margin: const EdgeInsets.only(top: 6, right: 20),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: done
@@ -790,7 +790,7 @@ class MockApp extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('🍽️ Add to ${s.proposalMeal}',
-              style: const TextStyle(
+              style: TextStyle(
                   fontWeight: FontWeight.w800, color: AppColors.ink)),
           const SizedBox(height: 6),
           for (final f in s.proposal)
@@ -804,13 +804,13 @@ class MockApp extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           if (done)
-            const Row(
+            Row(
               children: [
-                Icon(Icons.check_circle, size: 18, color: AppColors.emerald600),
+                Icon(Icons.check_circle, size: 18, color: AppText.emerald600),
                 SizedBox(width: 6),
                 Text('Added to your card',
                     style: TextStyle(
-                        color: AppColors.emerald600,
+                        color: AppText.emerald600,
                         fontWeight: FontWeight.w600)),
               ],
             )
@@ -868,8 +868,8 @@ class MockApp extends StatelessWidget {
                                 color: AppColors.indigo50,
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Icon(Icons.restaurant,
-                                  color: AppColors.primary, size: 20),
+                              child: Icon(Icons.restaurant,
+                                  color: AppText.primary, size: 20),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -877,12 +877,12 @@ class MockApp extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(r.name,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontWeight: FontWeight.w700,
                                           color: AppColors.ink)),
                                   Text(
                                       'Makes ${r.servings} · ${(r.kcal / r.servings).round()} kcal each',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 12,
                                           color: AppColors.muted)),
                                 ],
@@ -918,7 +918,7 @@ class MockApp extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Text('Recipe name',
+              Text('Recipe name',
                   style: TextStyle(
                       fontSize: 12,
                       color: AppColors.muted,
@@ -926,7 +926,7 @@ class MockApp extends StatelessWidget {
               const SizedBox(height: 4),
               _mark('recipeName', _fakeField(s.draftName, 'e.g. Chicken curry')),
               const SizedBox(height: 12),
-              const Text('This recipe makes 2 servings',
+              Text('This recipe makes 2 servings',
                   style: TextStyle(color: AppColors.muted)),
               const SizedBox(height: 12),
               _mark('ingInput',
@@ -984,8 +984,8 @@ class MockApp extends StatelessWidget {
         alignment: Alignment.bottomCenter,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-          decoration: const BoxDecoration(
-            color: Colors.white,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
@@ -1081,7 +1081,7 @@ class MockApp extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   if (s.requestsSent.isNotEmpty) ...[
-                    const Text('Sent requests',
+                    Text('Sent requests',
                         style: TextStyle(
                             fontWeight: FontWeight.w800, color: AppColors.ink)),
                     const SizedBox(height: 8),
@@ -1091,11 +1091,11 @@ class MockApp extends StatelessWidget {
                         padding: const EdgeInsets.all(12),
                         decoration: AppDecor.card,
                         child: Text('$r · Waiting for them to accept',
-                            style: const TextStyle(color: AppColors.muted)),
+                            style: TextStyle(color: AppColors.muted)),
                       ),
                     const SizedBox(height: 8),
                   ],
-                  const Text('Your friends',
+                  Text('Your friends',
                       style: TextStyle(
                           fontWeight: FontWeight.w800, color: AppColors.ink)),
                   const SizedBox(height: 8),
@@ -1112,8 +1112,8 @@ class MockApp extends StatelessWidget {
                               radius: 18,
                               backgroundColor: AppColors.indigo50,
                               child: Text(f.name[0],
-                                  style: const TextStyle(
-                                      color: AppColors.primary,
+                                  style: TextStyle(
+                                      color: AppText.primary,
                                       fontWeight: FontWeight.w700)),
                             ),
                             const SizedBox(width: 10),
@@ -1125,14 +1125,14 @@ class MockApp extends StatelessWidget {
                                       style: const TextStyle(
                                           fontWeight: FontWeight.w700)),
                                   Text(f.status,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 12,
                                           color: AppColors.muted)),
                                 ],
                               ),
                             ),
-                            const Icon(Icons.chat_bubble_outline,
-                                size: 20, color: AppColors.primary),
+                            Icon(Icons.chat_bubble_outline,
+                                size: 20, color: AppText.primary),
                           ],
                         ),
                       ),
@@ -1169,8 +1169,8 @@ class MockApp extends StatelessWidget {
         alignment: Alignment.bottomCenter,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          decoration: const BoxDecoration(
-            color: Colors.white,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
@@ -1209,16 +1209,16 @@ class MockApp extends StatelessWidget {
                   decoration: AppDecor.card,
                   child: Row(
                     children: [
-                      const CircleAvatar(
+                      CircleAvatar(
                         radius: 18,
                         backgroundColor: AppColors.indigo50,
                         child: Text('M',
                             style: TextStyle(
-                                color: AppColors.primary,
+                                color: AppText.primary,
                                 fontWeight: FontWeight.w700)),
                       ),
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1290,7 +1290,7 @@ class MockApp extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.fromLTRB(20, 18, 16, 12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Column(
@@ -1300,7 +1300,7 @@ class MockApp extends StatelessWidget {
               const Text('Close today?',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                   "This locks today's card and counts it towards your streak. You can reopen it if you need to.",
                   style: TextStyle(color: AppColors.gray600)),
               const SizedBox(height: 12),
@@ -1330,8 +1330,8 @@ class MockApp extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text('$kcal kcal',
-            style: const TextStyle(
-                color: AppColors.primaryDark,
+            style: TextStyle(
+                color: AppText.primaryDark,
                 fontWeight: FontWeight.w700,
                 fontSize: 12)),
       );
@@ -1341,7 +1341,7 @@ class MockApp extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.centerLeft,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
               color: text.isEmpty ? AppColors.border : AppColors.primary),
@@ -1362,8 +1362,8 @@ class MockApp extends StatelessWidget {
     bool wide = false,
     Color? color,
   }) {
-    final bg = filled ? (color ?? AppColors.primaryDark) : Colors.white;
-    final fg = filled ? Colors.white : AppColors.primaryDark;
+    final bg = filled ? (color ?? AppColors.primaryDark) : AppColors.surface;
+    final fg = filled ? Colors.white : AppText.primaryDark;
     return Container(
       height: 44,
       width: wide ? double.infinity : null,
@@ -1408,7 +1408,7 @@ class MockApp extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           constraints: const BoxConstraints(maxWidth: 260),
           decoration: BoxDecoration(
-            color: mine ? AppColors.primaryDark : Colors.white,
+            color: mine ? AppColors.primaryDark : AppColors.surface,
             borderRadius: BorderRadius.circular(16),
             border: mine ? null : Border.all(color: AppColors.border),
           ),
@@ -1457,7 +1457,7 @@ class _Toast extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.gray800,
+        color: const Color(0xFF1F2937),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(text,

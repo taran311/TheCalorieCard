@@ -33,7 +33,7 @@ class AdaptiveFrame extends StatelessWidget {
         // Material (not a plain ColoredBox) gives the brand panel proper
         // text styling; without it Flutter shows yellow debug underlines.
         return Material(
-          color: framed ? AppColors.canvas : Colors.white,
+          color: framed ? AppColors.canvas : AppColors.surface,
           child: Row(
             children: [
               SizedBox(
@@ -56,7 +56,7 @@ class AdaptiveFrame extends StatelessWidget {
                           borderRadius:
                               BorderRadius.circular(framed ? 28 : 0),
                           side: framed
-                              ? const BorderSide(color: AppColors.border)
+                              ? BorderSide(color: AppColors.border)
                               : BorderSide.none,
                         ),
                         clipBehavior: Clip.antiAlias,

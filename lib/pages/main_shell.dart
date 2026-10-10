@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/notification_service.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/coach_page.dart';
@@ -115,6 +116,8 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     // Wake the lookup server early (it sleeps when idle).
     ProxyClient.warmUp();
+    // Keep the evening reminder's time zone and device token fresh.
+    NotificationService.sync();
     _current = switch (widget.initialIndex) {
       0 => ShellTab.profile,
       2 => ShellTab.recipes,
@@ -313,8 +316,8 @@ class _PhoneLayout extends StatelessWidget {
       floatingActionButtonLocation: const _OrbLocation(),
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: const Border(top: BorderSide(color: AppColors.border)),
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -345,7 +348,7 @@ class _PhoneLayout extends StatelessWidget {
                             fontSize: 12,
                             fontWeight:
                                 onCoach ? FontWeight.w700 : FontWeight.w500,
-                            color: onCoach ? AppColors.primary : AppColors.muted,
+                            color: onCoach ? AppText.primary : AppColors.muted,
                           ),
                         ),
                         const SizedBox(height: 7),
@@ -486,11 +489,11 @@ class _DesktopLayout extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 20),
                   child: Material(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(24),
-                      side: const BorderSide(color: AppColors.border),
+                      side: BorderSide(color: AppColors.border),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: LocalMediaQuery(child: body),
@@ -542,8 +545,8 @@ class _Sidebar extends StatelessWidget {
 
     return Container(
       width: extended ? 248 : 84,
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
         border: Border(right: BorderSide(color: AppColors.border)),
       ),
       child: Column(
@@ -566,7 +569,7 @@ class _Sidebar extends StatelessWidget {
                 ),
                 if (extended) ...[
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'The Calorie Card',
                       overflow: TextOverflow.ellipsis,
@@ -611,8 +614,8 @@ class _Sidebar extends StatelessWidget {
                   backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                   child: Text(
                     name.isEmpty ? '?' : name[0].toUpperCase(),
-                    style: const TextStyle(
-                      color: AppColors.primary,
+                    style: TextStyle(
+                      color: AppText.primary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -623,7 +626,7 @@ class _Sidebar extends StatelessWidget {
                     child: Text(
                       name,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: AppColors.ink,
                       ),

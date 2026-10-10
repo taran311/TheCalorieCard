@@ -32,7 +32,7 @@ class CoachNudgeCard extends StatelessWidget {
       button: true,
       label: 'Over by $overBy kcal. Ask Coach for a plan.',
       child: Material(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppDecor.radius),
         child: InkWell(
           borderRadius: BorderRadius.circular(AppDecor.radius),
@@ -62,7 +62,7 @@ class CoachNudgeCard extends StatelessWidget {
                     children: [
                       Text(
                         "You're $overBy kcal over today. That's okay.",
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: AppColors.ink,
                         ),
@@ -70,7 +70,7 @@ class CoachNudgeCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         plan.summary,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12.5,
                           color: AppColors.muted,
                         ),
@@ -79,16 +79,16 @@ class CoachNudgeCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                const Text(
+                Text(
                   'Ask Coach',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.primaryDark,
+                    color: AppText.primaryDark,
                   ),
                 ),
-                const Icon(Icons.chevron_right,
-                    size: 20, color: AppColors.primaryDark),
+                Icon(Icons.chevron_right,
+                    size: 20, color: AppText.primaryDark),
               ],
             ),
           ),

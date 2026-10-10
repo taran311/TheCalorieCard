@@ -89,7 +89,7 @@ class _CoachOrbState extends State<CoachOrb>
                   height: s,
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(

@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/card_design_service.dart';
+import 'package:namer_app/services/streak.dart';
 
 /// Everything the hiscores need for one person.
 class PlayerStats {
@@ -18,6 +20,9 @@ class PlayerStats {
   /// Consecutive finished days, ending today or yesterday.
   final int streak;
 
+  /// Streak Freezes banked (each covers one missed day).
+  final int streakFreezes;
+
   /// Protein logged since Monday, in grams.
   final double proteinThisWeek;
 
@@ -33,6 +38,7 @@ class PlayerStats {
     required this.daysLogged,
     required this.daysOnBudget,
     required this.streak,
+    this.streakFreezes = 0,
     required this.proteinThisWeek,
     this.calorieSense = 0,
     this.senseGuesses = 0,
@@ -66,6 +72,28 @@ class LeaderboardService {
   /// Recomputes your own stats, which also records your best streak (it
   /// unlocks card designs). Called when you finish a day.
   static Future<void> refreshMine(String uid) => _loadOne(uid, true);
+
+  /// Just your streak (and Streak Freezes), without the rest of the stats.
+  static Future<StreakResult> streakFor(String userId) async {
+    final today = BalanceService.startOfDay(BalanceService.now());
+    final days = [
+      for (var i = 0; i < _streakLookbackDays; i++)
+        BalanceService.addDays(today, -i),
+    ];
+    final logs = await Future.wait([
+      for (final d in days)
+        _db
+            .collection('daily_logs')
+            .doc('${userId}_${BalanceService.dateKey(d)}')
+            .get(),
+    ]);
+    final finished = <String>{
+      for (final doc in logs)
+        if (doc.data()?['finished'] == true)
+          (doc.data()?['date_key'] ?? '').toString(),
+    };
+    return Streaks.compute(finished, from: days.last, today: today);
+  }
 
   static Future<PlayerStats> _loadOne(String userId, bool isMe) async {
     final now = BalanceService.now();
@@ -119,17 +147,11 @@ class LeaderboardService {
       }
     }
 
-    // Streak: today counts if finished; if not, the streak can still be
-    // alive from yesterday (today isn't over yet).
-    var streak = 0;
-    final start = finished.containsKey(BalanceService.dateKey(today)) ? 0 : 1;
-    for (var i = start; i < days.length; i++) {
-      if (finished.containsKey(BalanceService.dateKey(days[i]))) {
-        streak++;
-      } else {
-        break;
-      }
-    }
+    // Streak (with Streak Freezes): today counts if finished; if not, the
+    // streak can still be alive from yesterday (today isn't over yet).
+    final streakResult = Streaks.compute(finished.keys.toSet(),
+        from: days.last, today: today);
+    final streak = streakResult.current;
 
     double protein = 0;
     try {
@@ -142,6 +164,7 @@ class LeaderboardService {
     }
 
     if (isMe) {
+      MyStreak.set(userId, streakResult);
       // Longest streak unlocks card designs; not worth failing hiscores over.
       CardDesignService.recordStreak(userId, streak).catchError((_) {});
     }
@@ -156,9 +179,39 @@ class LeaderboardService {
       daysLogged: daysLogged,
       daysOnBudget: daysOnBudget,
       streak: streak,
+      streakFreezes: streakResult.freezes,
       proteinThisWeek: protein,
       calorieSense: sense.average,
       senseGuesses: sense.count,
     );
+  }
+}
+
+/// Your own streak, shared by the home screen. Refreshed when you finish a
+/// day or open Hiscores, and at most once a day otherwise.
+class MyStreak {
+  MyStreak._();
+
+  static final ValueNotifier<StreakResult?> notifier = ValueNotifier(null);
+  static String? _uid;
+  static String? _dayKey;
+
+  static void set(String uid, StreakResult result) {
+    _uid = uid;
+    _dayKey = BalanceService.dateKey(BalanceService.now());
+    notifier.value = result;
+  }
+
+  static Future<void> load(String uid, {bool force = false}) async {
+    final day = BalanceService.dateKey(BalanceService.now());
+    if (!force && _uid == uid && _dayKey == day && notifier.value != null) {
+      return;
+    }
+    if (_uid != uid) notifier.value = null;
+    try {
+      set(uid, await LeaderboardService.streakFor(uid));
+    } catch (_) {
+      // Offline: try again next time.
+    }
   }
 }

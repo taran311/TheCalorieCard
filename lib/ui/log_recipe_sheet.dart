@@ -14,7 +14,7 @@ Future<void> showLogRecipeSheet(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    backgroundColor: Colors.white,
+    backgroundColor: AppColors.surface,
     builder: (_) => _LogRecipeSheet(recipeId: recipeId, recipe: recipe),
   );
   if (meal != null && context.mounted) {
@@ -122,7 +122,7 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
           children: [
             Text(
               (widget.recipe['name'] ?? 'Recipe').toString(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: AppColors.ink,
@@ -131,7 +131,7 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
             const SizedBox(height: 4),
             Text(
               subtitle,
-              style: const TextStyle(color: AppColors.muted),
+              style: TextStyle(color: AppColors.muted),
             ),
             const SizedBox(height: 20),
             const Text('Meal',
@@ -165,7 +165,7 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
                       Text(grams ? 'Portions' : 'Servings',
                           style: const TextStyle(fontWeight: FontWeight.w700)),
                       if (grams)
-                        const Text(
+                        Text(
                           '1 = whole recipe',
                           style:
                               TextStyle(fontSize: 12, color: AppColors.muted),
@@ -231,7 +231,7 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: AppColors.red600)),
+              Text(_error!, style: TextStyle(color: AppText.red600)),
             ],
             const SizedBox(height: 20),
             SizedBox(
@@ -240,12 +240,12 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
               child: FilledButton.icon(
                 onPressed: _saving ? null : _log,
                 icon: _saving
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: AppColors.primaryDark,
+                          color: AppText.primaryDark,
                         ),
                       )
                     : const Icon(Icons.credit_card),
@@ -268,12 +268,12 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
 class _Figure extends StatelessWidget {
   final String label;
   final String value;
-  final Color color;
+  final Color? color;
 
   const _Figure({
     required this.label,
     required this.value,
-    this.color = AppColors.ink,
+    this.color,
   });
 
   @override
@@ -285,12 +285,12 @@ class _Figure extends StatelessWidget {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
-            color: color,
+            color: color ?? AppColors.ink,
           ),
         ),
         const SizedBox(height: 2),
         Text(label,
-            style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+            style: TextStyle(fontSize: 12, color: AppColors.muted)),
       ],
     );
   }

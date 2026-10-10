@@ -251,7 +251,7 @@ class _FriendsPageState extends State<FriendsPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
+                  Text(
                     'Add a friend',
                     style: TextStyle(
                       fontSize: 20,
@@ -260,7 +260,7 @@ class _FriendsPageState extends State<FriendsPage> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     "We'll send them a friend request.",
                     style: TextStyle(color: AppColors.muted),
                   ),
@@ -393,7 +393,7 @@ class _FriendsPageState extends State<FriendsPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.red600),
+            style: TextButton.styleFrom(foregroundColor: AppText.red600),
             child: const Text('Remove'),
           ),
         ],
@@ -574,19 +574,19 @@ class _FriendsPageState extends State<FriendsPage> {
 
   // ---------------------------------------------------------------- UI bits
 
-  static const _sectionStyle = TextStyle(
+  static TextStyle get _sectionStyle => TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.w700,
     color: AppColors.ink,
   );
 
-  static const _nameStyle = TextStyle(
+  static TextStyle get _nameStyle => TextStyle(
     fontSize: 16,
     fontWeight: FontWeight.w600,
     color: AppColors.gray800,
   );
 
-  static const _subStyle = TextStyle(fontSize: 12, color: AppColors.gray600);
+  static TextStyle get _subStyle => TextStyle(fontSize: 12, color: AppColors.gray600);
 
   Widget _emptyNote(String text) {
     return Container(
@@ -596,13 +596,13 @@ class _FriendsPageState extends State<FriendsPage> {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 14, color: AppColors.muted),
+        style: TextStyle(fontSize: 14, color: AppColors.muted),
       ),
     );
   }
 
   Widget _loadError() {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(vertical: 16),
       child: Center(
         child: Text(
@@ -641,8 +641,8 @@ class _FriendsPageState extends State<FriendsPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: Colors.white,
-        shape: const RoundedRectangleBorder(
+        color: AppColors.surface,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(AppDecor.radius)),
           side: BorderSide(color: AppColors.border),
         ),
@@ -719,7 +719,7 @@ class _FriendsPageState extends State<FriendsPage> {
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const ChallengesPage()),
       ),
-      child: const Padding(
+      child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
@@ -727,7 +727,7 @@ class _FriendsPageState extends State<FriendsPage> {
               radius: 20,
               backgroundColor: AppColors.indigo50,
               child: Icon(Icons.emoji_events_outlined,
-                  color: AppColors.primary, size: 22),
+                  color: AppText.primary, size: 22),
             ),
             SizedBox(width: 12),
             Expanded(
@@ -793,7 +793,7 @@ class _FriendsPageState extends State<FriendsPage> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    const Text('wants to be your friend', style: _subStyle),
+                    Text('wants to be your friend', style: _subStyle),
                   ],
                 ),
               ),
@@ -841,7 +841,7 @@ class _FriendsPageState extends State<FriendsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 12),
-            const Text('Sent requests', style: _sectionStyle),
+            Text('Sent requests', style: _sectionStyle),
             const SizedBox(height: 12),
             for (final doc in snapshot.data!.docs) _sentRequestCard(doc),
           ],
@@ -871,7 +871,7 @@ class _FriendsPageState extends State<FriendsPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                const Text('Waiting for them to accept', style: _subStyle),
+                Text('Waiting for them to accept', style: _subStyle),
               ],
             ),
           ),
@@ -950,16 +950,16 @@ class _FriendsPageState extends State<FriendsPage> {
             ),
             IconButton(
               onPressed: () => _startChatWithFriend(friendId, friendEmail),
-              icon: const Icon(
+              icon: Icon(
                 Icons.chat_bubble_outline,
-                color: AppColors.primary,
+                color: AppText.primary,
                 size: 22,
               ),
               tooltip: 'Chat',
             ),
             PopupMenuButton<String>(
               tooltip: 'More',
-              icon: const Icon(Icons.more_vert, color: AppColors.gray600),
+              icon: Icon(Icons.more_vert, color: AppColors.gray600),
               onSelected: (value) {
                 switch (value) {
                   case 'card':
@@ -970,14 +970,14 @@ class _FriendsPageState extends State<FriendsPage> {
                     _confirmRemoveFriend(friendId, name);
                 }
               },
-              itemBuilder: (_) => const [
+              itemBuilder: (_) => [
                 PopupMenuItem(value: 'card', child: Text('View card')),
                 PopupMenuItem(value: 'cheer', child: Text('Send a cheer 👏')),
                 PopupMenuItem(
                   value: 'remove',
                   child: Text(
                     'Remove friend',
-                    style: TextStyle(color: AppColors.red600),
+                    style: TextStyle(color: AppText.red600),
                   ),
                 ),
               ],
@@ -1063,14 +1063,14 @@ class _FriendsPageState extends State<FriendsPage> {
             ),
             IconButton(
               onPressed: () => _startGroupChat(doc.id, groupName, memberIds),
-              icon: const Icon(
+              icon: Icon(
                 Icons.chat_bubble_outline,
-                color: AppColors.primary,
+                color: AppText.primary,
                 size: 22,
               ),
               tooltip: 'Group chat',
             ),
-            const Icon(Icons.chevron_right, color: AppColors.gray400),
+            Icon(Icons.chevron_right, color: AppColors.gray400),
           ],
         ),
       ),
@@ -1103,18 +1103,18 @@ class _FriendsPageState extends State<FriendsPage> {
           _hiscoresCard(),
           _challengesCard(),
           const SizedBox(height: 12),
-          const Text('Friend requests', style: _sectionStyle),
+          Text('Friend requests', style: _sectionStyle),
           const SizedBox(height: 12),
           _incomingRequestsSection(),
           _sentRequestsSection(),
           const SizedBox(height: 24),
-          const Text('Your friends', style: _sectionStyle),
+          Text('Your friends', style: _sectionStyle),
           const SizedBox(height: 12),
           _friendsSection(),
           const SizedBox(height: 24),
           Row(
             children: [
-              const Expanded(child: Text('Groups', style: _sectionStyle)),
+              Expanded(child: Text('Groups', style: _sectionStyle)),
               TextButton.icon(
                 onPressed: _showNewGroupSheet,
                 icon: const Icon(Icons.group_add),
@@ -1212,7 +1212,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
+                Text(
                   'New group',
                   style: TextStyle(
                     fontSize: 20,
@@ -1236,7 +1236,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      const Text(
+                      Text(
                         'Ideas',
                         style: TextStyle(
                           fontSize: 14,
@@ -1261,7 +1261,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                         ],
                       ),
                       const SizedBox(height: 20),
-                      const Text(
+                      Text(
                         "Who's in?",
                         style: TextStyle(
                           fontSize: 14,
@@ -1278,7 +1278,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               child: Row(
                                 children: [
-                                  const Expanded(
+                                  Expanded(
                                     child: Text(
                                       "Couldn't load your friends.",
                                       style: TextStyle(color: AppColors.muted),
@@ -1303,7 +1303,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                           }
                           final friends = snapshot.data!;
                           if (friends.isEmpty) {
-                            return const Padding(
+                            return Padding(
                               padding: EdgeInsets.symmetric(vertical: 8),
                               child: Text(
                                 'Add a friend first, then you can make a group.',
@@ -1343,7 +1343,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                   const SizedBox(height: 8),
                   Text(
                     _error!,
-                    style: const TextStyle(color: AppColors.red600),
+                    style: TextStyle(color: AppText.red600),
                   ),
                 ],
                 const SizedBox(height: 12),

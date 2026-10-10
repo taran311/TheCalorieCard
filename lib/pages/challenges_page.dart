@@ -136,13 +136,13 @@ class _EmptyChallenges extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.emoji_events_outlined,
+            Icon(Icons.emoji_events_outlined,
                 size: 64, color: AppColors.gray400),
             const SizedBox(height: 12),
             const Text('No challenges this week',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Go head-to-head on days on budget, or set a team goal for '
               'finished days.',
               textAlign: TextAlign.center,
@@ -211,7 +211,7 @@ class _ChallengeCardState extends State<_ChallengeCard> {
               child: const Text('Stay')),
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              style: TextButton.styleFrom(foregroundColor: AppColors.red600),
+              style: TextButton.styleFrom(foregroundColor: AppText.red600),
               child: const Text('Leave')),
         ],
       ),
@@ -236,7 +236,7 @@ class _ChallengeCardState extends State<_ChallengeCard> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border),
       ),
@@ -253,18 +253,18 @@ class _ChallengeCardState extends State<_ChallengeCard> {
                         fontSize: 16, fontWeight: FontWeight.w800)),
               ),
               Text(_daysLeft(),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: AppColors.muted)),
               PopupMenuButton<String>(
                 onSelected: (_) => _leave(),
-                itemBuilder: (_) => const [
+                itemBuilder: (_) => [
                   PopupMenuItem(
                     value: 'leave',
                     child: Text(
                       'Leave',
-                      style: TextStyle(color: AppColors.red600),
+                      style: TextStyle(color: AppText.red600),
                     ),
                   ),
                 ],
@@ -309,8 +309,8 @@ class _ChallengeCardState extends State<_ChallengeCard> {
                         value: (total / target).clamp(0.0, 1.0).toDouble(),
                         minHeight: 10,
                         backgroundColor: AppColors.border,
-                        valueColor: const AlwaysStoppedAnimation(
-                            AppColors.emerald600),
+                        valueColor: AlwaysStoppedAnimation(
+                            AppText.emerald600),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -455,7 +455,7 @@ class _NewChallengeSheetState extends State<_NewChallengeSheet> {
                 _type == ChallengeType.group
                     ? 'Together, finish ${target.round()} days by Sunday.'
                     : 'Most days finished on budget by Sunday wins.',
-                style: const TextStyle(color: AppColors.muted),
+                style: TextStyle(color: AppColors.muted),
               ),
               if (_type == ChallengeType.group)
                 Slider(

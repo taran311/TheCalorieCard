@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
+import 'package:namer_app/services/notification_service.dart';
 import 'package:namer_app/services/split_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -51,9 +52,23 @@ class _HomeInboxState extends State<HomeInbox> {
   /// due after midnight) appear without waiting for another update.
   Timer? _clock;
 
+  /// Offer the evening reminder (once, until they answer).
+  bool _offerReminder = false;
+
+  Future<void> _checkReminderOffer() async {
+    if (!NotificationService.supported) return;
+    try {
+      final r = await NotificationService.load();
+      if (mounted && !r.enabled && !r.prompted) {
+        setState(() => _offerReminder = true);
+      }
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
+    _checkReminderOffer();
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -189,6 +204,37 @@ class _HomeInboxState extends State<HomeInbox> {
           ],
         ));
       }
+    }
+
+    if (_offerReminder) {
+      items.add(_InboxCard(
+        icon: Icons.notifications_active_outlined,
+        color: AppColors.amber700,
+        title: 'Want a nudge at ${NotificationService.hourLabel(NotificationService.defaultHour)}?',
+        subtitle: "Only if you haven't logged anything by then.",
+        busy: _busy.contains('reminder'),
+        actions: [
+          _InboxAction('No thanks', () => _run('reminder', () async {
+                await NotificationService.dismissOffer();
+                if (mounted) setState(() => _offerReminder = false);
+              })),
+          _InboxAction('Turn on', () => _run('reminder', () async {
+                final error = await NotificationService.enable();
+                if (!mounted) return null;
+                if (error != null) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(error)));
+                  return null;
+                }
+                setState(() => _offerReminder = false);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Reminder on. Change it any time in '
+                        'Profile → Evening reminder.')));
+                return null;
+              }), primary: true),
+        ],
+        stacked: narrow,
+      ));
     }
 
     if (BalanceService.now().hour >= 20 &&
@@ -333,7 +379,7 @@ class _InboxCard extends StatelessWidget {
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 13.5,
               color: AppColors.ink),
@@ -343,7 +389,7 @@ class _InboxCard extends StatelessWidget {
           subtitle,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12, color: AppColors.muted),
+          style: TextStyle(fontSize: 12, color: AppColors.muted),
         ),
       ],
     );
@@ -354,7 +400,10 @@ class _InboxCard extends StatelessWidget {
         color: color.withValues(alpha: 0.12),
         shape: BoxShape.circle,
       ),
-      child: Icon(icon, color: color, size: 20),
+      // Lighter in dark mode so the icon reads on the dark card.
+      child: Icon(icon,
+          color: AppColors.dark ? Color.lerp(color, Colors.white, 0.45) : color,
+          size: 20),
     );
 
     final Widget body;

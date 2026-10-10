@@ -80,7 +80,7 @@ class _PotsPageState extends State<PotsPage> {
         stream: _profile,
         builder: (context, snap) {
           if (snap.hasError) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Text(
@@ -168,7 +168,7 @@ class _PotsPageState extends State<PotsPage> {
                   ),
                 ),
               ),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Text(
                   'The caps are deliberate: a pot is for a small treat, not '

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 /// "Contactless": point the camera at a barcode. Pops with the barcode
@@ -144,7 +145,7 @@ class _BarcodeScanPageState extends State<BarcodeScanPage>
             ),
           ),
           Container(
-            color: Colors.white,
+            color: AppColors.surface,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: SafeArea(
               top: false,

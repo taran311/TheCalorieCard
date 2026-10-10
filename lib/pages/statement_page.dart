@@ -36,10 +36,10 @@ class _StatementPageState extends State<StatementPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.cloud_off,
+                      Icon(Icons.cloud_off,
                           size: 40, color: AppColors.muted),
                       const SizedBox(height: 12),
-                      const Text(
+                      Text(
                         "Couldn't load your statement.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -115,7 +115,7 @@ class _StatementPageState extends State<StatementPage> {
         .toList();
 
     if (days.isEmpty) {
-      return const [
+      return [
         Padding(
           padding: EdgeInsets.symmetric(vertical: 40),
           child: Center(
@@ -178,7 +178,7 @@ class _DayTotal extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: over ? AppColors.red : AppColors.green,
+                color: over ? AppText.red : AppText.green,
               ),
             ),
           ),
@@ -227,12 +227,12 @@ class _SummaryRow extends StatelessWidget {
 class _Stat extends StatelessWidget {
   final String label;
   final String value;
-  final Color color;
+  final Color? color;
 
   const _Stat({
     required this.label,
     required this.value,
-    this.color = AppColors.ink,
+    this.color,
   });
 
   @override
@@ -240,7 +240,7 @@ class _Stat extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
       ),
@@ -248,7 +248,7 @@ class _Stat extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              style: TextStyle(fontSize: 12, color: AppColors.muted)),
           const SizedBox(height: 6),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -258,7 +258,7 @@ class _Stat extends StatelessWidget {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: color,
+                color: color ?? AppColors.ink,
               ),
             ),
           ),
@@ -281,7 +281,7 @@ class _WhereItWent extends StatelessWidget {
         (description: tx.description, isRecipe: false, calories: tx.calories)
     ]);
     if (rows.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.symmetric(vertical: 8),
         child: Text('Log some food to see where your calories go.',
             style: TextStyle(color: AppColors.muted)),
@@ -335,7 +335,7 @@ class _WhereItWent extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         '${(r.share * 100).round()}% · ${r.count} item${r.count == 1 ? '' : 's'}',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 11, color: AppColors.muted),
                       ),
                     ],

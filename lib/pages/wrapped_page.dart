@@ -156,7 +156,7 @@ class _WrappedPageState extends State<WrappedPage> {
                   padding: const EdgeInsets.only(top: 60),
                   child: Column(
                     children: [
-                      const Text(
+                      Text(
                         "Couldn't load this month.",
                         style: TextStyle(color: AppColors.muted),
                       ),
@@ -182,7 +182,7 @@ class _WrappedPageState extends State<WrappedPage> {
                             ? 'Nothing logged this month yet.'
                             : 'Nothing logged in ${MonthWrap.nameOf(_month)}.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: AppColors.muted)),
+                        style: TextStyle(color: AppColors.muted)),
                   ),
                 )
               else ...[

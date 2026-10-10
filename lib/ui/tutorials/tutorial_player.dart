@@ -310,7 +310,7 @@ class _TutorialPlayerState extends State<TutorialPlayer>
                       child: Text(
                         '${_t.emoji}  ${_t.title}',
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
                           color: AppColors.ink,
@@ -324,12 +324,12 @@ class _TutorialPlayerState extends State<TutorialPlayer>
                         color: AppColors.amber100,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Practice',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.amber800,
+                          color: AppText.amber800,
                         ),
                       ),
                     ),
@@ -427,13 +427,13 @@ class _TutorialPlayerState extends State<TutorialPlayer>
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 color: AppColors.amber100.withValues(alpha: 0.92),
-                child: const Text(
+                child: Text(
                   'Practice mode · your real card is never touched',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.amber800,
+                    color: AppText.amber800,
                   ),
                 ),
               ),
@@ -481,7 +481,7 @@ class _TutorialPlayerState extends State<TutorialPlayer>
                 ),
                 Text(
                   '${_i + 1} of $steps',
-                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
                 const SizedBox(width: 6),
               ],
@@ -489,7 +489,7 @@ class _TutorialPlayerState extends State<TutorialPlayer>
             const SizedBox(height: 10),
             Text(
               step.title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
                 color: AppColors.ink,
@@ -500,7 +500,7 @@ class _TutorialPlayerState extends State<TutorialPlayer>
               padding: const EdgeInsets.only(right: 6),
               child: Text(
                 step.body,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   height: 1.4,
                   color: AppColors.gray600,

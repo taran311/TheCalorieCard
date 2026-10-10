@@ -173,7 +173,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
           const SizedBox(height: 4),
           Row(
             children: [
-              const SizedBox(
+              SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
@@ -182,7 +182,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Waiting for you to verify…',
                   style: TextStyle(color: AuthColors.muted, fontSize: 14),

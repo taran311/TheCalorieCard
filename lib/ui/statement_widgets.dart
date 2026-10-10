@@ -58,7 +58,7 @@ class PanelCard extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border),
       ),
@@ -71,7 +71,7 @@ class PanelCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: AppColors.ink,
@@ -129,7 +129,7 @@ class LiveBalanceSummary extends StatelessWidget {
           children: [
             Text(
               over ? 'Over budget by' : 'Left to spend today',
-              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+              style: TextStyle(color: AppColors.muted, fontSize: 13),
             ),
             const SizedBox(height: 4),
             Row(
@@ -141,12 +141,12 @@ class LiveBalanceSummary extends StatelessWidget {
                     fontSize: 34,
                     height: 1,
                     fontWeight: FontWeight.w800,
-                    color: over ? AppColors.red : AppColors.ink,
+                    color: over ? AppText.red : AppColors.ink,
                     letterSpacing: -0.5,
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.only(bottom: 3),
                   child: Text('kcal',
                       style: TextStyle(color: AppColors.muted, fontSize: 14)),
@@ -161,7 +161,7 @@ class LiveBalanceSummary extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               '${formatKcal(spent)} of ${formatKcal(goal)} kcal spent',
-              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 16),
             _MacroRow(
@@ -222,7 +222,7 @@ class _MacroRow extends StatelessWidget {
                     : '${remaining.abs().round()}g over',
                 style: TextStyle(
                   fontSize: 12,
-                  color: remaining >= 0 ? AppColors.muted : AppColors.red,
+                  color: remaining >= 0 ? AppColors.muted : AppText.red,
                 ),
               ),
             ],
@@ -387,7 +387,7 @@ class BudgetLegend extends StatelessWidget {
       children: [
         Container(width: 14, height: 2, color: AppColors.green),
         const SizedBox(width: 6),
-        const Text(
+        Text(
           'Daily budget',
           style: TextStyle(fontSize: 11, color: AppColors.muted),
         ),
@@ -433,7 +433,7 @@ class TransactionTile extends StatelessWidget {
               color: AppColors.primary.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(11),
             ),
-            child: Icon(_icon, size: 19, color: AppColors.primary),
+            child: Icon(_icon, size: 19, color: AppText.primary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -444,7 +444,7 @@ class TransactionTile extends StatelessWidget {
                   tx.description,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.ink,
@@ -459,7 +459,7 @@ class TransactionTile extends StatelessWidget {
                   ].join('  ·  '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
               ],
             ),
@@ -467,7 +467,7 @@ class TransactionTile extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             '-${formatKcal(tx.calories)}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
               color: AppColors.ink,

@@ -185,7 +185,7 @@ class _RecipesPageState extends State<RecipesPage> {
               children: [
                 Text(
                   recipeName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.muted,
@@ -248,12 +248,12 @@ class _RecipesPageState extends State<RecipesPage> {
                       }
                     },
               child: sharing
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppColors.primaryDark,
+                        color: AppText.primaryDark,
                       ),
                     )
                   : const Text('Share'),
@@ -380,7 +380,7 @@ class _RecipesPageState extends State<RecipesPage> {
           ),
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+            style: TextStyle(fontSize: 12, color: AppColors.muted),
           ),
         ],
       ),
@@ -424,7 +424,7 @@ class _RecipesPageState extends State<RecipesPage> {
                         color: AppColors.indigo50,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(icon, color: AppColors.primary, size: 24),
+                      child: Icon(icon, color: AppText.primary, size: 24),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -435,7 +435,7 @@ class _RecipesPageState extends State<RecipesPage> {
                             _nameOf(data),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 17,
                               color: AppColors.ink,
@@ -446,7 +446,7 @@ class _RecipesPageState extends State<RecipesPage> {
                               subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.muted,
                                 fontSize: 13,
                               ),
@@ -473,7 +473,7 @@ class _RecipesPageState extends State<RecipesPage> {
                               fill: AppColors.indigo50,
                               border: AppColors.indigo100,
                               valueColor: AppColors.primaryDark,
-                              iconColor: AppColors.primary,
+                              iconColor: AppText.primary,
                             ),
                           ),
                           if (ingredientCount != null) ...[
@@ -539,7 +539,7 @@ class _RecipesPageState extends State<RecipesPage> {
     required IconData icon,
     required String title,
     required String body,
-    Color iconColor = AppColors.gray300,
+    Color? iconColor,
   }) {
     return Center(
       child: SingleChildScrollView(
@@ -547,12 +547,12 @@ class _RecipesPageState extends State<RecipesPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 72, color: iconColor),
+            Icon(icon, size: 72, color: iconColor ?? AppColors.gray300),
             const SizedBox(height: 16),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: AppColors.gray700,
@@ -563,7 +563,7 @@ class _RecipesPageState extends State<RecipesPage> {
               Text(
                 body,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 14, color: AppColors.muted),
+                style: TextStyle(fontSize: 14, color: AppColors.muted),
               ),
             ],
           ],
@@ -631,7 +631,7 @@ class _RecipesPageState extends State<RecipesPage> {
                         child: Text(
                           'No recipes match "${_recipeQuery.trim()}"',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: AppColors.gray600),
+                          style: TextStyle(color: AppColors.gray600),
                         ),
                       ),
                     )
@@ -650,7 +650,7 @@ class _RecipesPageState extends State<RecipesPage> {
                           onTap: () => _openEditor(recipeId: recipeId),
                           menu: PopupMenuButton<String>(
                             tooltip: 'More options',
-                            icon: const Icon(Icons.more_vert,
+                            icon: Icon(Icons.more_vert,
                                 color: AppColors.muted),
                             onSelected: (value) {
                               switch (value) {
@@ -662,7 +662,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                   _deleteRecipe(recipeId);
                               }
                             },
-                            itemBuilder: (_) => const [
+                            itemBuilder: (_) => [
                               PopupMenuItem(
                                 value: 'edit',
                                 child: Text('Edit'),
@@ -675,7 +675,7 @@ class _RecipesPageState extends State<RecipesPage> {
                                 value: 'delete',
                                 child: Text(
                                   'Delete',
-                                  style: TextStyle(color: AppColors.red600),
+                                  style: TextStyle(color: AppText.red600),
                                 ),
                               ),
                             ],
@@ -722,15 +722,15 @@ class _RecipesPageState extends State<RecipesPage> {
                         }),
                       ),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppColors.surface,
                 isDense: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: AppColors.gray300),
+                  borderSide: BorderSide(color: AppColors.gray300),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: AppColors.gray300),
+                  borderSide: BorderSide(color: AppColors.gray300),
                 ),
               ),
             ),
@@ -750,7 +750,7 @@ class _RecipesPageState extends State<RecipesPage> {
               height: 48,
               width: 48,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: AppColors.gray300),
               ),

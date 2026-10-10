@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/spend_category.dart';
+import 'package:namer_app/services/streak.dart';
 
 /// Achievement tiers: harder ones are worth more points.
 enum AchievementTier {
@@ -661,7 +662,12 @@ class AchievementEngine {
     int flag(bool v) => v ? 1 : 0;
 
     final finished = days.length;
-    final streak = longestRun(days, (_) => true);
+    // Streak Freezes count here too, so a frozen day doesn't break it.
+    final streak = days.isEmpty
+        ? 0
+        : Streaks.compute(byKey.keys.toSet(),
+                from: days.first.date, today: days.last.date)
+            .longest;
     final goodDays = _count(days, (d) => d.isGood);
     final bullseyes = _count(days, (d) => d.isBullseye);
     final macroDays = _count(days, (d) => d.isMacroMaster);
