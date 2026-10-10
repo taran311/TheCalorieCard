@@ -48,6 +48,18 @@ void main() {
     expect(s.left, -320);
   });
 
+  test('guess the calories tutorial ends with a finished game', () {
+    final t = tutorials.firstWhere((t) => t.id == 'calorie_game');
+    final s = TutorialState();
+    for (final step in t.steps) {
+      step.complete(s);
+    }
+    expect(s.screen, MockScreen.game);
+    expect(s.showGameConfirm, isFalse);
+    expect(s.gameTyped, '250');
+    expect((s.gameMine, s.gameTheirs, s.gameOver), (5, 5, true));
+  });
+
   test('step complete() types the full text', () {
     final s = TutorialState();
     TStep(

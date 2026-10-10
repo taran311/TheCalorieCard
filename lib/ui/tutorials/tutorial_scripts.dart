@@ -455,6 +455,95 @@ final List<Tutorial> tutorials = [
     ],
   ),
 
+  // -------------------------------------------------- guess the calories
+  Tutorial(
+    id: 'calorie_game',
+    emoji: '🎯',
+    title: 'Guess the Calories',
+    subtitle: 'Challenge a friend: who knows their food best?',
+    steps: [
+      TStep(
+        title: 'Go to Friends',
+        body: 'Every friend has a game button next to their name.',
+        target: 'nav_friends',
+        act: TAct.tap,
+        apply: (s) => s.screen = MockScreen.friends,
+        focus: 'game_Marcus',
+      ),
+      TStep(
+        title: 'Challenge a friend',
+        body: 'Tap the game controller next to Marcus.',
+        target: 'game_Marcus',
+        act: TAct.tap,
+        apply: (s) => s.showGameConfirm = true,
+        focus: 'gameConfirm',
+      ),
+      TStep(
+        title: "Let's play",
+        body: "Marcus gets a message saying it's his turn. He can play "
+            'whenever suits him.',
+        target: 'gameConfirm',
+        act: TAct.tap,
+        apply: (s) {
+          s.showGameConfirm = false;
+          s.screen = MockScreen.game;
+        },
+        focus: 'gameGuess',
+      ),
+      TStep(
+        title: 'Make your guess',
+        body: 'You both get the same 5 foods. How many calories in a Mars '
+            'bar?',
+        target: 'gameGuess',
+        act: TAct.type,
+        text: '250',
+        onType: (s, t) => s.gameTyped = t,
+        focus: 'gameLockIn',
+      ),
+      TStep(
+        title: 'Lock it in',
+        body: 'You see the real answer straight away. The closer you are, '
+            'the more points, up to 100 a food.',
+        target: 'gameLockIn',
+        act: TAct.tap,
+        apply: (s) {
+          s.gameRevealed = true;
+          s.gameMine = 1;
+        },
+        focus: 'gameReveal',
+      ),
+      TStep(
+        title: 'No peeking',
+        body: "Marcus can't see your guesses, and you can't see his. Here "
+            "you've played all 5 and he's on his third.",
+        apply: (s) {
+          s.gameRevealed = false;
+          s.gameMine = 5;
+          s.gameTheirs = 3;
+        },
+        focus: 'gameProgress',
+      ),
+      TStep(
+        title: 'The big reveal',
+        body: "The winner's revealed once you've both finished. If you're "
+            'playing at the same time, it pops up the moment the last guess '
+            'goes in.',
+        apply: (s) {
+          s.gameTheirs = 5;
+          s.gameOver = true;
+        },
+        focus: 'gameResult',
+      ),
+      const TStep(
+        title: 'Rematch?',
+        body: 'Go again in one tap. All your games, and your record against '
+            'each friend, are under Friends → Guess the Calories.',
+        target: 'gameRematch',
+      ),
+      _finished,
+    ],
+  ),
+
   // ------------------------------------------------------- going over
   Tutorial(
     id: 'over',

@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/pages/calorie_game_page.dart';
+import 'package:namer_app/services/calorie_game.dart';
 import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -48,6 +50,9 @@ class _FriendsPageState extends State<FriendsPage> {
           .collection('friend_groups')
           .where('members', arrayContains: _uid)
           .snapshots();
+
+  late final Stream<List<CalorieGame>> _games =
+      CalorieGameService.forUser(_uid);
 
   /// Friends' user docs, fetched once each.
   final Map<String, Future<DocumentSnapshot<Map<String, dynamic>>>>
@@ -747,6 +752,58 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
+  Widget _gameCard() {
+    return _tappableCard(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const CalorieGamesPage()),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: AppColors.amber100,
+              child: const Text('🎯', style: TextStyle(fontSize: 20)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Guess the Calories', style: _nameStyle),
+                  const SizedBox(height: 2),
+                  StreamBuilder<List<CalorieGame>>(
+                    stream: _games,
+                    builder: (context, snap) {
+                      final waiting = snap.hasData
+                          ? CalorieGameService.waitingOn(_uid, snap.data!)
+                          : 0;
+                      if (waiting == 0) {
+                        return Text('Who knows their food best?',
+                            style: _subStyle);
+                      }
+                      return Text(
+                        waiting == 1
+                            ? '1 game waiting for you'
+                            : '$waiting games waiting for you',
+                        style: _subStyle.copyWith(
+                          color: AppText.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: AppColors.gray400),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _incomingRequestsSection() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _incomingRequests,
@@ -949,6 +1006,16 @@ class _FriendsPageState extends State<FriendsPage> {
               ),
             ),
             IconButton(
+              onPressed: () => startCalorieGame(context,
+                  friendId: friendId, friendName: name, confirm: true),
+              icon: Icon(
+                Icons.videogame_asset_outlined,
+                color: AppText.primary,
+                size: 22,
+              ),
+              tooltip: 'Play Guess the Calories',
+            ),
+            IconButton(
               onPressed: () => _startChatWithFriend(friendId, friendEmail),
               icon: Icon(
                 Icons.chat_bubble_outline,
@@ -966,6 +1033,9 @@ class _FriendsPageState extends State<FriendsPage> {
                     _openFriendCard(friendId, friendEmail);
                   case 'cheer':
                     _sendCheer(friendId, friendEmail);
+                  case 'game':
+                    startCalorieGame(context,
+                        friendId: friendId, friendName: name, confirm: true);
                   case 'remove':
                     _confirmRemoveFriend(friendId, name);
                 }
@@ -973,6 +1043,8 @@ class _FriendsPageState extends State<FriendsPage> {
               itemBuilder: (_) => [
                 PopupMenuItem(value: 'card', child: Text('View card')),
                 PopupMenuItem(value: 'cheer', child: Text('Send a cheer 👏')),
+                PopupMenuItem(
+                    value: 'game', child: Text('Play Guess the Calories 🎯')),
                 PopupMenuItem(
                   value: 'remove',
                   child: Text(
@@ -1102,6 +1174,7 @@ class _FriendsPageState extends State<FriendsPage> {
         children: [
           _hiscoresCard(),
           _challengesCard(),
+          _gameCard(),
           const SizedBox(height: 12),
           Text('Friend requests', style: _sectionStyle),
           const SizedBox(height: 12),

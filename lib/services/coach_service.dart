@@ -285,6 +285,9 @@ class CoachReply {
       [this.actions = const [], this.freeLeft, this.lockedActions = 0]);
 }
 
+/// Going-out help: the chip opens a short picker before asking.
+enum CoachOuting { diningOut, drinksOut }
+
 /// A ready-made question shown as a tappable chip.
 class CoachPrompt {
   final String emoji;
@@ -293,7 +296,12 @@ class CoachPrompt {
   /// What's actually sent (can be more specific than the label).
   final String question;
 
-  const CoachPrompt(this.emoji, this.label, this.question);
+  /// Set for Dining out / Drinks night out, which ask a couple of things
+  /// first and then send [CoachService.diningOutQuestion] or
+  /// [CoachService.drinksOutQuestion].
+  final CoachOuting? outing;
+
+  const CoachPrompt(this.emoji, this.label, this.question, [this.outing]);
 }
 
 class CoachService {
@@ -340,6 +348,11 @@ class CoachService {
       ]);
     }
 
+    prompts.addAll(const [
+      CoachPrompt('🍽️', 'Dining out', '', CoachOuting.diningOut),
+      CoachPrompt('🍻', 'Drinks night out', '', CoachOuting.drinksOut),
+    ]);
+
     if ((c?.proteinLeft ?? 0) > 15) {
       prompts.add(CoachPrompt('💪', 'Help me hit my protein',
           'I still need about ${c!.proteinLeft.round()}g of protein today. What could I eat?'));
@@ -370,14 +383,10 @@ class CoachService {
           "Look at what I've eaten today and tell me how I'm doing, kindly and honestly."),
       CoachPrompt('📅', 'How was my week?',
           'How has my last week gone? What went well and one thing to try next week?'),
-      CoachPrompt('🍕', 'Eating out tonight',
-          "I'm eating out tonight. How do I enjoy it and still stay roughly on track?"),
       CoachPrompt('🍬', "I'm craving something sweet",
           "I'm craving something sweet. What could I have that fits?"),
       CoachPrompt('🔁', 'Healthier swaps',
           "Suggest a few easy swaps for the foods I've had today."),
-      CoachPrompt('🍷', 'Drinks this weekend',
-          "I've got drinks this weekend. How do I fit that in sensibly?"),
       CoachPrompt('🧮', 'Explain my macros',
           'Explain my macro goals simply. Why do protein, carbs and fat matter?'),
       CoachPrompt('🚀', 'Motivate me', 'Give me a quick motivation boost for today.'),
@@ -385,6 +394,67 @@ class CoachService {
           'How do Pots work in The Calorie Card, and how could I use them?'),
     ]);
     return prompts;
+  }
+
+  /// "1,240 kcal left today" / "already 150 kcal over today".
+  static String _budget(CoachContext? c) {
+    if (c == null) return '';
+    final left = c.caloriesLeft.round();
+    if (left < 0) return "I'm already ${-left} kcal over today.";
+    final protein = c.proteinLeft.round();
+    return "I've got $left kcal left today"
+        "${protein > 0 ? ' (and about ${protein}g of protein to go)' : ''}.";
+  }
+
+  /// Sent by Dining out: where they're going, and their numbers.
+  static String diningOutQuestion(
+    CoachContext? c, {
+    String? kind,
+    String? place,
+    bool drinking = false,
+  }) {
+    final named = place?.trim() ?? '';
+    final where = named.isNotEmpty
+        ? (kind == null || kind == 'Other' ? named : '$named ($kind)')
+        : kind == null || kind == 'Other'
+            ? 'a restaurant'
+            : kind == 'Pub'
+                ? 'a pub'
+                : 'a $kind place';
+    final over = c?.isOver ?? false;
+    return [
+      "I'm eating out at $where.",
+      _budget(c),
+      if (drinking) "I'll probably have a drink or two as well.",
+      over
+          ? "What are the lighter options that still feel like a treat?"
+          : 'What should I order so I enjoy it and stay roughly on track?',
+    ].where((s) => s.isNotEmpty).join(' ');
+  }
+
+  /// Sent by Drinks night out: what they're drinking and how big a night.
+  static String drinksOutQuestion(
+    CoachContext? c, {
+    required List<String> drinks,
+    required String size,
+    bool eating = false,
+  }) {
+    final what = drinks.isEmpty
+        ? "I'm not sure what I'll drink yet"
+        : 'Probably ${_list(drinks.map((d) => d.toLowerCase()).toList())}';
+    return [
+      "I'm going out for drinks later, $size.",
+      '$what.',
+      if (eating) "I'll be eating out too.",
+      _budget(c),
+      'How many drinks roughly fit, what are the lower-calorie choices, and '
+          'what should I eat beforehand?',
+    ].where((s) => s.isNotEmpty).join(' ');
+  }
+
+  static String _list(List<String> items) {
+    if (items.length <= 1) return items.join();
+    return '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';
   }
 
   /// A warm opening line based on the day so far.

@@ -90,6 +90,7 @@ enum MockScreen {
   friends,
   messages,
   chat,
+  game,
 }
 
 enum ProposalStatus { ready, done }
@@ -154,6 +155,14 @@ class TutorialState {
   ];
   String chatTyped = '';
 
+  // Guess the Calories
+  bool showGameConfirm = false;
+  String gameTyped = '';
+  bool gameRevealed = false;
+  int gameMine = 0;
+  int gameTheirs = 0;
+  bool gameOver = false;
+
   int get eaten => foods.fold(0, (s, f) => s + f.kcal);
   int get left => goalKcal - eaten;
   double get proteinLeft =>
@@ -170,7 +179,10 @@ class TutorialState {
   String get tab => switch (screen) {
         MockScreen.recipes || MockScreen.recipeEditor => 'recipes',
         MockScreen.coach => 'coach',
-        MockScreen.friends || MockScreen.messages || MockScreen.chat =>
+        MockScreen.friends ||
+        MockScreen.messages ||
+        MockScreen.chat ||
+        MockScreen.game =>
           'friends',
         _ => 'card',
       };
@@ -205,6 +217,7 @@ class MockApp extends StatelessWidget {
       MockScreen.friends => _friends(),
       MockScreen.messages => _messages(),
       MockScreen.chat => _chat(),
+      MockScreen.game => _game(),
     };
     final showBar = s.screen == MockScreen.home ||
         s.screen == MockScreen.recipes ||
@@ -233,6 +246,7 @@ class MockApp extends StatelessWidget {
           if (s.showPicker) _picker(),
           if (s.showAddFriend) _addFriendSheet(),
           if (s.showCloseDialog) _closeDialog(),
+          if (s.showGameConfirm) _gameConfirm(),
           if (s.toast != null)
             Positioned(
               left: 16,
@@ -1131,6 +1145,15 @@ class MockApp extends StatelessWidget {
                                 ],
                               ),
                             ),
+                            _mark(
+                              'game_${f.name}',
+                              Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: Icon(Icons.videogame_asset_outlined,
+                                    size: 20, color: AppText.primary),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
                             Icon(Icons.chat_bubble_outline,
                                 size: 20, color: AppText.primary),
                           ],
@@ -1318,6 +1341,241 @@ class MockApp extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  // ---------------------------------------------------- guess the calories
+
+  Widget _gameConfirm() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.35),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 18, 16, 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Guess the Calories 🎯',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Text(
+                  'Challenge Marcus? You both guess the calories in the same '
+                  "5 foods, and we'll tell Marcus it's his turn.",
+                  style: TextStyle(color: AppColors.gray600)),
+              const SizedBox(height: 12),
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _fakeButton(icon: null, label: 'Not now', filled: false),
+                  _mark('gameConfirm',
+                      _fakeButton(icon: null, label: "Let's play", filled: true)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _game() {
+    Widget lane(String label, int done, Color color) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$label  $done/5',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gray700)),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: done / 5,
+                  minHeight: 6,
+                  color: color,
+                  backgroundColor: AppColors.gray100,
+                ),
+              ),
+            ],
+          ),
+        );
+
+    Widget figure(String label, String value, {Color? color}) => Expanded(
+          child: Column(
+            children: [
+              Text(label,
+                  style: TextStyle(fontSize: 12, color: AppColors.gray600)),
+              Text(value,
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: color ?? AppColors.ink)),
+            ],
+          ),
+        );
+
+    final Widget content;
+    if (s.gameOver) {
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _mark(
+            'gameResult',
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: AppColors.brandGradient,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Column(
+                children: [
+                  Text('🏆', style: TextStyle(fontSize: 48)),
+                  Text('You win!',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900)),
+                  SizedBox(height: 6),
+                  Text('You 412  ·  Marcus 365',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                  SizedBox(height: 4),
+                  Text('See every guess, food by food, underneath',
+                      style: TextStyle(color: Colors.white, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _mark(
+            'gameRematch',
+            _fakeButton(
+                icon: Icons.replay,
+                label: 'Rematch Marcus',
+                filled: true,
+                wide: true),
+          ),
+        ],
+      );
+    } else if (s.gameMine >= 5) {
+      content = Container(
+        padding: const EdgeInsets.all(18),
+        decoration: AppDecor.card,
+        child: Column(
+          children: [
+            const Text('⏳', style: TextStyle(fontSize: 40)),
+            Text('Waiting for Marcus',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.ink)),
+            const SizedBox(height: 4),
+            Text(
+              "You'll see who won as soon as he finishes.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.gray600),
+            ),
+          ],
+        ),
+      );
+    } else {
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: AppDecor.card,
+            child: Column(
+              children: [
+                Text('Food 1 of 5',
+                    style: TextStyle(fontSize: 12, color: AppColors.gray600)),
+                const Text('🍫', style: TextStyle(fontSize: 48)),
+                Text('Mars bar',
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink)),
+                Text('1 bar (51g)', style: TextStyle(color: AppColors.gray600)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (s.gameRevealed)
+            _mark(
+              'gameReveal',
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: AppDecor.card,
+                child: Column(
+                  children: [
+                    Text('So close',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: AppText.emerald600)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        figure('Actually', '228'),
+                        figure('You said', s.gameTyped),
+                        figure('Points', '+90', color: AppText.emerald600),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else ...[
+            _mark('gameGuess', _fakeField(s.gameTyped, 'How many calories?')),
+            const SizedBox(height: 10),
+            _mark(
+              'gameLockIn',
+              _fakeButton(
+                  icon: null, label: 'Lock it in', filled: true, wide: true),
+            ),
+          ],
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        _header('vs Marcus', back: true),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (!s.gameOver) ...[
+                _mark(
+                  'gameProgress',
+                  Row(
+                    children: [
+                      lane('You', s.gameMine, AppColors.primary),
+                      const SizedBox(width: 14),
+                      lane('Marcus', s.gameTheirs, AppColors.violet),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+              content,
+            ],
+          ),
+        ),
+      ],
     );
   }
 

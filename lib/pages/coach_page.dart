@@ -144,6 +144,24 @@ class _CoachPageState extends State<CoachPage> {
     } catch (_) {}
   }
 
+  /// A chip or card: Dining out / Drinks night out ask a couple of things
+  /// first; everything else is sent as it is.
+  Future<void> _tapPrompt(CoachPrompt p) async {
+    final outing = p.outing;
+    if (outing == null) {
+      await _send(p.question);
+      return;
+    }
+    if (_thinking) return;
+    final question = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _OutingSheet(outing: outing, coachContext: _context),
+    );
+    if (question != null && mounted) await _send(question);
+  }
+
   Future<void> _send(String text) async {
     final question = text.trim();
     if (question.isEmpty || _thinking) return;
@@ -376,13 +394,20 @@ class _CoachPageState extends State<CoachPage> {
                           ),
                           if (!started) ...[
                             const SizedBox(height: 8),
+                            _GoingOutCards(
+                              context: _context,
+                              onTap: (outing) => _tapPrompt(prompts
+                                  .firstWhere((p) => p.outing == outing)),
+                            ),
+                            const SizedBox(height: 12),
                             Wrap(
                               spacing: 8,
                               runSpacing: 8,
                               children: [
                                 for (final p in prompts)
-                                  _PromptChip(
-                                      prompt: p, onTap: () => _send(p.question)),
+                                  if (p.outing == null)
+                                    _PromptChip(
+                                        prompt: p, onTap: () => _tapPrompt(p)),
                               ],
                             ),
                           ],
@@ -455,7 +480,7 @@ class _CoachPageState extends State<CoachPage> {
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: _PromptChip(
-                              prompt: p, onTap: () => _send(p.question)),
+                              prompt: p, onTap: () => _tapPrompt(p)),
                         ),
                     ],
                   ),
@@ -506,6 +531,306 @@ class _TodayStrip extends StatelessWidget {
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Two big buttons for the evenings people ask about most.
+class _GoingOutCards extends StatelessWidget {
+  final CoachContext? context;
+  final void Function(CoachOuting) onTap;
+
+  const _GoingOutCards({required this.context, required this.onTap});
+
+  @override
+  Widget build(BuildContext buildContext) {
+    final c = context;
+    final left = c?.caloriesLeft.round();
+    final sub = left == null
+        ? 'What to have'
+        : left < 0
+            ? 'Lighter picks'
+            : 'Ideas for your ${formatCardKcal(left)} kcal';
+
+    Widget card(CoachOuting outing, String emoji, String title) => Expanded(
+          child: Material(
+            color: AppColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: AppColors.indigo100),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => onTap(outing),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: Row(
+                  children: [
+                    Text(emoji, style: const TextStyle(fontSize: 26)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            sub,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12, color: AppColors.gray600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'Going out?',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.gray600,
+            ),
+          ),
+        ),
+        Row(
+          children: [
+            card(CoachOuting.diningOut, '🍽️', 'Dining out'),
+            const SizedBox(width: 10),
+            card(CoachOuting.drinksOut, '🍻', 'Drinks night out'),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Asks where they're eating, or what they're drinking, then returns the
+/// question for Coach.
+class _OutingSheet extends StatefulWidget {
+  final CoachOuting outing;
+  final CoachContext? coachContext;
+
+  const _OutingSheet({required this.outing, required this.coachContext});
+
+  @override
+  State<_OutingSheet> createState() => _OutingSheetState();
+}
+
+class _OutingSheetState extends State<_OutingSheet> {
+  static const _kinds = [
+    'Pub',
+    'Italian',
+    'Pizza',
+    'Indian',
+    'Chinese',
+    'Thai',
+    'Japanese',
+    'Mexican',
+    'Burgers',
+    'Steakhouse',
+    'Chicken',
+    'Carvery',
+    'Other',
+  ];
+  static const _drinks = [
+    'Lager',
+    'Cider',
+    'Wine',
+    'Prosecco',
+    'Spirits & mixers',
+    'Cocktails',
+  ];
+  static const _sizes = {
+    'A couple': 'just for a couple',
+    'A few': 'probably a few',
+    'Big night': 'and it could be a big one',
+  };
+
+  final _place = TextEditingController();
+  String? _kind;
+  bool _drinkingToo = false;
+  final Set<String> _picked = {};
+  String _size = 'A few';
+  bool _eatingToo = false;
+
+  bool get _dining => widget.outing == CoachOuting.diningOut;
+
+  @override
+  void dispose() {
+    _place.dispose();
+    super.dispose();
+  }
+
+  bool get _ready =>
+      !_dining || _kind != null || _place.text.trim().isNotEmpty;
+
+  void _done() {
+    if (!_ready) return;
+    final c = widget.coachContext;
+    final question = _dining
+        ? CoachService.diningOutQuestion(c,
+            kind: _kind, place: _place.text, drinking: _drinkingToo)
+        : CoachService.drinksOutQuestion(c,
+            drinks: [for (final d in _drinks) if (_picked.contains(d)) d],
+            size: _sizes[_size]!,
+            eating: _eatingToo);
+    Navigator.of(context).pop(question);
+  }
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(top: 16, bottom: 8),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppColors.ink,
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final left = widget.coachContext?.caloriesLeft.round();
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _dining ? 'Dining out 🍽️' : 'Drinks night out 🍻',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+              if (left != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  left < 0
+                      ? "You're ${formatCardKcal(-left)} kcal over today, so "
+                          "Coach will lean towards lighter picks."
+                      : 'Coach will plan around your '
+                          '${formatCardKcal(left)} kcal left today.',
+                  style: TextStyle(fontSize: 13, color: AppColors.gray600),
+                ),
+              ],
+              if (_dining) ...[
+                _label('What kind of place?'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final k in _kinds)
+                      ChoiceChip(
+                        label: Text(k),
+                        selected: _kind == k,
+                        onSelected: (on) =>
+                            setState(() => _kind = on ? k : null),
+                      ),
+                  ],
+                ),
+                _label('Know where? (optional)'),
+                TextField(
+                  controller: _place,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(
+                    hintText: "e.g. Wagamama, Nando's, The Red Lion",
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _done(),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Having a drink too'),
+                  value: _drinkingToo,
+                  onChanged: (v) => setState(() => _drinkingToo = v),
+                ),
+              ] else ...[
+                _label('What are you drinking?'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final d in _drinks)
+                      FilterChip(
+                        label: Text(d),
+                        selected: _picked.contains(d),
+                        onSelected: (on) => setState(
+                            () => on ? _picked.add(d) : _picked.remove(d)),
+                      ),
+                  ],
+                ),
+                _label('How big a night?'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final s in _sizes.keys)
+                      ChoiceChip(
+                        label: Text(s),
+                        selected: _size == s,
+                        onSelected: (_) => setState(() => _size = s),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Eating out too'),
+                  value: _eatingToo,
+                  onChanged: (v) => setState(() => _eatingToo = v),
+                ),
+              ],
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 50,
+                child: FilledButton(
+                  onPressed: _ready ? _done : null,
+                  child: Text(
+                    _dining
+                        ? (_ready ? 'What should I order?' : 'Pick a place first')
+                        : 'How should I play it?',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

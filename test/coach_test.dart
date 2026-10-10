@@ -61,6 +61,47 @@ void main() {
     expect(g, contains("that's okay"));
   });
 
+  test('dining out and drinks night out are offered near the top', () {
+    final prompts = CoachService.promptsFor(ctx());
+    final i = prompts.indexWhere((p) => p.outing == CoachOuting.diningOut);
+    final j = prompts.indexWhere((p) => p.outing == CoachOuting.drinksOut);
+    expect(i, inInclusiveRange(0, 5));
+    expect(j, i + 1);
+    expect(prompts[i].label, 'Dining out');
+    // Also there when over, and with no numbers.
+    expect(labels(ctx(left: -200)), contains('Drinks night out'));
+    expect(labels(null), contains('Dining out'));
+  });
+
+  test('dining out question carries the place and calories left', () {
+    final q = CoachService.diningOutQuestion(ctx(left: 900, proteinEaten: 110),
+        kind: 'Italian', place: 'Zizzi');
+    expect(q, contains('Zizzi (Italian)'));
+    expect(q, contains('900 kcal left'));
+    expect(q, contains('40g of protein'));
+    expect(CoachService.diningOutQuestion(ctx(), kind: 'Pub'),
+        contains('at a pub'));
+    final over = CoachService.diningOutQuestion(ctx(left: -150),
+        kind: 'Indian', drinking: true);
+    expect(over, contains('150 kcal over'));
+    expect(over, contains('a drink or two'));
+    expect(over, contains('lighter options'));
+  });
+
+  test('drinks night question lists drinks and asks how many fit', () {
+    final q = CoachService.drinksOutQuestion(ctx(left: 700),
+        drinks: ['Lager', 'Spirits & mixers'], size: 'probably a few',
+        eating: true);
+    expect(q, contains('lager and spirits & mixers'));
+    expect(q, contains('probably a few'));
+    expect(q, contains('eating out too'));
+    expect(q, contains('700 kcal left'));
+    expect(q, contains('How many drinks'));
+    expect(
+        CoachService.drinksOutQuestion(null, drinks: [], size: 'just a couple'),
+        contains("not sure what I'll drink"));
+  });
+
   test('context sent to Coach is rounded and capped', () {
     final json = ctx(foods: List.generate(30, (i) => 'Food $i')).toJson();
     expect(json['calories_left_today'], 800);
