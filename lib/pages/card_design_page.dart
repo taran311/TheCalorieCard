@@ -4,6 +4,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/card_design_service.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
+import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/ui/responsive.dart';
 
 /// Pick your card's finish. Locked designs show how to earn them; friends
@@ -74,6 +75,7 @@ class CardDesignPage extends StatelessWidget {
                   unlocked: CardDesignService.isUnlocked(design, data),
                   daysToUnlock: CardDesignService.daysToUnlock(design, data),
                   progress: CardDesignService.unlockProgress(design, data),
+                  wasChosen: data?['card_design'] == design.id,
                   onPick: () => _choose(context, user.uid, design),
                 ),
             ],
@@ -95,6 +97,9 @@ class _DesignOption extends StatelessWidget {
   final int? daysToUnlock;
   final double? progress;
 
+  /// Saved as your design (it may be locked again, e.g. Premium ended).
+  final bool wasChosen;
+
   const _DesignOption({
     required this.design,
     required this.holder,
@@ -103,7 +108,16 @@ class _DesignOption extends StatelessWidget {
     required this.onPick,
     this.daysToUnlock,
     this.progress,
+    this.wasChosen = false,
   });
+
+  void _showPremium(BuildContext context) => showPremiumSheet(
+        context,
+        title: 'Aurora is a Premium design',
+        message: 'Premium members get the Aurora finish on their card, and '
+            'friends see it too. If Premium ends, your card goes back to '
+            'Midnight, and Aurora comes back whenever you rejoin.',
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +130,11 @@ class _DesignOption extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               GestureDetector(
-                onTap: unlocked ? onPick : null,
+                onTap: unlocked
+                    ? onPick
+                    : design.premium
+                        ? () => _showPremium(context)
+                        : null,
                 child: Stack(
                   children: [
                     AspectRatio(
@@ -165,9 +183,34 @@ class _DesignOption extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(design.name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 16)),
+                        Row(
+                          children: [
+                            Text(design.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16)),
+                            if (design.premium) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  gradient: AppColors.brandGradient,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  'PREMIUM',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                         Text(design.requirement,
                             style: TextStyle(
                                 fontSize: 12, color: AppColors.muted)),
@@ -181,10 +224,23 @@ class _DesignOption extends StatelessWidget {
                     )
                   else if (unlocked)
                     FilledButton(onPressed: onPick, child: const Text('Use'))
+                  else if (design.premium)
+                    FilledButton(
+                      onPressed: () => _showPremium(context),
+                      child: const Text('Go Premium'),
+                    )
                   else
                     const Chip(label: Text('Locked')),
                 ],
               ),
+              if (!unlocked && design.premium && wasChosen) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Your card went back to Midnight when Premium ended. '
+                  'Rejoin to bring Aurora back.',
+                  style: TextStyle(fontSize: 12, color: AppColors.gray700),
+                ),
+              ],
               if (!unlocked &&
                   daysToUnlock != null &&
                   daysToUnlock! > 0 &&

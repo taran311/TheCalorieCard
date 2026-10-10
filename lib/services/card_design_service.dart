@@ -46,7 +46,16 @@ class CardDesignService {
     return left > 0 ? left : 0;
   }
 
+  /// Whether Premium is active, from the `premium_until` date the server
+  /// keeps on `users/{uid}` (readable by friends, so they see your design).
+  static bool hasPremium(Map<String, dynamic>? user, {DateTime? now}) {
+    final until = user?['premium_until'];
+    return until is Timestamp &&
+        until.toDate().isAfter(now ?? BalanceService.now());
+  }
+
   static bool isUnlocked(CardDesign design, Map<String, dynamic>? user) {
+    if (design.premium) return hasPremium(user);
     final best = bestStreak(user);
     final unlocks = user?['card_unlocks'];
     final earned = unlocks is List && unlocks.contains(design.id);
@@ -60,8 +69,8 @@ class CardDesignService {
     }
   }
 
-  /// The design someone is using (falls back to Midnight if they've
-  /// somehow picked one that isn't unlocked).
+  /// The design someone is using. Falls back to Midnight if it isn't
+  /// unlocked, e.g. a Premium design after Premium has ended.
   static CardDesign designOf(Map<String, dynamic>? user) {
     final chosen = CardDesign.byId(user?['card_design']);
     return isUnlocked(chosen, user) ? chosen : CardDesign.midnight;

@@ -274,7 +274,14 @@ class CoachReply {
   final String text;
   final List<CoachAction> actions;
 
-  const CoachReply(this.text, [this.actions = const []]);
+  /// Free accounts: Coach messages left today (null when unlimited).
+  final int? freeLeft;
+
+  /// Free accounts: changes Coach would have offered (a Premium feature).
+  final int lockedActions;
+
+  const CoachReply(this.text,
+      [this.actions = const [], this.freeLeft, this.lockedActions = 0]);
 }
 
 /// A ready-made question shown as a tappable chip.
@@ -419,7 +426,8 @@ class CoachService {
 
     if (response.statusCode != 200) {
       throw CoachException(
-          (body?['error'] as String?) ?? "Coach couldn't answer just now.");
+          (body?['error'] as String?) ?? "Coach couldn't answer just now.",
+          code: body?['code'] as String?);
     }
     final reply = (body?['reply'] as String?)?.trim() ?? '';
     if (reply.isEmpty) throw const CoachException('Coach is lost for words.');
@@ -428,13 +436,24 @@ class CoachService {
       for (final a in (raw is List ? raw : const []))
         if (CoachAction.fromJson(a) case final CoachAction action) action
     ];
-    return CoachReply(reply, actions);
+    final freeLeft = body?['free_left'];
+    final locked = body?['locked_actions'];
+    return CoachReply(
+      reply,
+      actions,
+      freeLeft is num ? freeLeft.toInt() : null,
+      locked is num ? locked.toInt() : 0,
+    );
   }
 }
 
 class CoachException implements Exception {
   final String message;
-  const CoachException(this.message);
+
+  /// e.g. 'coach_limit' when today's free messages are used up.
+  final String? code;
+
+  const CoachException(this.message, {this.code});
 
   @override
   String toString() => message;

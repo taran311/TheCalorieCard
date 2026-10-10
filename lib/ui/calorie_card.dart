@@ -32,6 +32,13 @@ class CardDesign {
   /// How to unlock it, shown in the picker.
   final String requirement;
 
+  /// Optional middle colour, for a three-tone finish.
+  final Color? middle;
+
+  /// Only while you're Premium. When Premium ends the card goes back to
+  /// Midnight, and this comes back if you rejoin.
+  final bool premium;
+
   const CardDesign({
     required this.id,
     required this.name,
@@ -39,6 +46,8 @@ class CardDesign {
     required this.bottom,
     required this.chip,
     required this.requirement,
+    this.middle,
+    this.premium = false,
   });
 
   static const midnight = CardDesign(
@@ -74,7 +83,18 @@ class CardDesign {
     requirement: 'Reach a 30-day streak',
   );
 
-  static const all = [midnight, emerald, sunset, metal];
+  static const aurora = CardDesign(
+    id: 'aurora',
+    name: 'Aurora',
+    top: Color(0xFF6D28D9),
+    middle: Color(0xFF0E7490),
+    bottom: Color(0xFF0B1B3A),
+    chip: Color(0xFF5EEAD4),
+    requirement: 'Premium members only',
+    premium: true,
+  );
+
+  static const all = [midnight, emerald, sunset, metal, aurora];
 
   static CardDesign byId(dynamic id) =>
       all.firstWhere((d) => d.id == id, orElse: () => midnight);
@@ -123,7 +143,11 @@ class CalorieCardShell extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [design.top, design.bottom],
+          colors: [
+            design.top,
+            if (design.middle != null) design.middle!,
+            design.bottom,
+          ],
         ),
         boxShadow: [
           BoxShadow(
@@ -138,14 +162,14 @@ class CalorieCardShell extends StatelessWidget {
   }
 }
 
-/// Front of the card, laid out like a payment card:
+/// Front of the card, laid out like a bank card:
 ///
-///   1,840 kcal                     [chip]
+///   TheCalorieCard                      )))
+///   [chip]                       1,840 kcal
 ///
-///   ● PROTEIN    ● CARBS      ● FAT
-///   112g left    180g left    54g left
-///
-///   SAM JONES               VALID THRU 09/10
+///   ● PROTEIN   ● CARBS   ● FAT
+///   112g        180g      54g
+///   SAM JONES                VALID THRU 09/10
 class CalorieCardFront extends StatelessWidget {
   /// The balance in kcal. Negative means overspent.
   final num amount;
@@ -203,15 +227,43 @@ class CalorieCardFront extends StatelessWidget {
             ),
             const SizedBox(height: 2),
           ],
-          // Balance top-left, chip top-right.
+          // Like a bank card: brand top-left, contactless top-right, the
+          // chip under the brand with the balance alongside it.
           Row(
             children: [
+              const Expanded(child: _Wordmark()),
+              Icon(
+                Icons.contactless_outlined,
+                color: Colors.white.withValues(alpha: 0.75),
+                size: 20,
+              ),
+            ],
+          ),
+          const Spacer(),
+          Row(
+            children: [
+              _CardChip(color: design.chip),
+              const SizedBox(width: 16),
               Expanded(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '${over ? '−' : ''}${formatCardKcal(amount)} kcal',
+                  alignment: Alignment.centerRight,
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(
+                          text: '${over ? '−' : ''}${formatCardKcal(amount)}'),
+                      TextSpan(
+                        text: ' kcal',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: (over
+                                  ? CalorieCardColors.overBudget
+                                  : Colors.white)
+                              .withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ]),
                     key: tourKeys?.balance,
                     style: TextStyle(
                       color: over ? CalorieCardColors.overBudget : Colors.white,
@@ -223,32 +275,29 @@ class CalorieCardFront extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Container(
-                width: 36,
-                height: 27,
-                decoration: BoxDecoration(
-                  color: design.chip,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-              ),
             ],
           ),
           // Flexible gaps: roomy on big cards, still fits on small ones.
-          const Spacer(),
+          const Spacer(flex: 2),
+          // Macros where a card number would be, each with a small caption
+          // (like "VALID THRU") so it's clear what each number is.
           if (macros.isNotEmpty)
-            Row(
-              children: [
-                for (var i = 0; i < macros.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 10),
-                  Expanded(
-                    child: MacroPill(
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < macros.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 22),
+                    MacroNumber(
                       macro: macros[i],
                       contentKey: tourKeys?.macro(i),
                     ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           const Spacer(),
           Row(
@@ -313,6 +362,152 @@ class CalorieCardFront extends StatelessWidget {
                 ),
               ],
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "TheCalorieCard" in the corner, like a bank's name on its card.
+class _Wordmark extends StatelessWidget {
+  const _Wordmark();
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: const Text(
+        'TheCalorieCard',
+        maxLines: 1,
+        semanticsLabel: 'The Calorie Card',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+/// A payment-card chip: gold, with the contact lines.
+class _CardChip extends StatelessWidget {
+  final Color color;
+
+  const _CardChip({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final hsl = HSLColor.fromColor(color);
+    final light = hsl
+        .withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0))
+        .toColor();
+    final dark = hsl
+        .withLightness((hsl.lightness - 0.18).clamp(0.0, 1.0))
+        .toColor();
+    final line = Colors.black.withValues(alpha: 0.22);
+    return Container(
+      width: 40,
+      height: 30,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [light, color, dark],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 9,
+            child: Container(height: 1, color: line),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 9,
+            child: Container(height: 1, color: line),
+          ),
+          Positioned(
+            top: 0,
+            bottom: 0,
+            left: 14,
+            child: Container(width: 1, color: line),
+          ),
+          Positioned(
+            top: 0,
+            bottom: 0,
+            right: 14,
+            child: Container(width: 1, color: line),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One macro written like part of a card number, with a small caption:
+/// "● PROTEIN" over "112g". Over budget shows "−20g" in red.
+class MacroNumber extends StatelessWidget {
+  final CardMacro macro;
+
+  /// Put on the caption + number, for the tour.
+  final Key? contentKey;
+
+  const MacroNumber({super.key, required this.macro, this.contentKey});
+
+  @override
+  Widget build(BuildContext context) {
+    final over = macro.remaining < 0;
+    final grams = macro.remaining.abs().round();
+    return Semantics(
+      label: '${macro.name}: ${grams}g ${over ? 'over' : 'left'}',
+      excludeSemantics: true,
+      child: Column(
+        key: contentKey,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: macro.color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                macro.name.toUpperCase(),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${over ? '−' : ''}${grams}g',
+            maxLines: 1,
+            style: TextStyle(
+              color: over ? CalorieCardColors.overBudget : Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.6,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
         ],
       ),

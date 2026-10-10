@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/coach_actions.dart';
 import 'package:namer_app/services/coach_service.dart';
+import 'package:namer_app/services/premium_service.dart';
+import 'package:namer_app/pages/premium_page.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/coach_glyph.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -51,13 +53,22 @@ class _Proposal extends ChangeNotifier {
   }
 }
 
-/// One thing in the chat: a message or a proposal card.
+/// One thing in the chat: a message, a proposal card, or a note that Coach
+/// could have made [locked] changes with Premium.
 class _Item {
   final CoachMessage? message;
   final _Proposal? proposal;
+  final int locked;
 
-  const _Item.message(CoachMessage this.message) : proposal = null;
-  const _Item.proposal(_Proposal this.proposal) : message = null;
+  const _Item.message(CoachMessage this.message)
+      : proposal = null,
+        locked = 0;
+  const _Item.proposal(_Proposal this.proposal)
+      : message = null,
+        locked = 0;
+  const _Item.locked(this.locked)
+      : message = null,
+        proposal = null;
 }
 
 class _CoachPageState extends State<CoachPage> {
@@ -75,6 +86,10 @@ class _CoachPageState extends State<CoachPage> {
   bool _loadingContext = true;
   bool _thinking = false;
   String? _error;
+
+  /// Free accounts: messages left today, and whether they've run out.
+  int? _freeLeft;
+  bool _limitReached = false;
 
   late final String _name = () {
     final full = cardholderFromEmail(
@@ -131,6 +146,10 @@ class _CoachPageState extends State<CoachPage> {
   Future<void> _send(String text) async {
     final question = text.trim();
     if (question.isEmpty || _thinking) return;
+    if (_limitReached && !Premium.isPremium) {
+      _openPremium();
+      return;
+    }
     _input.clear();
     final message = CoachMessage.user(question);
     setState(() {
@@ -166,12 +185,22 @@ class _CoachPageState extends State<CoachPage> {
         for (final p in proposals) {
           _items.add(_Item.proposal(p));
         }
+        if (reply.lockedActions > 0) _items.add(_Item.locked(reply.lockedActions));
+        _freeLeft = reply.freeLeft;
+        _limitReached = false;
       });
       _scrollToEnd();
       // Keep the waves going while the numbers are looked up.
       await Future.wait(proposals.map(_prepare));
     } catch (e) {
       if (!mounted) return;
+      if (e is CoachException && e.code == 'coach_limit') {
+        setState(() {
+          _limitReached = true;
+          _freeLeft = 0;
+        });
+        return;
+      }
       setState(() {
         _error = e is CoachException
             ? e.message
@@ -258,6 +287,12 @@ class _CoachPageState extends State<CoachPage> {
     if (_thinking) return;
     setState(() => _error = null);
     await _ask();
+  }
+
+  void _openPremium() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PremiumPage()),
+    );
   }
 
   void _newChat() {
@@ -355,17 +390,48 @@ class _CoachPageState extends State<CoachPage> {
                                 text: item.message!.text,
                                 fromUser: item.message!.fromUser,
                               )
-                            else
+                            else if (item.proposal != null)
                               _ProposalCard(
                                 proposal: item.proposal!,
                                 onAccept: _accept,
                                 onReject: _reject,
+                              )
+                            else
+                              _PremiumNote(
+                                text: item.locked == 1
+                                    ? 'With Premium, Coach can make this '
+                                        'change for you in one tap.'
+                                    : 'With Premium, Coach can make these '
+                                        '${item.locked} changes for you in '
+                                        'one tap.',
+                                onTap: _openPremium,
                               ),
                           if (_thinking && (_items.isEmpty || lastIsUser))
                             const _Thinking(),
                           if (_error != null)
                             _ErrorBubble(message: _error!, onRetry: _retry),
+                          if (_limitReached)
+                            _PremiumNote(
+                              text: "You've used today's "
+                                  '${PremiumPrices.freeCoachPerDay} free Coach '
+                                  'messages. They reset at midnight, or go '
+                                  'Premium for unlimited Coach.',
+                              onTap: _openPremium,
+                            ),
                           const SizedBox(height: 8),
+                          if (_freeLeft != null && !_limitReached)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '$_freeLeft free Coach '
+                                'message${_freeLeft == 1 ? '' : 's'} left today',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.gray600),
+                              ),
+                            ),
                           Text(
                             'Coach gives general tips, not medical advice. '
                             'Nothing changes until you tap Accept.',
@@ -836,6 +902,37 @@ class _ErrorBubble extends StatelessWidget {
                 style: TextStyle(color: AppText.amber700)),
           ),
           TextButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
+      ),
+    );
+  }
+}
+
+/// "This is part of Premium" in the chat, with a way to see the plans.
+class _PremiumNote extends StatelessWidget {
+  final String text;
+  final VoidCallback onTap;
+
+  const _PremiumNote({required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: AppColors.indigo50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.indigo100),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.auto_awesome_rounded, color: AppText.primary, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: TextStyle(color: AppColors.ink)),
+          ),
+          TextButton(onPressed: onTap, child: const Text('See Premium')),
         ],
       ),
     );

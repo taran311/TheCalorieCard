@@ -20,6 +20,8 @@ import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/coach_nudge.dart';
 import 'package:namer_app/ui/streak_pill.dart';
+import 'package:namer_app/ui/premium_sheet.dart';
+import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/home_inbox.dart';
 import 'package:namer_app/ui/home_widgets.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -2389,12 +2391,25 @@ class _HomePageState extends State<HomePage>
                           overBy: overBy,
                           goal: _goalsForSelectedDay.calories,
                           today: BalanceService.now(),
-                          onAsk: (question) => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  CoachPage(initialQuestion: question),
-                            ),
-                          ),
+                          onAsk: (question) {
+                            if (!Premium.isPremium) {
+                              showPremiumSheet(
+                                context,
+                                title: '"Even it out" plans are Premium',
+                                message: 'Coach spreads what you went over '
+                                    'across the rest of the week, a little '
+                                    'each day, so one big day never knocks '
+                                    'you off track.',
+                              );
+                              return;
+                            }
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    CoachPage(initialQuestion: question),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     const SizedBox(height: 16),

@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/pages/premium_page.dart';
+import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/appearance_sheet.dart';
 import 'package:namer_app/ui/reminder_sheet.dart';
@@ -76,6 +78,7 @@ class _MenuPageState extends State<MenuPage> {
 
   Future<void> _logout() async {
     try {
+      Premium.stop();
       await FirebaseAuth.instance.signOut();
       if (mounted) {
         // Reset the whole app (not just this tab) back to the sign-in flow.
@@ -425,6 +428,31 @@ class _MenuPageState extends State<MenuPage> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),
                 children: [
+                  const SizedBox(height: 12),
+                  ValueListenableBuilder<Entitlement>(
+                    valueListenable: Premium.notifier,
+                    builder: (context, e, _) => _buildMenuCard(
+                      icon: Icons.auto_awesome_rounded,
+                      iconColor: AppText.violet600,
+                      title: e.loaded && e.subscribed
+                          ? 'Premium'
+                          : e.loaded && e.inTrial
+                              ? 'Premium trial'
+                              : 'Go Premium',
+                      subtitle: !e.loaded
+                          ? 'Unlimited Coach, photo logging and more'
+                          : e.subscribed
+                              ? (e.cancelAtPeriodEnd
+                                  ? 'Ends at the end of this period'
+                                  : 'Thanks for your support · ${e.planLabel}')
+                              : e.inTrial
+                                  ? '${e.trialDaysLeft} day'
+                                      '${e.trialDaysLeft == 1 ? '' : 's'} '
+                                      'left · choose a plan any time'
+                                  : 'From ${PremiumPrices.yearlyPerMonth} a month',
+                      onTap: () => _open(const PremiumPage()),
+                    ),
+                  ),
                   _sectionHeader('Your card'),
                   _buildMenuCard(
                     icon: Icons.receipt_long,

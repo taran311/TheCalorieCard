@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/notification_service.dart';
+import 'package:namer_app/services/premium_service.dart';
+import 'package:namer_app/pages/premium_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:namer_app/services/split_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -65,10 +68,44 @@ class _HomeInboxState extends State<HomeInbox> {
     } catch (_) {}
   }
 
+  /// "Your trial has ended" was dismissed on this device.
+  bool _trialEndSeen = true;
+
+  String get _trialSeenKey => 'trial_end_seen_${widget.userId}';
+
+  Future<void> _loadTrialSeen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() => _trialEndSeen = prefs.getBool(_trialSeenKey) ?? false);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _dismissTrialEnded() async {
+    setState(() => _trialEndSeen = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_trialSeenKey, true);
+    } catch (_) {}
+  }
+
+  void _onPremiumChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _openPremium() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PremiumPage()),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _checkReminderOffer();
+    _loadTrialSeen();
+    Premium.notifier.addListener(_onPremiumChanged);
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -94,6 +131,7 @@ class _HomeInboxState extends State<HomeInbox> {
 
   @override
   void dispose() {
+    Premium.notifier.removeListener(_onPremiumChanged);
     _splitSub?.cancel();
     _debitSub?.cancel();
     _profileSub?.cancel();
@@ -204,6 +242,32 @@ class _HomeInboxState extends State<HomeInbox> {
           ],
         ));
       }
+    }
+
+    final premium = Premium.current;
+    if (premium.loaded && premium.inTrial && premium.trialDaysLeft <= 3) {
+      final days = premium.trialDaysLeft;
+      items.add(_InboxCard(
+        icon: Icons.auto_awesome_rounded,
+        color: AppColors.violet600,
+        title: 'Premium trial: $days day${days == 1 ? '' : 's'} left',
+        subtitle: 'Logging, streaks and friends stay free after.',
+        actions: [
+          _InboxAction('See plans', _openPremium, primary: true),
+        ],
+      ));
+    } else if (premium.trialEnded && !_trialEndSeen) {
+      items.add(_InboxCard(
+        icon: Icons.auto_awesome_rounded,
+        color: AppColors.violet600,
+        title: 'Your Premium trial has ended',
+        subtitle: 'You keep logging, streaks and friends, free.',
+        actions: [
+          _InboxAction('OK', _dismissTrialEnded),
+          _InboxAction('See plans', _openPremium, primary: true),
+        ],
+        stacked: narrow,
+      ));
     }
 
     if (_offerReminder) {

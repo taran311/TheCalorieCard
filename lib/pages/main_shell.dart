@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/pages/premium_page.dart';
+import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/services/notification_service.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/pages/auth_page.dart';
@@ -118,6 +120,10 @@ class _MainShellState extends State<MainShell> {
     ProxyClient.warmUp();
     // Keep the evening reminder's time zone and device token fresh.
     NotificationService.sync();
+    // Premium: start the free trial if needed and follow billing changes.
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) Premium.start(uid);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handlePremiumReturn());
     _current = switch (widget.initialIndex) {
       0 => ShellTab.profile,
       2 => ShellTab.recipes,
@@ -131,6 +137,34 @@ class _MainShellState extends State<MainShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ShellPresence.mounted.value = ShellPresence.mounted.value + 1;
     });
+  }
+
+  /// Back from Stripe (…?premium=success), or a link from the "trial ends
+  /// soon" notification (…?premium=plans). Handled once per page load.
+  static bool _premiumLinkHandled = false;
+
+  void _handlePremiumReturn() {
+    if (_premiumLinkHandled || !mounted) return;
+    _premiumLinkHandled = true;
+    final param = Uri.base.queryParameters['premium'];
+    if (param == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    switch (param) {
+      case 'success':
+        messenger?.showSnackBar(const SnackBar(
+          duration: Duration(seconds: 6),
+          content: Text("Welcome to Premium! 💜 Thanks for supporting "
+              'The Calorie Card. It can take a few seconds to show.'),
+        ));
+      case 'cancelled':
+        messenger?.showSnackBar(const SnackBar(
+          content: Text('No problem, nothing was charged.'),
+        ));
+      case 'plans':
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const PremiumPage()),
+        );
+    }
   }
 
   @override
@@ -530,6 +564,7 @@ class _Sidebar extends StatelessWidget {
   });
 
   Future<void> _logout(BuildContext context) async {
+    Premium.stop();
     await FirebaseAuth.instance.signOut();
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(

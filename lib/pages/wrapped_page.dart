@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:namer_app/services/premium_service.dart';
+import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/friends_service.dart';
@@ -36,6 +38,19 @@ class _WrappedPageState extends State<WrappedPage> {
   }
 
   void _shiftMonth(int delta) {
+    // Free: this month and last month. Premium: every month.
+    final now = BalanceService.now();
+    final target = DateTime(_month.year, _month.month + delta, 1);
+    final oldestFree = DateTime(now.year, now.month - 1, 1);
+    if (delta < 0 && target.isBefore(oldestFree) && !Premium.isPremium) {
+      showPremiumSheet(
+        context,
+        title: 'Older Wrapped is Premium',
+        message: 'Look back at every month you\'ve logged: your best '
+            'streaks, top foods and on-budget days, month by month.',
+      );
+      return;
+    }
     setState(() {
       _month = DateTime(_month.year, _month.month + delta, 1);
       _load();

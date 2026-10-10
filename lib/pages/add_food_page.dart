@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/premium_service.dart';
+import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -726,6 +728,15 @@ class _AddFoodPageState extends State<AddFoodPage> {
   }
 
   Future<void> _photoOfMeal() async {
+    if (!Premium.isPremium) {
+      await showPremiumSheet(
+        context,
+        title: 'Photo logging is part of Premium',
+        message: 'Snap your plate and the app works out what\'s on it, '
+            'ready for you to check and log.',
+      );
+      return;
+    }
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       showDragHandle: true,
