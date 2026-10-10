@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/coach_glyph.dart';
 import 'package:namer_app/ui/coach_nudge.dart';
-import 'package:namer_app/ui/home_widgets.dart';
 import 'package:namer_app/ui/responsive.dart';
 
 class MockFood {
@@ -394,7 +393,6 @@ class MockApp extends StatelessWidget {
     final date =
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}';
     final meals = const ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
-    final items = s.foodsIn(s.meal);
 
     return LayoutBuilder(builder: (context, c) {
       final w = (c.maxWidth - 32).clamp(200.0, 380.0).toDouble();
@@ -492,105 +490,111 @@ class MockApp extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            _mark(
-              'tabs',
-              MealTabs(
-                meals: meals,
-                selected: s.meal,
-                onSelected: (_) {},
-                totals: {for (final m in meals) m: s.kcalIn(m)},
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                s.left < 0
+                    ? 'Eaten today: ${s.eaten} kcal · ${-s.left} kcal over'
+                    : 'Eaten today: ${s.eaten} kcal · ${s.left} kcal left',
+                style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
+            for (final m in meals) ...[
+              _mealSection(m),
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _mealSection(String meal) {
+    final items = s.foodsIn(meal);
+    return _mark(
+      'section_$meal',
+      Container(
+        decoration: AppDecor.card,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Container(
-              decoration: AppDecor.card,
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              color: AppColors.gray50,
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+              child: Row(
                 children: [
+                  Text(meal,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, color: AppColors.ink)),
+                  const Spacer(),
+                  if (items.isNotEmpty)
+                    Text('${s.kcalIn(meal)} kcal',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.ink)),
+                ],
+              ),
+            ),
+            if (items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(14, 10, 14, 0),
+                child: Text('Nothing yet.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 13)),
+              )
+            else
+              for (final f in items)
+                _mark(
+                  'food_${f.name}',
                   Container(
-                    color: AppColors.gray50,
+                    decoration: const BoxDecoration(
+                      border: Border(top: BorderSide(color: AppColors.border)),
+                    ),
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
                     child: Row(
                       children: [
-                        Text(s.meal,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.ink)),
-                        const Spacer(),
-                        Text('${s.kcalIn(s.meal)} kcal',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.ink)),
-                      ],
-                    ),
-                  ),
-                  if (items.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text('Nothing on ${s.meal} yet.',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: AppColors.muted,
-                              fontWeight: FontWeight.w600)),
-                    )
-                  else
-                    for (final f in items)
-                      _mark(
-                        'food_${f.name}',
-                        Container(
-                          decoration: const BoxDecoration(
-                            border: Border(
-                                top: BorderSide(color: AppColors.border)),
-                          ),
-                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-                          child: Row(
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(f.name,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: AppColors.ink)),
-                                    Text(f.portion,
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            color: AppColors.muted)),
-                                  ],
-                                ),
-                              ),
-                              _kcalPill(f.kcal),
+                              Text(f.name,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.ink)),
+                              Text(f.portion,
+                                  style: const TextStyle(
+                                      fontSize: 12, color: AppColors.muted)),
                             ],
                           ),
                         ),
-                      ),
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _mark(
-                            'add',
-                            _fakeButton(
-                              icon: Icons.add,
-                              label: 'Add to ${s.meal}',
-                              filled: true,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _mark(
-                          'recipeBtn',
-                          _fakeButton(
-                            icon: Icons.menu_book_outlined,
-                            label: 'Recipe',
-                            filled: false,
-                          ),
-                        ),
+                        _kcalPill(f.kcal),
                       ],
+                    ),
+                  ),
+                ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _mark(
+                      'add_$meal',
+                      _fakeButton(
+                        icon: Icons.add,
+                        label: 'Add to $meal',
+                        filled: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _mark(
+                    'recipeBtn_$meal',
+                    _fakeButton(
+                      icon: Icons.menu_book_outlined,
+                      label: 'Recipe',
+                      filled: false,
                     ),
                   ),
                 ],
@@ -598,8 +602,8 @@ class MockApp extends StatelessWidget {
             ),
           ],
         ),
-      );
-    });
+      ),
+    );
   }
 
   // -------------------------------------------------------------- add food

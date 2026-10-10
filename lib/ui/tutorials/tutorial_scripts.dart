@@ -48,21 +48,21 @@ final List<Tutorial> tutorials = [
             "and diary aren't touched.",
         target: 'card',
       ),
-      TStep(
-        title: 'Pick a meal',
-        body: "Tap the meal you're adding to. Each tab shows what you've "
-            'had so far.',
-        target: 'tabs#1/4',
-        act: TAct.tap,
-        apply: (s) => s.meal = 'Lunch',
-        focus: 'add',
+      const TStep(
+        title: 'Your meals',
+        body: 'Your day is split into Brekkie, Lunch, Dinner and Snacks, '
+            'each with what you had and its own Add button.',
+        target: 'section_Lunch',
       ),
       TStep(
         title: 'Add food',
         body: 'Tap "Add to Lunch" to open the food search.',
-        target: 'add',
+        target: 'add_Lunch',
         act: TAct.tap,
-        apply: (s) => s.screen = MockScreen.addFood,
+        apply: (s) {
+          s.meal = 'Lunch';
+          s.screen = MockScreen.addFood;
+        },
       ),
       TStep(
         title: 'Type what you had',
@@ -97,7 +97,7 @@ final List<Tutorial> tutorials = [
           s.toast = 'Added 2 items to Lunch';
         },
         then: (s) => s.toast = null,
-        focus: 'card',
+        focus: 'section_Lunch',
       ),
       const TStep(
         title: 'Your card updates',
@@ -208,11 +208,8 @@ final List<Tutorial> tutorials = [
             'to date.',
         target: 'nav_card',
         act: TAct.tap,
-        apply: (s) {
-          s.screen = MockScreen.home;
-          s.meal = 'Brekkie';
-        },
-        focus: 'card',
+        apply: (s) => s.screen = MockScreen.home,
+        focus: 'section_Brekkie',
       ),
       const TStep(
         title: "You're all set",
@@ -292,25 +289,21 @@ final List<Tutorial> tutorials = [
       ),
       TStep(
         title: 'Back to your card',
-        body: 'Now log it to a meal.',
+        body: "Now log it. It's dinner time.",
         target: 'nav_card',
         act: TAct.tap,
         apply: (s) => s.screen = MockScreen.home,
-      ),
-      TStep(
-        title: 'Pick the meal',
-        body: "It's dinner time.",
-        target: 'tabs#2/4',
-        act: TAct.tap,
-        apply: (s) => s.meal = 'Dinner',
-        focus: 'recipeBtn',
+        focus: 'recipeBtn_Dinner',
       ),
       TStep(
         title: 'Add a recipe',
-        body: 'Tap Recipe and pick one of your saved ones.',
-        target: 'recipeBtn',
+        body: 'Tap Recipe on Dinner and pick one of your saved ones.',
+        target: 'recipeBtn_Dinner',
         act: TAct.tap,
-        apply: (s) => s.showPicker = true,
+        apply: (s) {
+          s.meal = 'Dinner';
+          s.showPicker = true;
+        },
         focus: 'pickAdd',
       ),
       TStep(
@@ -324,7 +317,7 @@ final List<Tutorial> tutorials = [
           s.toast = 'Added Chicken stir fry to Dinner';
         },
         then: (s) => s.toast = null,
-        focus: 'card',
+        focus: 'section_Dinner',
       ),
       _finished,
     ],
@@ -482,7 +475,7 @@ final List<Tutorial> tutorials = [
         title: 'Dessert happens',
         body: "Now you're 320 kcal over. Your card turns red, and that's "
             'completely fine.',
-        target: 'add',
+        target: 'add_Dinner',
         act: TAct.tap,
         apply: (s) {
           s.foods.add(_brownie);

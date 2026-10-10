@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:namer_app/services/balance_service.dart';
-import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -47,23 +45,17 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
   @override
   void initState() {
     super.initState();
-    final current =
-        Provider.of<CategoryService>(context, listen: false).selectedCategory;
-    if (FoodLog.meals.contains(current)) {
-      // Honour the meal already picked elsewhere in the app.
-      _meal = current;
+    // The Card screen shows every meal now, so there's no "current" meal:
+    // default from the time of day (they can change it with the chips).
+    final hour = DateTime.now().hour;
+    if (hour < 11) {
+      _meal = 'Brekkie';
+    } else if (hour < 15) {
+      _meal = 'Lunch';
+    } else if (hour >= 17 && hour < 22) {
+      _meal = 'Dinner';
     } else {
-      // Otherwise a sensible default from the time of day.
-      final hour = DateTime.now().hour;
-      if (hour < 11) {
-        _meal = 'Brekkie';
-      } else if (hour < 15) {
-        _meal = 'Lunch';
-      } else if (hour >= 17 && hour < 22) {
-        _meal = 'Dinner';
-      } else {
-        _meal = 'Snacks';
-      }
+      _meal = 'Snacks';
     }
   }
 

@@ -938,14 +938,15 @@ class _HomePageState extends State<HomePage>
         ),
         TourStep(
           target: _tourMeals,
-          title: 'Meals',
-          body: 'Food is grouped by meal. Pick one, then add what you ate.',
+          title: 'Your meals',
+          body: 'Your day is split into meals. Tap a meal to switch between '
+              'calories and macros.',
         ),
         TourStep(
           target: _tourAdd,
           title: 'Add food',
-          body: "Add food to the meal you've picked, or log a saved recipe. "
-              'Swipe a food left to remove it.',
+          body: 'Each meal has its own Add button. You can also log a saved '
+              'recipe, and swipe a food left to remove it.',
           radius: 16,
         ),
         TourStep(
@@ -1273,21 +1274,17 @@ class _HomePageState extends State<HomePage>
     } catch (_) {}
   }
 
-  /// Loads the selected day's food: the list for the selected meal, that
-  /// meal's totals, and the whole day's totals (for past days' cards).
+  /// Loads the selected day's food (every meal, oldest first), per-meal
+  /// totals, and the whole day's totals (for past days' cards).
   Future<void> populateFoodItems() async {
     final token = ++_foodLoadToken;
     try {
-      final meal =
-          Provider.of<CategoryService>(context, listen: false).selectedCategory;
       final day = _selectedLogDate;
 
       final dayDocs = await BalanceService.entriesOn(_activeUserId, day);
       if (!mounted || token != _foodLoadToken) return;
 
-      final mealDocs = dayDocs
-          .where((d) => (d.data()['foodCategory'] ?? 'Brekkie') == meal)
-          .toList()
+      final mealDocs = dayDocs.toList()
         ..sort((a, b) {
           final ta = BalanceService.entryDate(a.data());
           final tb = BalanceService.entryDate(b.data());
@@ -1317,7 +1314,7 @@ class _HomePageState extends State<HomePage>
           ..clear()
           ..addEntries(mealDocs.map((d) => MapEntry(d.id, _showMacrosTotal)));
       });
-      if (mealDocs.isEmpty) _loadYesterday();
+      _loadYesterday();
       await _fetchReactionsForFoodItems();
     } catch (e) {
       if (!mounted || token != _foodLoadToken) return;
@@ -1606,8 +1603,15 @@ class _HomePageState extends State<HomePage>
         Breakpoints.tablet;
   }
 
-  Future<void> _openAddFood() async {
+  /// Makes [meal] the one Add food / recipes log to.
+  void _useMeal(String meal) {
+    Provider.of<CategoryService>(context, listen: false)
+        .setSelectedCategory(meal);
+  }
+
+  Future<void> _openAddFood(String meal) async {
     if (!_canEditSelectedDay) return;
+    _useMeal(meal);
     // On phones, open above the bottom bar so the Coach button doesn't
     // cover the page's buttons.
     final saved = await Navigator.of(context, rootNavigator: _isPhone)
@@ -1620,10 +1624,9 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  Future<void> _openRecipePicker() async {
+  Future<void> _openRecipePicker(String meal) async {
     if (!_canEditSelectedDay) return;
-    final meal =
-        Provider.of<CategoryService>(context, listen: false).selectedCategory;
+    _useMeal(meal);
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
@@ -1870,88 +1873,68 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Widget _buildMealHeader(String meal) {
-    final macros = '${_roundMacro(_totalProtein)}g protein · '
-        '${_roundMacro(_totalCarbs)}g carbs · ${_roundMacro(_totalFat)}g fat';
+  /// The food in [meal] that's on screen (not mid-swipe).
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _visibleIn(String meal) => [
+        for (final d in _foodDocs)
+          if (!_pendingRemoval.contains(d.id) &&
+              (d.data()['foodCategory'] ?? 'Brekkie') == meal)
+            d
+      ];
 
-    Widget? balanceLine;
-    final left = _liveBalance;
-    if (_isOwnCard && _isSelectedDateToday && left != null) {
-      final goal = _goalsForSelectedDay.calories;
-      final Color leftColor = left < 0
-          ? AppColors.red600
-          : (goal > 0 && left <= goal * 0.1)
-              ? AppColors.amber700
-              : AppColors.emerald700;
-      balanceLine = Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(text: '$meal: $_totalCalories kcal · '),
-              TextSpan(
-                text: left < 0
-                    ? '${-left} kcal over today'
-                    : '$left kcal left today',
-                style: TextStyle(
-                  color: leftColor,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
-        ),
-      );
-    }
+  Widget _buildMealHeader(
+      String meal, List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final totals = BalanceService.totalOf(docs.map((d) => d.data()));
+    final kcal = totals.calories.round();
+    final macros = '${_roundMacro(totals.protein)}g protein · '
+        '${_roundMacro(totals.carbs)}g carbs · ${_roundMacro(totals.fat)}g fat';
 
     return Material(
       color: AppColors.gray50,
       child: InkWell(
-        onTap: _toggleMacros,
+        onTap: docs.isEmpty ? null : _toggleMacros,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Text(
-                    meal,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Flexible(
-                    fit: FlexFit.tight,
-                    child: Text(
-                      _showMacrosTotal ? macros : '$_totalCalories kcal',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.end,
-                      style: TextStyle(
-                        color: AppColors.gray700,
-                        fontWeight: FontWeight.w600,
-                        fontSize: _showMacrosTotal ? 12 : 14,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    _showMacrosTotal
-                        ? Icons.local_fire_department_outlined
-                        : Icons.show_chart,
-                    color: AppColors.muted,
-                    size: 18,
-                  ),
-                ],
+              Icon(_mealIcon(meal), size: 20, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Text(
+                meal,
+                style: const TextStyle(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
               ),
-              if (balanceLine != null) balanceLine,
+              const SizedBox(width: 12),
+              Flexible(
+                fit: FlexFit.tight,
+                child: Text(
+                  docs.isEmpty
+                      ? ''
+                      : _showMacrosTotal
+                          ? macros
+                          : '$kcal kcal',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                    color: AppColors.gray700,
+                    fontWeight: FontWeight.w600,
+                    fontSize: _showMacrosTotal ? 12 : 14,
+                  ),
+                ),
+              ),
+              if (docs.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  _showMacrosTotal
+                      ? Icons.local_fire_department_outlined
+                      : Icons.show_chart,
+                  color: AppColors.muted,
+                  size: 18,
+                ),
+              ],
             ],
           ),
         ),
@@ -1959,44 +1942,64 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  static IconData _mealIcon(String meal) {
+    switch (meal.toLowerCase()) {
+      case 'brekkie':
+      case 'breakfast':
+        return Icons.free_breakfast_outlined;
+      case 'lunch':
+        return Icons.lunch_dining_outlined;
+      case 'dinner':
+        return Icons.dinner_dining_outlined;
+      default:
+        return Icons.cookie_outlined;
+    }
+  }
+
+  /// One line above the meals: what's been eaten and what's left.
+  Widget? _buildDaySummary() {
+    final left = _liveBalance;
+    if (!_isOwnCard || !_isSelectedDateToday || left == null) return null;
+    final goal = _goalsForSelectedDay.calories;
+    final Color leftColor = left < 0
+        ? AppColors.red600
+        : (goal > 0 && left <= goal * 0.1)
+            ? AppColors.amber700
+            : AppColors.emerald700;
+    final eaten = _dayTotals.calories.round();
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: 'Eaten today: ${formatCardKcal(eaten)} kcal · '),
+          TextSpan(
+            text: left < 0
+                ? '${formatCardKcal(-left)} kcal over'
+                : '${formatCardKcal(left)} kcal left',
+            style: TextStyle(color: leftColor, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontSize: 13, color: AppColors.muted),
+    );
+  }
+
+  /// Empty meals stay small so the whole day fits on screen.
   Widget _buildEmptyMeal(String meal) {
-    final String title;
-    String? subtitle;
+    final String text;
     if (!_isSelectedDateToday) {
-      title = 'Nothing logged for $meal that day.';
+      text = 'Nothing logged that day.';
     } else if (!_isOwnCard) {
-      title = 'Nothing logged for $meal yet.';
+      text = 'Nothing logged yet.';
     } else {
-      title = 'Nothing on $meal yet.';
-      if (_canEditSelectedDay) {
-        subtitle = 'Add what you had and it comes off your card.';
-      }
+      text = 'Nothing yet. Add what you had and it comes off your card.';
     }
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-      child: Column(
-        children: [
-          const Icon(Icons.restaurant_outlined,
-              size: 32, color: AppColors.gray400),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.ink,
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-            ),
-          ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.muted, fontSize: 13),
-            ),
-          ],
-        ],
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        text,
+        style: const TextStyle(color: AppColors.muted, fontSize: 13),
       ),
     );
   }
@@ -2218,21 +2221,21 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Widget _buildAddActions(String meal, bool showCopy) {
+  Widget _buildAddActions(String meal, bool showCopy, {bool tour = false}) {
     final canEdit = _canEditSelectedDay;
     final yesterday =
         showCopy ? _yesterdayFor(meal) : const <Map<String, dynamic>>[];
     final yesterdayKcal =
         BalanceService.totalOf(yesterday).calories.round();
     return Column(
-      key: _tourAdd,
+      key: tour ? _tourAdd : null,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
             Expanded(
               child: FilledButton.icon(
-                onPressed: canEdit ? _openAddFood : null,
+                onPressed: canEdit ? () => _openAddFood(meal) : null,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(0, 48),
                 ),
@@ -2246,7 +2249,7 @@ class _HomePageState extends State<HomePage>
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(
-              onPressed: canEdit ? _openRecipePicker : null,
+              onPressed: canEdit ? () => _openRecipePicker(meal) : null,
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(0, 48),
               ),
@@ -2276,30 +2279,22 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Widget _buildFoodPanel(String meal) {
-    final visible = [
-      for (final d in _foodDocs)
-        if (!_pendingRemoval.contains(d.id)) d
-    ];
+  Widget _buildFoodPanel(String meal, {bool first = false}) {
+    final visible = _visibleIn(meal);
     final canEdit = _canEditSelectedDay;
-
-    Widget? footer;
-    if (_isOwnCard && !_isSelectedDateToday) {
-      footer = _PastDayNotice(onToday: () => _changeDay(BalanceService.now()));
-    } else if (_isOwnCard) {
-      footer = _buildAddActions(meal, visible.isEmpty);
-    }
+    final footer = _isOwnCard && _isSelectedDateToday
+        ? _buildAddActions(meal, visible.isEmpty, tour: first)
+        : null;
 
     return Container(
+      key: first ? _tourMeals : null,
       decoration: AppDecor.card,
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildMealHeader(meal),
+          _buildMealHeader(meal, visible),
           const Divider(height: 1, thickness: 1, color: AppColors.border),
-          if (_isDeletingItem || _copyingYesterday)
-            const LinearProgressIndicator(minHeight: 2),
           if (visible.isEmpty)
             _buildEmptyMeal(meal)
           else
@@ -2351,7 +2346,7 @@ class _HomePageState extends State<HomePage>
       );
     }
 
-    final meal = Provider.of<CategoryService>(context).selectedCategory;
+    final summary = _buildDaySummary();
 
     final ownHome = _isOwnCard && !widget.showBanner;
     final overBy = _liveBalance == null ? 0 : -_liveBalance!;
@@ -2420,28 +2415,30 @@ class _HomePageState extends State<HomePage>
                           onBalanceChanged: _refreshAfterChange,
                         ),
                       ),
-                    const SizedBox(height: 12),
-                    // Meals
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Consumer<CategoryService>(
-                        key: _tourMeals,
-                        builder: (context, categoryService, _) => MealTabs(
-                          meals: _tabs,
-                          selected: categoryService.selectedCategory,
-                          totals: _mealKcal,
-                          onSelected: (tab) {
-                            categoryService.setSelectedCategory(tab);
-                            populateFoodItems();
-                          },
+                    const SizedBox(height: 16),
+                    if (summary != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                        child: summary,
+                      ),
+                    if (_isOwnCard && !_isSelectedDateToday)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: _PastDayNotice(
+                          onToday: () => _changeDay(BalanceService.now()),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _buildFoodPanel(meal),
-                    ),
+                    if (_isDeletingItem || _copyingYesterday)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: LinearProgressIndicator(minHeight: 2),
+                      ),
+                    // Every meal, one after another.
+                    for (var i = 0; i < _tabs.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: _buildFoodPanel(_tabs[i], first: i == 0),
+                      ),
                   ],
                 ),
               ),
