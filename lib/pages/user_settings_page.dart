@@ -672,7 +672,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       calorieSurplus = 0;
     }
 
-    updateCardActiveCalories();
+    // "Set my own" keeps the numbers they typed.
+    if (_selectedTabIndex == 0) updateCardActiveCalories();
   }
 
   bool isLoading = false;
@@ -799,14 +800,12 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     );
   }
 
-  /// Everything on one page: your details, the goal (worked out as you
-  /// type), an optional Coach fine-tune, macros and the card preview.
-  Widget _buildAICalculatedTab() {
+  /// Your details. Always shown: they're about you, whichever way you
+  /// set your goal.
+  Widget _aboutYou() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionTitle('About you'),
-        const SizedBox(height: 4),
         Row(
           children: [
             MeasurementInputField(
@@ -833,41 +832,31 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                   vertical: 8,
                 ),
                 title: const Text(
-                  'Gender',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  'Sex',
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
-                subtitle: ToggleButtons(
-                  isSelected: genderSelections,
-                  selectedColor: AppColors.primary,
-                  fillColor: AppColors.primary.withValues(alpha: 0.2),
-                  borderColor: AppColors.primary,
-                  selectedBorderColor: AppColors.primary,
-                  onPressed: (int index) {
-                    setState(() {
-                      for (int i = 0; i < genderSelections.length; i++) {
-                        genderSelections[i] = i == index;
-                      }
-                      updateCalories();
-                    });
-                  },
-                  children: const [
-                    Tooltip(
-                      message: 'Male',
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Icon(Icons.man, semanticLabel: 'Male'),
-                      ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: SegmentedButton<bool>(
+                    showSelectedIcon: false,
+                    style: SegmentedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      selectedBackgroundColor:
+                          AppColors.primary.withValues(alpha: 0.15),
+                      selectedForegroundColor: AppText.primary,
                     ),
-                    Tooltip(
-                      message: 'Female',
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Icon(Icons.woman, semanticLabel: 'Female'),
-                      ),
-                    ),
-                  ],
+                    segments: const [
+                      ButtonSegment(value: true, label: Text('Male')),
+                      ButtonSegment(value: false, label: Text('Female')),
+                    ],
+                    selected: {genderSelections.first},
+                    onSelectionChanged: (picked) {
+                      setState(() {
+                        genderSelections = [picked.first, !picked.first];
+                        updateCalories();
+                      });
+                    },
+                  ),
                 ),
               ),
             ),
@@ -937,9 +926,16 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 14, color: AppColors.muted),
         ),
-        const SizedBox(height: 28),
-        _sectionTitle('Your daily goal'),
-        const SizedBox(height: 4),
+      ],
+    );
+  }
+
+  /// The goal worked out from your details (updates as you type), with an
+  /// optional Coach fine-tune.
+  Widget _buildAICalculatedTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         Text(
           _hasDetails
               ? 'Updates as you change your details. Tap to choose.'
@@ -981,9 +977,12 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: AppColors.muted),
         ),
-        const SizedBox(height: 24),
-        _sectionTitle('Macros'),
-        const SizedBox(height: 12),
+        const SizedBox(height: 20),
+        Text(
+          'Macros',
+          style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.ink),
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
@@ -999,8 +998,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             ),
           ],
         ),
-        const SizedBox(height: 24),
-        _cardPreview(),
       ],
     );
   }
@@ -1124,8 +1121,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             ),
           ],
         ),
-        const SizedBox(height: 20),
-        _cardPreview(),
       ],
     );
   }
@@ -1167,6 +1162,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         cardActiveCalories = _manualCalorieGoal;
       }
     });
+    // Back to "Calculate for me": show the chosen goal's numbers again.
+    if (index == 0 && (calorieMaintenance ?? 0) > 0) updateCardActiveCalories();
   }
 
   Widget _tabButton(int index, IconData icon, String label) {
@@ -1208,95 +1205,165 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     );
   }
 
+  /// A titled card on the page.
+  Widget _section({
+    required String title,
+    String? subtitle,
+    required Widget child,
+  }) {
+    return Container(
+      decoration: AppDecor.card,
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _sectionTitle(title),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(fontSize: 13, color: AppColors.muted),
+            ),
+          ],
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(title: const Text('Goals and profile')),
-      body: Stack(
-        children: [
-          if (isLoading)
-            const Center(child: CircularProgressIndicator())
-          else
-            SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
+      // Save is always in reach, however far down you are.
+      bottomNavigationBar: isLoading
+          ? null
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: SafeArea(
+                top: false,
                 child: Center(
+                  heightFactor: 1,
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(
                         maxWidth: Breakpoints.contentMaxWidth),
-                    child: Container(
-                      decoration: AppDecor.card,
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: AppColors.gray100,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                _tabButton(0, Icons.auto_awesome, 'Calculate'),
-                                _tabButton(1, Icons.edit_note, 'Set my own'),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          if (_selectedTabIndex == 0)
-                            _buildAICalculatedTab()
-                          else
-                            _buildManualInputTab(),
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 52,
-                            child: FilledButton(
-                              // _onSavePressed ignores taps while saving.
-                              onPressed: _onSavePressed,
-                              child: _isSaving
-                                  ? const SizedBox(
-                                      height: 22,
-                                      width: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.5,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                                Colors.white),
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Save goals',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Center(
-                            child: TextButton.icon(
-                              onPressed: _confirmClearToday,
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppText.red600,
-                              ),
-                              icon: const Icon(Icons.delete_sweep),
-                              label: const Text("Clear today's food"),
-                            ),
-                          ),
-                        ],
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: FilledButton(
+                          // _onSavePressed ignores taps while saving.
+                          onPressed: _onSavePressed,
+                          child: _isSaving
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
+                                  ),
+                                )
+                              : const Text(
+                                  'Save goals',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-        ],
-      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                      maxWidth: Breakpoints.contentMaxWidth),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _section(
+                        title: 'About you',
+                        subtitle: 'Used to work out how much you burn each day.',
+                        child: _aboutYou(),
+                      ),
+                      const SizedBox(height: 16),
+                      _section(
+                        title: 'Daily goal',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: AppColors.gray100,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  _tabButton(
+                                      0, Icons.auto_awesome, 'Calculate for me'),
+                                  _tabButton(1, Icons.edit_note, 'Set my own'),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            if (_selectedTabIndex == 0)
+                              _buildAICalculatedTab()
+                            else
+                              _buildManualInputTab(),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Your card each morning',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _cardPreview(),
+                      const SizedBox(height: 32),
+                      Divider(color: AppColors.border),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _confirmClearToday,
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppText.red600,
+                          ),
+                          icon: const Icon(Icons.delete_sweep_outlined),
+                          label: const Text("Clear today's food"),
+                        ),
+                      ),
+                      Text(
+                        "Removes everything you've logged today. Saved "
+                        'recipes are kept.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: AppColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }

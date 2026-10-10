@@ -105,9 +105,9 @@ class TutorialState {
   static const goalFat = 65.0;
 
   final List<MockFood> foods = [
-    const MockFood('Porridge with banana', '1 bowl', 'Brekkie', 412,
+    const MockFood('Porridge with banana', '1 bowl', 'Breakfast', 412,
         protein: 14, carbs: 70, fat: 8),
-    const MockFood('Flat white', '1 regular', 'Brekkie', 110,
+    const MockFood('Flat white', '1 regular', 'Breakfast', 110,
         protein: 7, carbs: 9, fat: 5),
   ];
 
@@ -126,7 +126,7 @@ class TutorialState {
   String coachTyped = '';
   bool coachThinking = false;
   List<MockFood> proposal = [];
-  String proposalMeal = 'Brekkie';
+  String proposalMeal = 'Breakfast';
   ProposalStatus? proposalStatus;
 
   // Recipes
@@ -392,7 +392,7 @@ class MockApp extends StatelessWidget {
     final now = DateTime.now();
     final date =
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}';
-    final meals = const ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
+    final meals = const ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 
     return LayoutBuilder(builder: (context, c) {
       final w = (c.maxWidth - 32).clamp(200.0, 380.0).toDouble();

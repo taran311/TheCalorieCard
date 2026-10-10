@@ -975,7 +975,7 @@ class _InputBar extends StatelessWidget {
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => onSend(),
                 decoration: InputDecoration(
-                  hintText: 'Ask anything, or "add 2 eggs to brekkie"',
+                  hintText: 'Ask anything, or "add 2 eggs to breakfast"',
                   counterText: '',
                   filled: true,
                   fillColor: AppColors.surface,

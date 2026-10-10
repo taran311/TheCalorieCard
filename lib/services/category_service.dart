@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class CategoryService extends ChangeNotifier {
-  String _selectedCategory = 'Brekkie';
+  String _selectedCategory = 'Breakfast';
 
   String get selectedCategory => _selectedCategory;
 
@@ -11,7 +11,7 @@ class CategoryService extends ChangeNotifier {
   }
 
   void resetToDefault() {
-    _selectedCategory = 'Brekkie';
+    _selectedCategory = 'Breakfast';
     notifyListeners();
   }
 }

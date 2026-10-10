@@ -217,67 +217,139 @@ class _MenuPageState extends State<MenuPage> {
     );
   }
 
-  Widget _buildMenuCard({
+  /// A titled group of rows in one card, like a phone's settings.
+  Widget _group(String title, List<Widget> rows) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionHeader(title),
+        Material(
+          color: AppColors.surface,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDecor.radius),
+            side: BorderSide(color: AppColors.border),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < rows.length; i++) ...[
+                if (i > 0)
+                  Divider(height: 1, indent: 62, color: AppColors.border),
+                rows[i],
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _menuRow({
     required IconData icon,
     required Color iconColor,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
-    bool chevron = true,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: AppColors.surface,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDecor.radius),
-          side: BorderSide(color: AppColors.border),
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 20, color: AppColors.gray400),
+          ],
         ),
+      ),
+    );
+  }
+
+  /// Premium at the top: what you have, or what you'd get.
+  Widget _premiumBanner(Entitlement e) {
+    final String title;
+    final String subtitle;
+    if (e.loaded && e.subscribed) {
+      title = "You're Premium";
+      subtitle = e.cancelAtPeriodEnd
+          ? 'Ends at the end of this period'
+          : 'Thanks for your support · ${e.planLabel}';
+    } else if (e.loaded && e.inTrial) {
+      final d = e.trialDaysLeft;
+      title = 'Premium trial: $d day${d == 1 ? '' : 's'} left';
+      subtitle = 'Choose a plan any time to keep it';
+    } else {
+      title = 'Go Premium';
+      subtitle = 'Unlimited Coach, photo logging and more, from '
+          '${PremiumPrices.yearlyPerMonth} a month';
+    }
+    return Material(
+      borderRadius: BorderRadius.circular(AppDecor.radius),
+      clipBehavior: Clip.antiAlias,
+      child: Ink(
+        decoration: const BoxDecoration(gradient: AppColors.brandGradient),
         child: InkWell(
-          onTap: onTap,
+          onTap: () => _open(const PremiumPage()),
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: iconColor, size: 24),
-                ),
-                const SizedBox(width: 14),
+                const Icon(Icons.auto_awesome_rounded,
+                    color: Colors.white, size: 26),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         title,
-                        style: TextStyle(
+                        style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.ink,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
                         style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.gray600,
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 12.5,
                         ),
                       ),
                     ],
                   ),
                 ),
-                if (chevron)
-                  Icon(
-                    Icons.chevron_right,
-                    size: 20,
-                    color: AppColors.muted,
-                  ),
+                const Icon(Icons.chevron_right, color: Colors.white),
               ],
             ),
           ),
@@ -428,133 +500,118 @@ class _MenuPageState extends State<MenuPage> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),
                 children: [
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   ValueListenableBuilder<Entitlement>(
                     valueListenable: Premium.notifier,
-                    builder: (context, e, _) => _buildMenuCard(
-                      icon: Icons.auto_awesome_rounded,
-                      iconColor: AppText.violet600,
-                      title: e.loaded && e.subscribed
-                          ? 'Premium'
-                          : e.loaded && e.inTrial
-                              ? 'Premium trial'
-                              : 'Go Premium',
-                      subtitle: !e.loaded
-                          ? 'Unlimited Coach, photo logging and more'
-                          : e.subscribed
-                              ? (e.cancelAtPeriodEnd
-                                  ? 'Ends at the end of this period'
-                                  : 'Thanks for your support · ${e.planLabel}')
-                              : e.inTrial
-                                  ? '${e.trialDaysLeft} day'
-                                      '${e.trialDaysLeft == 1 ? '' : 's'} '
-                                      'left · choose a plan any time'
-                                  : 'From ${PremiumPrices.yearlyPerMonth} a month',
-                      onTap: () => _open(const PremiumPage()),
+                    builder: (context, e, _) => _premiumBanner(e),
+                  ),
+                  _group('Your card', [
+                    _menuRow(
+                      icon: Icons.receipt_long,
+                      iconColor: AppText.primary,
+                      title: 'Statement',
+                      subtitle: 'Your spending, day by day',
+                      onTap: () {
+                        final open = widget.onOpenStatement;
+                        if (open != null) {
+                          open();
+                          return;
+                        }
+                        _open(const StatementPage());
+                      },
                     ),
-                  ),
-                  _sectionHeader('Your card'),
-                  _buildMenuCard(
-                    icon: Icons.receipt_long,
-                    iconColor: AppText.primary,
-                    title: 'Statement',
-                    subtitle: 'Your spending, day by day',
-                    onTap: () {
-                      final open = widget.onOpenStatement;
-                      if (open != null) {
-                        open();
-                        return;
-                      }
-                      _open(const StatementPage());
-                    },
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.savings_outlined,
-                    iconColor: AppText.emerald600,
-                    title: 'Pots',
-                    subtitle: 'Save a little each day for a treat',
-                    onTap: () => _open(const PotsPage()),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.autorenew,
-                    iconColor: AppText.sky,
-                    title: 'Direct debits',
-                    subtitle: 'Foods you have every day',
-                    onTap: () => _open(const DirectDebitsPage()),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.credit_card,
-                    iconColor: AppText.violet,
-                    title: 'Card design',
-                    subtitle: 'Unlock new finishes with streaks',
-                    onTap: () => _open(const CardDesignPage()),
-                  ),
-                  _sectionHeader('Progress'),
-                  _buildMenuCard(
-                    icon: Icons.emoji_events,
-                    iconColor: AppText.amber600,
-                    title: 'Achievements',
-                    subtitle: 'The badges you have unlocked',
-                    onTap: () => _open(const AchievementsPage()),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.auto_graph,
-                    iconColor: AppText.violet600,
-                    title: 'Monthly Wrapped',
-                    subtitle: 'Your month in review, ready to share',
-                    onTap: () => _open(const WrappedPage()),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.leaderboard,
-                    iconColor: AppText.rose600,
-                    title: 'Hiscores',
-                    subtitle: 'See how you rank against friends',
-                    onTap: () {
-                      final open = widget.onOpenHiscores;
-                      if (open != null) {
-                        open();
-                        return;
-                      }
-                      _open(const HiscoresPage());
-                    },
-                  ),
-                  _sectionHeader('Settings'),
-                  _buildMenuCard(
-                    icon: Icons.notifications_active_outlined,
-                    iconColor: AppText.amber700,
-                    title: 'Evening reminder',
-                    subtitle: "A friendly nudge if you haven't logged",
-                    onTap: () => showReminderSheet(context),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.dark_mode_outlined,
-                    iconColor: AppText.violet600,
-                    title: 'Appearance',
-                    subtitle: 'Light, dark or match your device',
-                    onTap: () => showAppearanceSheet(context),
-                  ),
-                  _sectionHeader('Account'),
-                  _buildMenuCard(
-                    icon: Icons.tune,
-                    iconColor: AppText.primary,
-                    title: 'Goals and profile',
-                    subtitle: 'Calorie goal, macros and your details',
-                    onTap: _openSettings,
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.monitor_weight_outlined,
-                    iconColor: AppText.emerald600,
-                    title: 'Update my weight',
-                    subtitle: 'Keep your suggested goal up to date',
-                    onTap: _updateWeight,
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.logout,
-                    iconColor: AppText.red600,
-                    title: 'Sign out',
-                    subtitle: 'You can sign back in any time',
-                    chevron: false,
-                    onTap: _confirmSignOut,
+                    _menuRow(
+                      icon: Icons.savings_outlined,
+                      iconColor: AppText.emerald600,
+                      title: 'Pots',
+                      subtitle: 'Save a little each day for a treat',
+                      onTap: () => _open(const PotsPage()),
+                    ),
+                    _menuRow(
+                      icon: Icons.autorenew,
+                      iconColor: AppText.sky,
+                      title: 'Direct debits',
+                      subtitle: 'Foods you have every day',
+                      onTap: () => _open(const DirectDebitsPage()),
+                    ),
+                    _menuRow(
+                      icon: Icons.credit_card,
+                      iconColor: AppText.violet,
+                      title: 'Card design',
+                      subtitle: 'Unlock new finishes with streaks',
+                      onTap: () => _open(const CardDesignPage()),
+                    ),
+                  ]),
+                  _group('Progress', [
+                    _menuRow(
+                      icon: Icons.emoji_events,
+                      iconColor: AppText.amber600,
+                      title: 'Achievements',
+                      subtitle: 'The badges you have unlocked',
+                      onTap: () => _open(const AchievementsPage()),
+                    ),
+                    _menuRow(
+                      icon: Icons.auto_graph,
+                      iconColor: AppText.violet600,
+                      title: 'Monthly Wrapped',
+                      subtitle: 'Your month in review, ready to share',
+                      onTap: () => _open(const WrappedPage()),
+                    ),
+                    _menuRow(
+                      icon: Icons.leaderboard,
+                      iconColor: AppText.rose600,
+                      title: 'Hiscores',
+                      subtitle: 'See how you rank against friends',
+                      onTap: () {
+                        final open = widget.onOpenHiscores;
+                        if (open != null) {
+                          open();
+                          return;
+                        }
+                        _open(const HiscoresPage());
+                      },
+                    ),
+                  ]),
+                  _group('Settings', [
+                    _menuRow(
+                      icon: Icons.tune,
+                      iconColor: AppText.primary,
+                      title: 'Goals and profile',
+                      subtitle: 'Calorie goal, macros and your details',
+                      onTap: _openSettings,
+                    ),
+                    _menuRow(
+                      icon: Icons.monitor_weight_outlined,
+                      iconColor: AppText.emerald600,
+                      title: 'Update my weight',
+                      subtitle: 'Keep your suggested goal up to date',
+                      onTap: _updateWeight,
+                    ),
+                    _menuRow(
+                      icon: Icons.notifications_active_outlined,
+                      iconColor: AppText.amber700,
+                      title: 'Evening reminder',
+                      subtitle: "A friendly nudge if you haven't logged",
+                      onTap: () => showReminderSheet(context),
+                    ),
+                    _menuRow(
+                      icon: Icons.dark_mode_outlined,
+                      iconColor: AppText.violet600,
+                      title: 'Appearance',
+                      subtitle: 'Light, dark or match your device',
+                      onTap: () => showAppearanceSheet(context),
+                    ),
+                  ]),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: _confirmSignOut,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppText.red600,
+                      ),
+                      icon: const Icon(Icons.logout, size: 20),
+                      label: const Text('Sign out'),
+                    ),
                   ),
                 ],
               ),

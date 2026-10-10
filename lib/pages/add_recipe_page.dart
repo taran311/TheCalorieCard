@@ -255,6 +255,38 @@ class _AddRecipePageState extends State<AddRecipePage> {
             ),
         ],
       ),
+      // Save stays in reach however long the ingredient list gets.
+      bottomNavigationBar: _loading
+          ? null
+          : AbsorbPointer(
+              absorbing: _tutorialMode,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border(top: BorderSide(color: AppColors.border)),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                    child: FilledButton.icon(
+                      onPressed: _saving
+                          ? null
+                          : (widget.recipeId != null
+                              ? _updateRecipe
+                              : _saveRecipe),
+                      icon: const Icon(Icons.check),
+                      label: Text(widget.recipeId != null
+                          ? 'Save changes'
+                          : 'Save recipe'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Stack(
@@ -266,8 +298,14 @@ class _AddRecipePageState extends State<AddRecipePage> {
               child: Form(
                 key: _formKey,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Container(
+                      decoration: AppDecor.card,
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(
@@ -351,37 +389,36 @@ class _AddRecipePageState extends State<AddRecipePage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Ingredients',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildSelectedIngredients(),
-                    const SizedBox(height: 8),
-                    _buildFreeTextInput(),
-                    const SizedBox(height: 24),
-                    _buildTotalsBar(),
-                    if (_ingredients.isNotEmpty) const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _saving
-                            ? null
-                            : (widget.recipeId != null
-                                ? _updateRecipe
-                                : _saveRecipe),
-                        icon: const Icon(Icons.check),
-                        label: Text(widget.recipeId != null
-                            ? 'Save changes'
-                            : 'Save recipe'),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 48),
+                    const SizedBox(height: 16),
+                    Container(
+                      decoration: AppDecor.card,
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Ingredients',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildSelectedIngredients(),
+                          const SizedBox(height: 8),
+                          _buildFreeTextInput(),
+                          if (_ingredients.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            _buildTotalsBar(),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),

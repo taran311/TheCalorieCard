@@ -44,7 +44,7 @@ class DirectDebit {
       id: doc.id,
       name: (d['name'] ?? 'Food').toString(),
       portion: (d['portion'] ?? '').toString(),
-      meal: (d['meal'] ?? 'Brekkie').toString(),
+      meal: FoodLog.mealOf(d['meal']),
       macros: Macros(
         calories: BalanceService.number(d['calories']) ?? 0,
         protein: BalanceService.number(d['protein']) ?? 0,
@@ -73,7 +73,7 @@ class DirectDebitService {
     final m = Macros.fromEntry(entry);
     if (!m.isValid) throw ArgumentError('Food amounts must be zero or more');
     final name = (entry['food_description'] ?? 'Food').toString();
-    final meal = (entry['foodCategory'] ?? 'Brekkie').toString();
+    final meal = FoodLog.mealOf(entry['foodCategory']);
     final slug = '$meal $name'
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9]+'), '-')

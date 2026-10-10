@@ -47,7 +47,7 @@ class BillSplit {
       fromUserId: (d['from_user_id'] ?? '').toString(),
       fromName: (d['from_name'] ?? 'A friend').toString(),
       title: (d['title'] ?? 'Shared meal').toString(),
-      meal: (d['meal'] ?? 'Dinner').toString(),
+      meal: FoodLog.displayMeal((d['meal'] ?? 'Dinner').toString()),
       people: (BalanceService.number(d['people']) ?? 2).round(),
       items: [
         for (final i in (d['items'] as List? ?? const []))

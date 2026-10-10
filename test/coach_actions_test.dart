@@ -31,6 +31,15 @@ void main() {
         CoachAction.fromJson({'type': 'log_food', 'meal': '???'})!.meal, 'Snacks');
   });
 
+  test('Breakfast used to be saved as Brekkie: both read as Breakfast', () {
+    expect(FoodLog.mealOf('Brekkie'), 'Breakfast');
+    expect(FoodLog.mealOf(null), 'Breakfast');
+    expect(FoodLog.mealOf('Lunch'), 'Lunch');
+    expect(
+        CoachAction.fromJson({'type': 'log_food', 'meal': 'brekkie'})!.meal,
+        'Breakfast');
+  });
+
   test('remove_food: shows the item, changes nothing until accepted, '
       'then refunds the card', () async {
     await FoodLog.logFoods(userId: TestWorld.uid, meal: 'Snacks', items: [

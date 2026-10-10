@@ -1047,12 +1047,45 @@ class _AddFoodPageState extends State<AddFoodPage> {
           ),
         ],
       ),
+      // The main button stays in reach however long the list gets.
+      bottomNavigationBar: AbsorbPointer(
+        absorbing: _tutorialMode,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildMainButton(meal),
+                  if (_calculated &&
+                      _calculatedItems.isNotEmpty &&
+                      !_calculating &&
+                      !_tutorialMode)
+                    TextButton.icon(
+                      onPressed: _saving ? null : _splitBill,
+                      icon: const Icon(Icons.call_split),
+                      label:
+                          const Text('Shared it? Split the bill with friends'),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
       body: Stack(
         children: [
           AbsorbPointer(
             absorbing: _tutorialMode,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1065,34 +1098,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  if (_recent.isNotEmpty && !_tutorialMode) ...[
-                    Text(
-                      'Recent',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.gray700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 36,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _recent.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (context, i) {
-                          final tx = _recent[i];
-                          return ActionChip(
-                            avatar: const Icon(Icons.add, size: 16),
-                            label: Text(
-                                '${tx.description} · ${tx.calories.round()} kcal'),
-                            onPressed: () => _addRecent(tx),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
                   TextField(
                     controller: _controller,
                     textInputAction: TextInputAction.done,
@@ -1144,14 +1149,72 @@ class _AddFoodPageState extends State<AddFoodPage> {
                                   child: CircularProgressIndicator(
                                       strokeWidth: 2))
                               : const Icon(Icons.photo_camera_outlined),
-                          label: Text(_readingPhoto
-                              ? 'Reading photo…'
-                              : 'Photo of meal'),
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  _readingPhoto
+                                      ? 'Reading photo…'
+                                      : 'Photo of meal',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (!Premium.isPremium && !_readingPhoto) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    gradient: AppColors.brandGradient,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Text(
+                                    'PREMIUM',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.6,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
+                  if (_recent.isNotEmpty && !_tutorialMode) ...[
+                    Text(
+                      'Or add again',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.gray700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 36,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _recent.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, i) {
+                          final tx = _recent[i];
+                          return ActionChip(
+                            avatar: const Icon(Icons.add, size: 16),
+                            label: Text(
+                                '${tx.description} · ${tx.calories.round()} kcal'),
+                            onPressed: () => _addRecent(tx),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   if (_ingredients.isNotEmpty) ...[
                     Text(
                       'Ready to look up',
@@ -1232,7 +1295,10 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         border: Border.all(color: AppColors.border),
                       ),
                       child: Text(
-                        'Total: ${_totalCalories.round()} kcal  ·  P ${_totalProtein.round()}g  C ${_totalCarbs.round()}g  F ${_totalFat.round()}g',
+                        'Total: ${_totalCalories.round()} kcal\n'
+                        '${_totalProtein.round()}g protein · '
+                        '${_totalCarbs.round()}g carbs · '
+                        '${_totalFat.round()}g fat',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 16,
@@ -1240,20 +1306,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         ),
                         textAlign: TextAlign.center,
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  _buildMainButton(meal),
-                  if (_calculated &&
-                      _calculatedItems.isNotEmpty &&
-                      !_calculating &&
-                      !_tutorialMode) ...[
-                    const SizedBox(height: 10),
-                    TextButton.icon(
-                      onPressed: _saving ? null : _splitBill,
-                      icon: const Icon(Icons.call_split),
-                      label:
-                          const Text('Shared it? Split the bill with friends'),
                     ),
                   ],
                 ],

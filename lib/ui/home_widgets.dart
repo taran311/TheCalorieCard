@@ -104,7 +104,7 @@ class DayStepper extends StatelessWidget {
   }
 }
 
-/// Equal-width meal tabs (Brekkie / Lunch / Dinner / Snacks).
+/// Equal-width meal tabs (Breakfast / Lunch / Dinner / Snacks).
 class MealTabs extends StatelessWidget {
   final List<String> meals;
   final String selected;

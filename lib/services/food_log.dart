@@ -13,7 +13,17 @@ class FoodLog {
 
   static void notifyChanged() => changed.value = changed.value + 1;
 
-  static const meals = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
+  static const meals = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+
+  /// A meal name as shown and saved now. Breakfast used to be saved as
+  /// "Brekkie", so older entries read as Breakfast too.
+  static String displayMeal(String meal) =>
+      meal.trim().toLowerCase() == 'brekkie' ? 'Breakfast' : meal;
+
+  /// The meal a saved entry belongs to (no meal saved counts as Breakfast,
+  /// as it always has).
+  static String mealOf(Object? stored) =>
+      displayMeal(stored == null ? 'Breakfast' : '$stored');
 
   static String _uid(String? userId) {
     final uid = userId ?? FirebaseAuth.instance.currentUser?.uid;

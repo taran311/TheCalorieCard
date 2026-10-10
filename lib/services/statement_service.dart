@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/balance_service.dart';
 
 /// One logged food item, presented like a card transaction.
@@ -108,7 +109,7 @@ class StatementService {
               id: doc.id,
               description: (data['food_description'] ?? 'Food').toString(),
               portion: (data['food_portion'] ?? '').toString(),
-              category: (data['foodCategory'] ?? '').toString(),
+              category: FoodLog.displayMeal((data['foodCategory'] ?? '').toString()),
               time: time,
               calories: _num(data['food_calories']) ?? 0,
               protein: _num(data['food_protein']) ?? 0,

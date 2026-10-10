@@ -26,7 +26,7 @@ class CoachAction {
   }
 
   String get meal {
-    final m = '${data['meal'] ?? ''}';
+    final m = FoodLog.displayMeal('${data['meal'] ?? ''}');
     return FoodLog.meals.firstWhere(
       (x) => x.toLowerCase() == m.toLowerCase(),
       orElse: () => 'Snacks',
@@ -301,7 +301,7 @@ class CoachActions {
           name: '${d['food_description'] ?? 'Food'}',
           detail: [
             if ('${d['food_portion'] ?? ''}'.isNotEmpty) '${d['food_portion']}',
-            '${d['foodCategory'] ?? ''}',
+            FoodLog.displayMeal('${d['foodCategory'] ?? ''}'),
             _kcal(Macros.fromEntry(d).calories),
           ].where((s) => s.isNotEmpty).join(' · '),
           macros: Macros.fromEntry(d),

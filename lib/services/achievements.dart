@@ -519,7 +519,8 @@ class AchievementDay {
   Iterable<SpendCategory> get categories => entries.map(SpendCategory.of);
 
   bool get hadBreakfast =>
-      entries.any((e) => (e['foodCategory'] ?? '') == 'Brekkie');
+      entries.any((e) => const {'breakfast', 'brekkie'}
+          .contains('${e['foodCategory'] ?? ''}'.toLowerCase()));
 
   bool get hadTakeaway => categories.contains(SpendCategory.takeaway);
 

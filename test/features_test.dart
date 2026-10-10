@@ -237,7 +237,8 @@ void main() {
 
       // New day: full goal, minus one latte.
       expect((await w.card())['calories'], near(2000 - 150));
-      final logged = await w.foodRows(meal: 'Brekkie');
+      // Older entries saved as "Brekkie" are logged as Breakfast now.
+      final logged = await w.foodRows(meal: 'Breakfast');
       expect(logged.where((r) => r['food_description'] == 'Oat latte'),
           hasLength(1));
     });

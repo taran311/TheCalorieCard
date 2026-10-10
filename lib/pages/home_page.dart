@@ -645,7 +645,7 @@ class _HomePageState extends State<HomePage>
   /// The card finish the card's owner picked (live).
   CardDesign _cardDesign = CardDesign.midnight;
   StreamSubscription<CardDesign>? _designSub;
-  final List<String> _tabs = ['Brekkie', 'Lunch', 'Dinner', 'Snacks'];
+  final List<String> _tabs = FoodLog.meals;
   int _creditCardRefreshKey = 0;
   bool _isLoading = true;
 
@@ -1300,7 +1300,7 @@ class _HomePageState extends State<HomePage>
       final mealKcal = <String, int>{};
       for (final m in _tabs) {
         mealKcal[m] = BalanceService.totalOf(dayDocs
-                .where((d) => (d.data()['foodCategory'] ?? 'Brekkie') == m)
+                .where((d) => FoodLog.mealOf(d.data()['foodCategory']) == m)
                 .map((d) => d.data()))
             .calories
             .round();
@@ -1559,7 +1559,7 @@ class _HomePageState extends State<HomePage>
 
   List<Map<String, dynamic>> _yesterdayFor(String meal) => [
         for (final e in _yesterdayEntries)
-          if ((e['foodCategory'] ?? 'Brekkie') == meal) e
+          if (FoodLog.mealOf(e['foodCategory']) == meal) e
       ];
 
   Future<void> _copyYesterday(
@@ -1881,7 +1881,7 @@ class _HomePageState extends State<HomePage>
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _visibleIn(String meal) => [
         for (final d in _foodDocs)
           if (!_pendingRemoval.contains(d.id) &&
-              (d.data()['foodCategory'] ?? 'Brekkie') == meal)
+              FoodLog.mealOf(d.data()['foodCategory']) == meal)
             d
       ];
 

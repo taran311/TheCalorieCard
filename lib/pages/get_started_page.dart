@@ -3,14 +3,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
-import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
-import 'package:namer_app/ui/spotlight_tour.dart';
+import 'package:namer_app/ui/card_reveal.dart';
 import 'dart:convert';
 
 class GetStartedPage extends StatefulWidget {
@@ -81,21 +80,19 @@ class _GetStartedPageState extends State<GetStartedPage> {
   bool _canEstimateWithAI = false;
   Map<String, dynamic>? _lastAIData;
 
-  // Flow state: 'input' = entering personal data, 'calculation' = choosing method, 'results' = confirming values
-  String _flowState = 'input'; // 'input', 'calculation', 'results'
+  /// AI targets per goal ('lose', 'maintain', 'gain') from Coach, so
+  /// switching goal keeps Coach's macros.
+  Map<String, dynamic>? _aiTargets;
+
+  /// "Set my own" instead of "Calculate for me".
+  bool _ownMode = false;
   final TextEditingController _manualCalorieController =
       TextEditingController();
   int? _manualCalorieGoal;
 
-  // First-time walkthrough of the card once it's revealed.
-  final _cardTour = CardTourKeys();
-  final _tourCard = GlobalKey(debugLabel: 'tour-card');
-  bool _cardTourStarted = false;
-
   @override
   void initState() {
     super.initState();
-    FocusManager.instance.addListener(_maybeStartCardTour);
     // Wake the lookup server early (it sleeps when idle).
     ProxyClient.warmUp();
     _ageFocusNode = FocusNode();
@@ -106,96 +103,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
     _fatsFocusNode = FocusNode();
   }
 
-  /// Walks through each part of the card the first time it has numbers on
-  /// it, and not while they're typing.
-  bool _cardReadyForTour() {
-    if (!mounted || _flowState != 'results') return false;
-    // The card is filled in: a balance and all three macros.
-    if ((cardActiveCalories ?? 0) <= 0 ||
-        _proteinGoal == null ||
-        _carbsGoal == null ||
-        _fatsGoal == null) {
-      return false;
-    }
-    // Not while they're typing.
-    final focus = FocusManager.instance.primaryFocus?.context;
-    if (focus != null &&
-        focus.findAncestorWidgetOfExactType<EditableText>() != null) {
-      return false;
-    }
-    return _tourCard.currentContext != null;
-  }
-
-  void _maybeStartCardTour() {
-    if (_cardTourStarted || !_cardReadyForTour()) return;
-    _cardTourStarted = true;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (!_cardReadyForTour()) {
-        _cardTourStarted = false;
-        return;
-      }
-      SpotlightTour.showOnce(context,
-          id: 'card_intro', canStart: _cardReadyForTour, steps: [
-        TourStep(
-          target: _tourCard,
-          title: 'This is your Calorie Card',
-          body: 'Think of calories like money. Your card is topped up every '
-              'day, and the food you log is spent from it.',
-          padding: 6,
-          radius: 24,
-        ),
-        TourStep(
-          target: _cardTour.balance,
-          title: 'Your calorie balance',
-          body: "What you've got left to spend today. If you go over, it "
-              'turns red with a minus.',
-          radius: 10,
-        ),
-        TourStep(
-          target: _cardTour.protein,
-          title: 'Protein allowance',
-          body: "How much protein you've got left today. It keeps you full "
-              'and helps build muscle.',
-          radius: 10,
-        ),
-        TourStep(
-          target: _cardTour.carbs,
-          title: 'Carbs allowance',
-          body: 'Your main energy for the day: bread, rice, pasta, fruit '
-              'and the like.',
-          radius: 10,
-        ),
-        TourStep(
-          target: _cardTour.fat,
-          title: 'Fat allowance',
-          body: 'Fats from things like oils, nuts, cheese and meat. You need '
-              'some, but they add up fast.',
-          radius: 10,
-        ),
-        TourStep(
-          target: _cardTour.holder,
-          title: 'Your name',
-          body: 'Your name goes on your card, just like a real one. Friends '
-              'see it too.',
-          radius: 10,
-        ),
-        TourStep(
-          target: _cardTour.validThru,
-          title: "Today's date",
-          body: 'Each card is good for one day. At midnight it starts again '
-              'with a full balance.',
-          radius: 10,
-        ),
-      ]).then((done) {
-        // Couldn't show yet (e.g. they started typing): try again later.
-        if (!done && mounted) _cardTourStarted = false;
-      });
-    });
-  }
-
   @override
   void dispose() {
-    FocusManager.instance.removeListener(_maybeStartCardTour);
     _ageFocusNode.dispose();
     _heightFocusNode.dispose();
     _weightFocusNode.dispose();
@@ -219,10 +128,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
   Future<void> saveData() async {
     final userId = FirebaseAuth.instance.currentUser!.uid;
 
-    // Use manual calorie goal if no AI data (manual input path), otherwise use AI calculated
-    final finalCalories = _lastAIData == null && _manualCalorieGoal != null
-        ? _manualCalorieGoal
-        : cardActiveCalories;
+    final finalCalories = _ownMode ? _manualCalorieGoal : cardActiveCalories;
 
     if (finalCalories == null || finalCalories <= 0) {
       throw StateError('No calorie goal set');
@@ -269,7 +175,24 @@ class _GetStartedPageState extends State<GetStartedPage> {
     cardActiveCalories =
         calorieSelections[2] == true ? calorieSurplus : cardActiveCalories;
 
-    _prefillMacrosFromCalories();
+    final mode = calorieSelections[0]
+        ? 'lose'
+        : calorieSelections[1]
+            ? 'maintain'
+            : 'gain';
+    final aiTarget = _aiTargets?[mode];
+    if (aiTarget is Map && aiTarget['protein_g'] != null) {
+      setState(() {
+        _proteinGoal = asInt(aiTarget['protein_g']);
+        _carbsGoal = asInt(aiTarget['carbs_g']);
+        _fatsGoal = asInt(aiTarget['fat_g']);
+        _proteinController.text = _proteinGoal?.toString() ?? '';
+        _carbsController.text = _carbsGoal?.toString() ?? '';
+        _fatsController.text = _fatsGoal?.toString() ?? '';
+      });
+    } else {
+      _prefillMacrosFromCalories();
+    }
   }
 
   void _prefillMacrosFromCalories() {
@@ -401,6 +324,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
 
         if (targets != null) {
           setState(() {
+            _aiTargets = Map<String, dynamic>.from(targets as Map);
             calorieDeficit = asInt(targets['lose']?['calories']);
             calorieMaintenance = asInt(targets['maintain']?['calories']);
             calorieSurplus = asInt(targets['gain']?['calories']);
@@ -458,6 +382,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
 
   void updateCalories() {
     _markFieldsChanged();
+    // New details: back to the formula until Coach is asked again.
+    _aiTargets = null;
     var genderAdjustment = genderSelections.first ? 5 : -161;
     double activityMultiplier = 0;
 
@@ -494,7 +420,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
       calorieSurplus = 0;
     }
 
-    updateCardActiveCalories();
+    // "Set my own" keeps the numbers they typed.
+    if (!_ownMode) updateCardActiveCalories();
   }
 
   Widget _buildSectionHeader({
@@ -638,7 +565,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
 
   /// Slim "About you → Goal → Your card" progress line under the header.
   Widget _buildProgress() {
-    final int step = _flowState == 'results' ? 2 : (_inputsValid ? 1 : 0);
+    final int step = _canFinish ? 2 : ((_inputsValid || _ownMode) ? 1 : 0);
     const labels = ['About you', 'Goal', 'Your card'];
     return Semantics(
       label: 'Step ${step + 1} of 3: ${labels[step]}',
@@ -816,8 +743,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
                       setState(() {
                         _selectedAge = value;
                         if (_selectedAge != null &&
-                            _selectedAge! >= 18 &&
-                            _selectedAge! <= 117) {
+                            _selectedAge! >= 13 &&
+                            _selectedAge! <= 120) {
                           updateCalories();
                         }
                       });
@@ -894,7 +821,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                     _selectedWeight = value;
                     if (_selectedWeight != null &&
                         _selectedWeight! >= 30 &&
-                        _selectedWeight! <= 200) {
+                        _selectedWeight! <= 350) {
                       updateCalories();
                     }
                   });
@@ -950,75 +877,134 @@ class _GetStartedPageState extends State<GetStartedPage> {
     );
   }
 
-  /// Choose between Coach working it out and typing your own numbers.
-  Widget _buildMethodChoice() {
-    final bool canAsk = _inputsValid &&
-        (_canEstimateWithAI || _lastAIData == null) &&
-        !_isEstimatingWithAI;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppDecor.card,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'How should we set your budget?',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-              color: AppColors.ink,
+  /// A goal has been set and the card can be printed.
+  bool get _canFinish {
+    final calories = _ownMode ? _manualCalorieGoal : cardActiveCalories;
+    return calories != null &&
+        calories >= 500 &&
+        calories <= 10000 &&
+        (_ownMode || _inputsValid);
+  }
+
+  bool get _personalised => _lastAIData != null && !_canEstimateWithAI;
+
+  void _setOwnMode(bool own) {
+    if (own == _ownMode) return;
+    setState(() {
+      _ownMode = own;
+      if (own) {
+        // Start from the calculated numbers, so it's a tweak, not a blank.
+        final start = cardActiveCalories;
+        if (start != null && start > 0 && _manualCalorieGoal == null) {
+          _manualCalorieGoal = start;
+          _manualCalorieController.text = start.toString();
+        }
+      }
+    });
+    if (!own) updateCardActiveCalories();
+  }
+
+  Widget _modeButton(bool own, IconData icon, String label) {
+    final selected = _ownMode == own;
+    return Expanded(
+      child: Material(
+        color: selected ? AppColors.primaryDark : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _setOwnMode(own),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon,
+                    size: 18,
+                    color: selected ? Colors.white : AppColors.gray600),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: selected ? Colors.white : AppColors.gray700,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 50,
-            child: FilledButton.icon(
-              onPressed: canAsk
-                  ? () async {
-                      final ok = await _estimateWithAI();
-                      if (ok && mounted) {
-                        setState(() {
-                          _flowState = 'results';
-                        });
-                        WidgetsBinding.instance.addPostFrameCallback(
-                            (_) => _maybeStartCardTour());
-                      }
-                    }
-                  : null,
-              icon: const Icon(Icons.auto_awesome, size: 20),
-              label: const Text(
-                'Let Coach work it out',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
+        ),
+      ),
+    );
+  }
+
+  Widget _coachButton() {
+    if (_isEstimatingWithAI) {
+      return OutlinedButton.icon(
+        onPressed: null,
+        icon: const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        label: const Text('Coach is working it out…'),
+      );
+    }
+    if (_personalised) {
+      return OutlinedButton.icon(
+        onPressed: null,
+        icon: Icon(Icons.check_circle, color: AppText.emerald600, size: 20),
+        label: Text(
+          'Personalised by Coach',
+          style: TextStyle(color: AppText.emerald600),
+        ),
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: _inputsValid ? () => _estimateWithAI() : null,
+      icon: const Icon(Icons.auto_awesome, size: 20),
+      label: Text(
+          _lastAIData != null ? 'Update with Coach' : 'Personalise with Coach'),
+    );
+  }
+
+  Widget _macroChip(String label, int? grams, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: AppDecor.inset,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration:
+                      BoxDecoration(color: color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
+              ],
             ),
-          ),
-          if (!_inputsValid) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 3),
             Text(
-              'Fill in your age, height and weight to continue',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: AppColors.muted),
+              grams == null ? '–' : '${grams}g',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
             ),
           ],
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 50,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _flowState = 'results';
-                  _manualCalorieGoal = null;
-                  _manualCalorieController.clear();
-                });
-              },
-              icon: const Icon(Icons.edit_note, size: 20),
-              label: const Text(
-                "I'll enter my own",
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1045,214 +1031,226 @@ class _GetStartedPageState extends State<GetStartedPage> {
     );
   }
 
-  Widget _buildResults() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: TextButton.icon(
-              onPressed: () {
-                setState(() {
-                  _flowState = 'input';
-                });
-              },
-              icon: const Icon(Icons.arrow_back_rounded, size: 18),
-              label: const Text('Change how we set it'),
+  /// Your goal: worked out as you type, or your own numbers.
+  Widget _buildGoal() {
+    final hasNumbers = _inputsValid && (calorieMaintenance ?? 0) > 0;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecor.card,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: AppColors.gray100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                _modeButton(false, Icons.auto_awesome, 'Calculate for me'),
+                _modeButton(true, Icons.edit_note, 'Set my own'),
+              ],
             ),
           ),
-        ),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: AppDecor.card,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Manual calorie entry
-              if (_lastAIData == null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Daily calorie budget',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: AppColors.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _manualCalorieController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: 'kcal',
-                          hintText: 'E.g. 2000',
-                          floatingLabelBehavior: FloatingLabelBehavior.always,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                        ),
-                        onChanged: (value) {
-                          setState(() {
-                            _manualCalorieGoal = int.tryParse(value);
-                            cardActiveCalories = _manualCalorieGoal;
-                            _prefillMacrosFromCalories();
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                )
-              else ...[
-                // Goal selection (Coach's results)
-                Text(
-                  'Pick your goal',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.gray800,
+          const SizedBox(height: 16),
+          if (!_ownMode) ...[
+            Text(
+              hasNumbers
+                  ? 'Pick a goal. The numbers update as you change your details.'
+                  : 'Fill in your age, height and weight to see your numbers.',
+              style: TextStyle(fontSize: 13, color: AppColors.muted),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _choiceTile(
+                    selected: calorieSelections[0],
+                    icon: Icons.trending_down,
+                    label: 'Lose',
+                    detail: hasNumbers
+                        ? '${_thousands(calorieDeficit ?? 0)} kcal'
+                        : '–',
+                    onTap: () => _selectGoal(0),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _choiceTile(
-                        selected: calorieSelections[0],
-                        icon: Icons.trending_down,
-                        label: 'Lose',
-                        detail: '${_thousands(calorieDeficit ?? 0)} kcal',
-                        onTap: () => _selectGoal(0),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _choiceTile(
-                        selected: calorieSelections[1],
-                        icon: Icons.horizontal_rule,
-                        label: 'Maintain',
-                        detail: '${_thousands(calorieMaintenance ?? 0)} kcal',
-                        onTap: () => _selectGoal(1),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _choiceTile(
-                        selected: calorieSelections[2],
-                        icon: Icons.trending_up,
-                        label: 'Gain',
-                        detail: '${_thousands(calorieSurplus ?? 0)} kcal',
-                        onTap: () => _selectGoal(2),
-                      ),
-                    ),
-                  ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _choiceTile(
+                    selected: calorieSelections[1],
+                    icon: Icons.horizontal_rule,
+                    label: 'Maintain',
+                    detail: hasNumbers
+                        ? '${_thousands(calorieMaintenance ?? 0)} kcal'
+                        : '–',
+                    onTap: () => _selectGoal(1),
+                  ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _choiceTile(
+                    selected: calorieSelections[2],
+                    icon: Icons.trending_up,
+                    label: 'Gain',
+                    detail: hasNumbers
+                        ? '${_thousands(calorieSurplus ?? 0)} kcal'
+                        : '–',
+                    onTap: () => _selectGoal(2),
+                  ),
+                ),
               ],
-              // Macros
-              Text(
-                'Daily macros',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                  color: AppColors.ink,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Daily macros',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _macroChip('Protein', hasNumbers ? _proteinGoal : null,
+                    CalorieCardColors.protein),
+                const SizedBox(width: 8),
+                _macroChip('Carbs', hasNumbers ? _carbsGoal : null,
+                    CalorieCardColors.carbs),
+                const SizedBox(width: 8),
+                _macroChip('Fat', hasNumbers ? _fatsGoal : null,
+                    CalorieCardColors.fat),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _coachButton(),
+            const SizedBox(height: 6),
+            Text(
+              'Optional. Coach fine-tunes your calories and macros from '
+              'your details.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+          ] else ...[
+            Text(
+              'Daily calorie budget',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _manualCalorieController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'kcal',
+                hintText: 'E.g. 2000',
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
                 ),
               ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  _macroField(
-                    label: 'Protein',
-                    controller: _proteinController,
-                    focusNode: _proteinFocusNode,
-                    hintText: 'E.g. 150',
-                    onValue: (value) => _proteinGoal = value,
-                  ),
-                  _macroField(
-                    label: 'Carbs',
-                    controller: _carbsController,
-                    focusNode: _carbsFocusNode,
-                    hintText: 'E.g. 200',
-                    onValue: (value) => _carbsGoal = value,
-                  ),
-                ],
+              onChanged: (value) {
+                setState(() {
+                  _manualCalorieGoal = int.tryParse(value);
+                  cardActiveCalories = _manualCalorieGoal;
+                  _prefillMacrosFromCalories();
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Daily macros',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+                color: AppColors.ink,
               ),
-              Row(
-                children: [
-                  _macroField(
-                    label: 'Fat',
-                    controller: _fatsController,
-                    focusNode: _fatsFocusNode,
-                    hintText: 'E.g. 65',
-                    onValue: (value) => _fatsGoal = value,
-                  ),
-                  const Expanded(child: SizedBox()),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        // Card preview
-        KeyedSubtree(
-          key: _tourCard,
-          child: CreditCard(
-            key: ValueKey(
-                '${cardActiveCalories}_${_proteinGoal}_${_carbsGoal}_$_fatsGoal'),
-            initialCalories: cardActiveCalories ?? 0,
-            caloriesOverride: cardActiveCalories ?? 0,
-            proteinOverride: (_proteinGoal ?? 0).toDouble(),
-            carbsOverride: (_carbsGoal ?? 0).toDouble(),
-            fatsOverride: (_fatsGoal ?? 0).toDouble(),
-            skipFetch: true,
-            tourKeys: _cardTour,
-          ),
-        ),
-      ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                _macroField(
+                  label: 'Protein',
+                  controller: _proteinController,
+                  focusNode: _proteinFocusNode,
+                  hintText: 'E.g. 150',
+                  onValue: (value) => _proteinGoal = value,
+                ),
+                _macroField(
+                  label: 'Carbs',
+                  controller: _carbsController,
+                  focusNode: _carbsFocusNode,
+                  hintText: 'E.g. 200',
+                  onValue: (value) => _carbsGoal = value,
+                ),
+                _macroField(
+                  label: 'Fat',
+                  controller: _fatsController,
+                  focusNode: _fatsFocusNode,
+                  hintText: 'E.g. 65',
+                  onValue: (value) => _fatsGoal = value,
+                ),
+              ],
+            ),
+            Text(
+              'Changing a macro updates your calories to match.',
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
+  /// Opens the card reveal, which saves the card while it "prints".
   Future<void> _finishSetup() async {
-    // Save first (and only once): the card reads this data as soon as the
-    // app opens.
-    if (_finishingSetup) return;
+    if (_finishingSetup || !_canFinish) return;
+    FocusScope.of(context).unfocus();
     setState(() => _finishingSetup = true);
-    try {
-      await saveData();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _finishingSetup = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e is StateError
-            ? 'Set your daily calorie budget first.'
-            : "Couldn't save your card. Check your connection and try again."),
-      ));
-      return;
-    }
-    if (!mounted) return;
-    await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+    final calories =
+        (_ownMode ? _manualCalorieGoal : cardActiveCalories) ?? 0;
+    final email = FirebaseAuth.instance.currentUser?.email ?? '';
+    final holder = cardholderFromEmail(email);
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => const MainShell(initialIndex: 1),
+        builder: (revealContext) => CardRevealPage(
+          save: saveData,
+          calories: calories,
+          protein: _proteinGoal ?? 0,
+          carbs: _carbsGoal ?? 0,
+          fat: _fatsGoal ?? 0,
+          holder: holder.isEmpty ? 'You' : holder,
+          onDone: () {
+            Navigator.of(revealContext, rootNavigator: true)
+                .pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (context) => const MainShell(initialIndex: 1),
+              ),
+              (route) => false,
+            );
+          },
+        ),
       ),
-      (route) => false,
     );
+    // Back from a failed save: let them try again.
+    if (mounted) setState(() => _finishingSetup = false);
   }
 
   Widget _buildFinish() {
-    final int calories = cardActiveCalories ?? 0;
+    final int calories =
+        (_ownMode ? _manualCalorieGoal : cardActiveCalories) ?? 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (calories > 0)
+        if (_canFinish)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
@@ -1271,7 +1269,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
         SizedBox(
           height: 56,
           child: FilledButton(
-            onPressed: _finishingSetup ? null : _finishSetup,
+            onPressed: _finishingSetup || !_canFinish ? null : _finishSetup,
             style: FilledButton.styleFrom(
               disabledBackgroundColor:
                   AppColors.primaryDark.withValues(alpha: 0.6),
@@ -1290,10 +1288,10 @@ class _GetStartedPageState extends State<GetStartedPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle, size: 20),
+                      Icon(Icons.credit_card_rounded, size: 20),
                       SizedBox(width: 8),
                       Text(
-                        'Activate my card',
+                        'Print my card',
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
@@ -1304,43 +1302,6 @@ class _GetStartedPageState extends State<GetStartedPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildLoadingOverlay() {
-    return Container(
-      color: Colors.black.withValues(alpha: 0.5),
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: AppDecor.card,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(AppText.primary),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Coach is working out\nyour daily budget…',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -1384,16 +1345,27 @@ class _GetStartedPageState extends State<GetStartedPage> {
                                   icon: Icons.track_changes,
                                   title: 'Your goal',
                                   subtitle:
-                                      'Pick a goal and check your daily allowance',
+                                      'How many calories a day, and how to split them',
                                 ),
                                 const SizedBox(height: 16),
-                                if (_flowState == 'input')
-                                  _buildMethodChoice()
-                                else if (_flowState == 'results')
-                                  _buildResults(),
+                                _buildGoal(),
                                 const SizedBox(height: 24),
-                                // Save button (only once results are ready)
-                                if (_flowState == 'results') _buildFinish(),
+                                _buildFinish(),
+                                if (!_canFinish)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      _ownMode
+                                          ? 'Enter a daily budget between '
+                                              '500 and 10,000 kcal.'
+                                          : 'Fill in your details above to '
+                                              'print your card.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color: AppColors.muted),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -1405,7 +1377,6 @@ class _GetStartedPageState extends State<GetStartedPage> {
               ),
             ),
           ),
-          if (_isEstimatingWithAI) _buildLoadingOverlay(),
         ],
       ),
     );

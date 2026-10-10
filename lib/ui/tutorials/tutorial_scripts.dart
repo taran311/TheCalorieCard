@@ -9,9 +9,9 @@ const _wrap = MockFood('Chicken wrap', '1 wrap', 'Lunch', 380,
     protein: 24, carbs: 40, fat: 12);
 const _apple = MockFood('Apple', '1 medium', 'Lunch', 72,
     protein: 0.4, carbs: 19, fat: 0.2);
-const _eggs = MockFood('Scrambled eggs', '2 large', 'Brekkie', 156,
+const _eggs = MockFood('Scrambled eggs', '2 large', 'Breakfast', 156,
     protein: 13, carbs: 1, fat: 10);
-const _toast = MockFood('Wholemeal toast with butter', '1 slice', 'Brekkie',
+const _toast = MockFood('Wholemeal toast with butter', '1 slice', 'Breakfast',
     128, protein: 4, carbs: 14, fat: 6);
 const _pizza = MockFood('Margherita pizza', '1/2 large', 'Dinner', 900,
     protein: 36, carbs: 110, fat: 32);
@@ -50,7 +50,7 @@ final List<Tutorial> tutorials = [
       ),
       const TStep(
         title: 'Your meals',
-        body: 'Your day is split into Brekkie, Lunch, Dinner and Snacks, '
+        body: 'Your day is split into Breakfast, Lunch, Dinner and Snacks, '
             'each with what you had and its own Add button.',
         target: 'section_Lunch',
       ),
@@ -160,7 +160,7 @@ final List<Tutorial> tutorials = [
         body: 'Tell Coach what you had, in your own words.',
         target: 'coachInput',
         act: TAct.type,
-        text: 'add 2 eggs and toast to brekkie',
+        text: 'add 2 eggs and toast to breakfast',
         onType: (s, t) => s.coachTyped = t,
         focus: 'coachSend',
       ),
@@ -180,7 +180,7 @@ final List<Tutorial> tutorials = [
           s.coach.add(const MockMessage(
               false, "Here you go, tap Add and it's on your card. 🍳"));
           s.proposal = [_eggs, _toast];
-          s.proposalMeal = 'Brekkie';
+          s.proposalMeal = 'Breakfast';
           s.proposalStatus = ProposalStatus.ready;
         },
         thenAfter: const Duration(milliseconds: 2000),
@@ -199,17 +199,17 @@ final List<Tutorial> tutorials = [
         act: TAct.tap,
         apply: (s) {
           s.proposalStatus = ProposalStatus.done;
-          s.foods.addAll(s.proposal.map((f) => f.inMeal('Brekkie')));
+          s.foods.addAll(s.proposal.map((f) => f.inMeal('Breakfast')));
         },
       ),
       TStep(
         title: 'Back on your card',
-        body: 'Brekkie now has the eggs and toast, and your balance is up '
+        body: 'Breakfast now has the eggs and toast, and your balance is up '
             'to date.',
         target: 'nav_card',
         act: TAct.tap,
         apply: (s) => s.screen = MockScreen.home,
-        focus: 'section_Brekkie',
+        focus: 'section_Breakfast',
       ),
       const TStep(
         title: "You're all set",

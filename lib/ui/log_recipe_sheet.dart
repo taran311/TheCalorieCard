@@ -49,7 +49,7 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
     // default from the time of day (they can change it with the chips).
     final hour = DateTime.now().hour;
     if (hour < 11) {
-      _meal = 'Brekkie';
+      _meal = 'Breakfast';
     } else if (hour < 15) {
       _meal = 'Lunch';
     } else if (hour >= 17 && hour < 22) {

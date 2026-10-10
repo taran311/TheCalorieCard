@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/coach_actions.dart';
+import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/statement_service.dart';
 
@@ -196,7 +197,7 @@ class CoachContext {
             id: e.id,
             name: '${e.data()['food_description'] ?? ''}',
             portion: '${e.data()['food_portion'] ?? ''}',
-            meal: '${e.data()['foodCategory'] ?? ''}',
+            meal: FoodLog.displayMeal('${e.data()['foodCategory'] ?? ''}'),
             calories: Macros.fromEntry(e.data()).calories,
           )
       ],
