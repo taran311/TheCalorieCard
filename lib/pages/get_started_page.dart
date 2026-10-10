@@ -5,7 +5,6 @@ import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
-import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/services/proxy_client.dart';
@@ -79,7 +78,6 @@ class _GetStartedPageState extends State<GetStartedPage> {
 
   // AI estimation state
   bool _isEstimatingWithAI = false;
-  bool _showMiniGame = false;
   bool _canEstimateWithAI = false;
   Map<String, dynamic>? _lastAIData;
 
@@ -452,7 +450,6 @@ class _GetStartedPageState extends State<GetStartedPage> {
       if (mounted) {
         setState(() {
           _isEstimatingWithAI = false;
-          _showMiniGame = false;
         });
       }
     }
@@ -1338,19 +1335,6 @@ class _GetStartedPageState extends State<GetStartedPage> {
                       color: AppColors.ink,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _showMiniGame = true;
-                      });
-                    },
-                    icon: const Icon(Icons.sports_esports, size: 18),
-                    label: const Text(
-                      'Play a quick game while you wait',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -1421,8 +1405,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
               ),
             ),
           ),
-          if (_isEstimatingWithAI && _showMiniGame) const PingPongGame(),
-          if (_isEstimatingWithAI && !_showMiniGame) _buildLoadingOverlay(),
+          if (_isEstimatingWithAI) _buildLoadingOverlay(),
         ],
       ),
     );

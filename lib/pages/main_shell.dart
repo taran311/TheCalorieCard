@@ -14,6 +14,8 @@ import 'package:namer_app/pages/menu_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
 import 'package:namer_app/pages/recipes_page.dart';
 import 'package:namer_app/pages/statement_page.dart';
+import 'package:namer_app/services/coach_service.dart';
+import 'package:namer_app/ui/coach_glyph.dart';
 import 'package:namer_app/ui/coach_orb.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/spotlight_tour.dart';
@@ -522,15 +524,31 @@ class _DesktopLayout extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 20),
-                  child: Material(
-                    color: AppColors.surface,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      side: BorderSide(color: AppColors.border),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: LocalMediaQuery(child: body),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Material(
+                          color: AppColors.surface,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            side: BorderSide(color: AppColors.border),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: LocalMediaQuery(child: body),
+                        ),
+                      ),
+                      // Coach on the Card page, like the orb on phones.
+                      // (Other pages use bottom-right for their own button.)
+                      if (current == ShellTab.card)
+                        Positioned(
+                          right: 20,
+                          bottom: 20,
+                          child: _AskCoachButton(
+                            onTap: () => onSelect(ShellTab.coach),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -701,11 +719,13 @@ class _SidebarItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = selected ? AppColors.primary : AppColors.muted;
-    final icon = _BadgedIcon(
-      icon: selected ? spec.selectedIcon : spec.icon,
-      count: badge,
-      color: color,
-    );
+    final Widget icon = spec.tab == ShellTab.coach
+        ? const _CoachSidebarIcon()
+        : _BadgedIcon(
+            icon: selected ? spec.selectedIcon : spec.icon,
+            count: badge,
+            color: color,
+          );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -742,6 +762,70 @@ class _SidebarItem extends StatelessWidget {
                     )
                   : Center(child: icon),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Coach's sidebar icon: the spark in a brand-gradient circle, which
+/// becomes flowing waves while Coach is thinking.
+class _CoachSidebarIcon extends StatelessWidget {
+  const _CoachSidebarIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: AppColors.brandGradient,
+      ),
+      child: ValueListenableBuilder<bool>(
+        valueListenable: CoachService.thinking,
+        builder: (context, thinking, _) =>
+            CoachGlyph(size: 15, thinking: thinking),
+      ),
+    );
+  }
+}
+
+/// "Ask Coach" with the animated orb, floating on the Card page on big
+/// screens.
+class _AskCoachButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AskCoachButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      elevation: 6,
+      shadowColor: AppColors.primary.withValues(alpha: 0.35),
+      shape: StadiumBorder(side: BorderSide(color: AppColors.border)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(6, 6, 18, 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CoachOrb(size: 44, onTap: onTap),
+              const SizedBox(width: 10),
+              Text(
+                'Ask Coach',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: AppColors.ink,
+                ),
+              ),
+            ],
           ),
         ),
       ),

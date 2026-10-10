@@ -6,7 +6,6 @@ import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
-import 'package:namer_app/components/mini_game.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/balance_service.dart';
@@ -171,11 +170,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
   // AI estimation state
   bool _isEstimatingWithAI = false;
-  bool _showMiniGame = false;
   bool _canEstimateWithAI = false;
   bool _macrosFromAI = false;
   Map<String, dynamic>? _lastAIData;
-  bool _showAIResults = false; // Toggle between inputs and results in AI tab
 
   // Tab state
   int _selectedTabIndex = 0; // 0 = AI Calculated, 1 = Manual Input
@@ -385,8 +382,15 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           if (userData['goal_source'] == 'manual') {
             _selectedTabIndex = 1;
           } else if (storedGoal != null && storedGoal > 0) {
-            // Returning users see their saved goal (and Save) straight away.
-            _showAIResults = true;
+            // The chosen goal shows your saved number, so the toggle and
+            // the card agree.
+            if (calorieMode == 'maintain') {
+              calorieMaintenance = storedGoal;
+            } else if (calorieMode == 'gain') {
+              calorieSurplus = storedGoal;
+            } else {
+              calorieDeficit = storedGoal;
+            }
           }
         });
       }
@@ -569,7 +573,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               updateCardActiveCalories();
 
               _macrosFromAI = true;
-              _showAIResults = true; // Show results view after estimation
               _canEstimateWithAI = false;
               _lastAIData = {
                 'age': _selectedAge,
@@ -579,9 +582,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                 'exercise': _exerciseLevel,
               };
 
-              // Reset mini game and estimation state on success
               _isEstimatingWithAI = false;
-              _showMiniGame = false;
             });
 
             // Success - exit retry loop
@@ -646,7 +647,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     if (mounted) {
       setState(() {
         _isEstimatingWithAI = false;
-        _showMiniGame = false;
       });
     }
   }
@@ -676,8 +676,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   }
 
   bool isLoading = false;
-
-  bool get _hasGoal => (cardActiveCalories ?? 0) > 0;
 
   void _selectGoal(int index) {
     setState(() {
@@ -711,7 +709,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             ),
           ),
           Text(
-            '${kcal ?? 0}',
+            (kcal ?? 0) > 0 ? '$kcal' : '–',
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w500,
@@ -753,87 +751,62 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     );
   }
 
-  Widget _buildAICalculatedTab() {
-    // Show Results View
-    if (_showAIResults) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          OutlinedButton.icon(
-            onPressed: () {
-              setState(() {
-                _showAIResults = false;
-              });
-            },
-            icon: const Icon(Icons.arrow_back, size: 18),
-            label: const Text('Back to my details'),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Your goal',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: AppColors.gray800,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            // Shrinks to fit on very narrow phones instead of overflowing.
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: ToggleButtons(
-                isSelected: calorieSelections,
-                selectedColor: Colors.white,
-                fillColor: AppColors.primary,
-                borderColor: AppColors.primary,
-                selectedBorderColor: AppColors.primary,
-                borderRadius: BorderRadius.circular(10),
-                onPressed: _selectGoal,
-                constraints: const BoxConstraints(
-                  minWidth: 84,
-                  minHeight: 52,
-                ),
-                children: [
-                  _goalOption(Icons.trending_down, 'Lose', calorieDeficit),
-                  _goalOption(
-                      Icons.horizontal_rule, 'Maintain', calorieMaintenance),
-                  _goalOption(Icons.trending_up, 'Gain', calorieSurplus),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Macros',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildReadOnlyMacroField('Protein', _proteinGoal ?? 0),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildReadOnlyMacroField('Carbs', _carbsGoal ?? 0),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildReadOnlyMacroField('Fat', _fatsGoal ?? 0),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _cardPreview(),
-        ],
+  bool get _hasDetails =>
+      _selectedAge != null && _selectedHeight != null && _selectedWeight != null;
+
+  Widget _sectionTitle(String text) => Text(
+        text,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: AppColors.gray800,
+        ),
+      );
+
+  /// Optional: Coach fine-tunes the goal and macros from your details.
+  Widget _coachButton() {
+    final personalised = _macrosFromAI && !_canEstimateWithAI;
+    if (_isEstimatingWithAI) {
+      return OutlinedButton.icon(
+        onPressed: null,
+        icon: const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        label: const Text('Coach is working it out…'),
       );
     }
+    if (personalised) {
+      return OutlinedButton.icon(
+        onPressed: null,
+        icon: Icon(Icons.check_circle, color: AppText.emerald600, size: 20),
+        label: Text(
+          'Personalised by Coach',
+          style: TextStyle(color: AppText.emerald600),
+        ),
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: _hasDetails
+          ? () async {
+              _markFieldsChanged();
+              await _estimateWithAI();
+            }
+          : null,
+      icon: const Icon(Icons.auto_awesome, size: 20),
+      label: Text(_macrosFromAI ? 'Update with Coach' : 'Personalise with Coach'),
+    );
+  }
 
-    // Show Inputs View
+  /// Everything on one page: your details, the goal (worked out as you
+  /// type), an optional Coach fine-tune, macros and the card preview.
+  Widget _buildAICalculatedTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _sectionTitle('About you'),
+        const SizedBox(height: 4),
         Row(
           children: [
             MeasurementInputField(
@@ -964,74 +937,70 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 14, color: AppColors.muted),
         ),
-        const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton.icon(
-            onPressed: _canEstimateWithAI || !_macrosFromAI
-                ? () async {
-                    _markFieldsChanged();
-                    await _estimateWithAI();
-                  }
-                : null,
-            icon: const Icon(Icons.auto_awesome, size: 20),
-            label: Text(_macrosFromAI && !_canEstimateWithAI
-                ? 'Done'
-                : 'Work out my targets'),
-          ),
+        const SizedBox(height: 28),
+        _sectionTitle('Your daily goal'),
+        const SizedBox(height: 4),
+        Text(
+          _hasDetails
+              ? 'Updates as you change your details. Tap to choose.'
+              : 'Add your age, height and weight to see your numbers.',
+          style: TextStyle(fontSize: 13, color: AppColors.muted),
         ),
-        if (_hasGoal) ...[
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton(
-              onPressed: () {
-                setState(() {
-                  _showAIResults = true;
-                });
-              },
-              child: const Text('Review and save'),
-            ),
-          ),
-        ]
-        // Empty state when nothing has been worked out yet
-        else if (!_macrosFromAI) ...[
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: AppDecor.inset,
-            child: Column(
+        const SizedBox(height: 12),
+        Center(
+          // Shrinks to fit on very narrow phones instead of overflowing.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: ToggleButtons(
+              isSelected: calorieSelections,
+              selectedColor: Colors.white,
+              fillColor: AppColors.primary,
+              borderColor: AppColors.primary,
+              selectedBorderColor: AppColors.primary,
+              borderRadius: BorderRadius.circular(10),
+              onPressed: _selectGoal,
+              constraints: const BoxConstraints(
+                minWidth: 84,
+                minHeight: 52,
+              ),
               children: [
-                Icon(
-                  Icons.auto_awesome,
-                  size: 48,
-                  color: AppText.primary.withValues(alpha: 0.3),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Let us work out your targets',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.gray800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Fill in your details, then tap "Work out my targets".',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.gray600,
-                  ),
-                ),
+                _goalOption(Icons.trending_down, 'Lose', calorieDeficit),
+                _goalOption(
+                    Icons.horizontal_rule, 'Maintain', calorieMaintenance),
+                _goalOption(Icons.trending_up, 'Gain', calorieSurplus),
               ],
             ),
           ),
-        ],
+        ),
+        const SizedBox(height: 16),
+        _coachButton(),
+        const SizedBox(height: 6),
+        Text(
+          'Optional. Coach fine-tunes your calories and macros from your '
+          'details.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+        const SizedBox(height: 24),
+        _sectionTitle('Macros'),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildReadOnlyMacroField('Protein', _proteinGoal ?? 0),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildReadOnlyMacroField('Carbs', _carbsGoal ?? 0),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildReadOnlyMacroField('Fat', _fatsGoal ?? 0),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _cardPreview(),
       ],
     );
   }
@@ -1321,46 +1290,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          if (_isEstimatingWithAI && _showMiniGame) const PingPongGame(),
-          if (_isEstimatingWithAI && !_showMiniGame)
-            Container(
-              color: Colors.black.withValues(alpha: 0.5),
-              child: Center(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(AppText.primary),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Working out your calories and macros…',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _showMiniGame = true;
-                            });
-                          },
-                          icon: const Icon(Icons.sports_esports, size: 18),
-                          label: const Text('Play ping pong while you wait'),
-                        ),
-                      ],
                     ),
                   ),
                 ),

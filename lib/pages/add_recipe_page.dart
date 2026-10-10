@@ -7,7 +7,6 @@ import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/recipe_service.dart';
-import 'package:namer_app/components/mini_game.dart';
 
 class AddRecipePage extends StatefulWidget {
   final String? recipeId; // if provided, page works in edit mode
@@ -38,7 +37,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
   final List<String> _freeTextIngredients = [];
   bool _calculatingAi = false;
   bool _isAiLoading = false;
-  bool _showMiniGame = false;
   bool _tutorialMode = false;
 
   // Cached tutorial data for instant demo
@@ -394,8 +392,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
               color: Colors.black45,
               child: const Center(child: CircularProgressIndicator()),
             ),
-          if ((_isAiLoading || _calculatingAi) && _showMiniGame)
-            const PingPongGame(),
           if (_tutorialMode)
             Container(
               color: Colors.black.withValues(alpha: 0.3),
@@ -1018,18 +1014,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
               ),
             ),
           ),
-          if (_calculatingAi && !_showMiniGame) ...[
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _showMiniGame = true;
-                });
-              },
-              icon: const Icon(Icons.sports_esports),
-              label: const Text('Play ping pong while you wait'),
-            ),
-          ],
         ],
       ],
     );
@@ -1074,7 +1058,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
           ..clear()
           ..addAll(failed);
         _calculatingAi = false;
-        _showMiniGame = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
