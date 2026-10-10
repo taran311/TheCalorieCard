@@ -104,110 +104,86 @@ class DayStepper extends StatelessWidget {
   }
 }
 
-/// Equal-width meal tabs (Breakfast / Lunch / Dinner / Snacks).
-class MealTabs extends StatelessWidget {
-  final List<String> meals;
-  final String selected;
-  final ValueChanged<String> onSelected;
+/// One line of macros, each in its own colour: "P 20 · C 35 · F 8".
+/// Replaces three stacked tiny lines, so it reads at a glance.
+class MacroText extends StatelessWidget {
+  final double protein;
+  final double carbs;
+  final double fat;
+  final double fontSize;
 
-  /// Calories logged per meal, shown under each label. Empty hides them.
-  final Map<String, int> totals;
-
-  const MealTabs({
+  const MacroText({
     super.key,
-    required this.meals,
-    required this.selected,
-    required this.onSelected,
-    this.totals = const {},
+    required this.protein,
+    required this.carbs,
+    required this.fat,
+    this.fontSize = 12,
   });
 
-  IconData _icon(String meal) {
-    switch (meal.toLowerCase()) {
-      case 'brekkie':
-      case 'breakfast':
-        return Icons.free_breakfast_outlined;
-      case 'lunch':
-        return Icons.lunch_dining_outlined;
-      case 'dinner':
-        return Icons.dinner_dining_outlined;
-      default:
-        return Icons.cookie_outlined;
-    }
-  }
+  static String _g(double v) => v.isFinite ? '${v.round()}' : '0';
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+    final dot = TextSpan(
+      text: ' · ',
+      style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
+    );
+    return Text.rich(
+      TextSpan(children: [
+        TextSpan(
+            text: 'P ${_g(protein)}',
+            style: TextStyle(color: AppColors.proteinText)),
+        dot,
+        TextSpan(
+            text: 'C ${_g(carbs)}',
+            style: TextStyle(color: AppColors.carbsText)),
+        dot,
+        TextSpan(
+            text: 'F ${_g(fat)}', style: TextStyle(color: AppColors.fatText)),
+      ]),
+      semanticsLabel: '${_g(protein)} grams protein, ${_g(carbs)} grams '
+          'carbs, ${_g(fat)} grams fat',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w700,
+        fontFeatures: const [FontFeature.tabularFigures()],
       ),
-      child: Row(
-        children: [
-          for (final meal in meals)
-            Expanded(
-              child: Semantics(
-                selected: meal == selected,
-                button: true,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () => onSelected(meal),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: meal == selected
-                          ? AppColors.primaryDark
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _icon(meal),
-                          size: 18,
-                          color: meal == selected
-                              ? Colors.white
-                              : AppColors.muted,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          meal,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: meal == selected
-                                ? Colors.white
-                                : AppColors.muted,
-                          ),
-                        ),
-                        if (totals.isNotEmpty)
-                          Text(
-                            (totals[meal] ?? 0) > 0
-                                ? '${totals[meal]} kcal'
-                                : '–',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w500,
-                              color: meal == selected
-                                  ? AppColors.indigo100
-                                  : AppColors.muted,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
+    );
+  }
+}
+
+/// Small "est." mark on a food whose calories were estimated by AI.
+class EstimateMark extends StatelessWidget {
+  const EstimateMark({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'AI estimate — tap to check',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(
+          color: AppColors.amber100,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.auto_awesome_rounded,
+                size: 12, color: AppText.amber700),
+            const SizedBox(width: 3),
+            Text(
+              'est.',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppText.amber800,
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

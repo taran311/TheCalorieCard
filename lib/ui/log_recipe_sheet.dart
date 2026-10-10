@@ -1,29 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/meal_time.dart';
 import 'package:namer_app/ui/responsive.dart';
 
-/// Bottom sheet: pick a meal and servings, then spend a recipe from the card.
-Future<void> showLogRecipeSheet(
+/// Bottom sheet: pick a meal and servings, then add a recipe to the card.
+///
+/// Returns what was logged (null if closed), and shows "Logged … · Undo"
+/// itself.
+Future<LoggedFoods?> showLogRecipeSheet(
   BuildContext context, {
   required String recipeId,
   required Map<String, dynamic> recipe,
 }) async {
-  // The sheet returns the meal it logged to, or null if closed.
-  final meal = await showModalBottomSheet<String>(
+  final messenger = ScaffoldMessenger.of(context);
+  final logged = await showModalBottomSheet<LoggedFoods>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     backgroundColor: AppColors.surface,
     builder: (_) => _LogRecipeSheet(recipeId: recipeId, recipe: recipe),
   );
-  if (meal != null && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
+  if (logged != null && logged.count > 0) {
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
-          content: Text(
-              'Logged ${recipe['name'] ?? 'recipe'} to $meal')),
+        content: Text(
+            'Logged ${recipe['name'] ?? 'recipe'} to ${logged.meal}'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            try {
+              await FoodLog.undo(logged);
+            } catch (_) {
+              messenger.showSnackBar(const SnackBar(
+                  content: Text("Couldn't undo that. Remove it from your "
+                      'diary instead.')));
+            }
+          },
+        ),
+      ),
     );
   }
+  return logged;
 }
 
 class _LogRecipeSheet extends StatefulWidget {
@@ -37,26 +57,21 @@ class _LogRecipeSheet extends StatefulWidget {
 }
 
 class _LogRecipeSheetState extends State<_LogRecipeSheet> {
-  late String _meal;
+  // The Card screen shows every meal now, so there's no "current" meal:
+  // default from the time of day (they can change it with the chips).
+  String _meal = MealTime.forHour(BalanceService.now().hour);
   double _servings = 1;
   bool _saving = false;
   String? _error;
 
+  /// Gram recipes: grams actually eaten, typed in (overrides the stepper).
+  final TextEditingController _gramsController = TextEditingController();
+  double? _gramsEaten;
+
   @override
-  void initState() {
-    super.initState();
-    // The Card screen shows every meal now, so there's no "current" meal:
-    // default from the time of day (they can change it with the chips).
-    final hour = DateTime.now().hour;
-    if (hour < 11) {
-      _meal = 'Breakfast';
-    } else if (hour < 15) {
-      _meal = 'Lunch';
-    } else if (hour >= 17 && hour < 22) {
-      _meal = 'Dinner';
-    } else {
-      _meal = 'Snacks';
-    }
+  void dispose() {
+    _gramsController.dispose();
+    super.dispose();
   }
 
   double _n(String key) => BalanceService.number(widget.recipe[key]) ?? 0;
@@ -72,26 +87,49 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
   bool get _grams => FoodLog.isGrams(_serving);
 
   /// Share of the whole recipe being logged. For gram recipes the stepper
-  /// counts whole recipes ("portions"); otherwise it counts servings.
-  double get _multiplier => _grams ? _servings : _servings / _base;
+  /// counts whole recipes ("portions") unless grams eaten are typed in;
+  /// otherwise it counts servings.
+  double get _multiplier {
+    final g = _gramsEaten;
+    if (_grams && g != null) return g / _base;
+    return _grams ? _servings : _servings / _base;
+  }
 
   double get _step => _grams ? 0.25 : 0.5;
 
   double get _maxServings => _grams ? 10.0 : (_base > 10 ? _base : 10.0);
 
+  void _setServings(double value) {
+    setState(() {
+      _servings = value;
+      // Using the stepper again replaces any grams typed in.
+      _gramsEaten = null;
+      _gramsController.clear();
+    });
+  }
+
+  void _onGramsChanged(String text) {
+    final v = double.tryParse(text.trim().replaceAll(',', '.'));
+    setState(() {
+      _gramsEaten = v != null && v.isFinite && v > 0 ? v : null;
+    });
+  }
+
   Future<void> _log() async {
+    // Set before the first await, so a double tap can't log it twice.
+    if (_saving) return;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
-      await FoodLog.logRecipe(
+      final logged = await FoodLog.logRecipe(
         recipeId: widget.recipeId,
         recipe: widget.recipe,
         meal: _meal,
         multiplier: _multiplier,
       );
-      if (mounted) Navigator.pop(context, _meal);
+      if (mounted) Navigator.pop(context, logged);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -176,14 +214,16 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
                 IconButton.outlined(
                   tooltip: 'Less',
                   onPressed: _servings > _step
-                      ? () => setState(() => _servings -= _step)
+                      ? () => _setServings(_servings - _step)
                       : null,
                   icon: const Icon(Icons.remove),
                 ),
                 SizedBox(
                   width: 56,
                   child: Text(
-                    FoodLog.formatAmount(_servings),
+                    // With grams typed in, show the share of the recipe.
+                    FoodLog.formatAmount(
+                        _gramsEaten != null && grams ? multiplier : _servings),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 20,
@@ -194,12 +234,33 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
                 IconButton.outlined(
                   tooltip: 'More',
                   onPressed: _servings < _maxServings
-                      ? () => setState(() => _servings += _step)
+                      ? () => _setServings(_servings + _step)
                       : null,
                   icon: const Icon(Icons.add),
                 ),
               ],
             ),
+            if (grams) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _gramsController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                ],
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: 'Or grams eaten',
+                  hintText: 'e.g. 300',
+                  suffixText: 'g',
+                  helperText: 'Weighed your plate? Type it in.',
+                  isDense: true,
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: _onGramsChanged,
+              ),
+            ],
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(14),
@@ -250,7 +311,9 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
                       )
                     : const Icon(Icons.credit_card),
                 label: Text(
-                  'Spend ${kcal.round()} kcal',
+                  'Add ${kcal.round()} kcal to $_meal',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,

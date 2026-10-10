@@ -64,6 +64,10 @@ class _CreditCardWidgetState extends State<CreditCard>
   );
 
   bool _loading = true;
+
+  /// The balance couldn't be read. Shown as a skeleton with Retry, never
+  /// as "0 kcal" (which looks like real data).
+  bool _failed = false;
   int _calories = 0;
   double _protein = 0, _carbs = 0, _fats = 0;
   double? _proteinGoal, _carbsGoal, _fatsGoal;
@@ -137,13 +141,29 @@ class _CreditCardWidgetState extends State<CreditCard>
       });
       if (!widget.skipFetch) widget.onBalance?.call(_calories);
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = !widget.skipFetch;
+        });
+      }
     }
+  }
+
+  void _retry() {
+    setState(() {
+      _failed = false;
+      _loading = !widget.skipFetch;
+    });
+    _load();
   }
 
   void _toggle() {
     final showMacros = _flip.value < 0.5;
-    if (showMacros) {
+    if (MediaQuery.of(context).disableAnimations) {
+      // Reduce motion: just show the other side.
+      _flip.value = showMacros ? 1 : 0;
+    } else if (showMacros) {
       _flip.forward();
     } else {
       _flip.reverse();
@@ -217,6 +237,10 @@ class _CreditCardWidgetState extends State<CreditCard>
     final label = calories < 0
         ? (_isToday ? 'Over budget today' : 'Over budget')
         : (_isToday ? 'Left to spend today' : 'Left that day');
+    // Shorter, on the card itself, so it's clear what the number means.
+    final caption = calories < 0
+        ? 'OVER BUDGET'
+        : (_isToday ? 'LEFT TODAY' : 'LEFT THAT DAY');
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -229,6 +253,63 @@ class _CreditCardWidgetState extends State<CreditCard>
             SizedBox(width: width, height: height, child: child);
 
         if (_loading) return sized(CalorieCardSkeleton(design: widget.design));
+        if (_failed) {
+          return sized(Stack(
+            children: [
+              Positioned.fill(
+                  child: CalorieCardSkeleton(design: widget.design)),
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: Material(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _retry,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 44),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.cloud_off_outlined,
+                                color: Colors.white, size: 18),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                "Couldn't load your card",
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Retry',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                decoration: TextDecoration.underline,
+                                decorationColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ));
+        }
 
         final macros = [
           CardMacro(
@@ -252,6 +333,7 @@ class _CreditCardWidgetState extends State<CreditCard>
         ];
         final front = CalorieCardFront(
           amount: calories,
+          label: caption,
           macros: macros,
           holder: holder,
           validThru: _validThru(),

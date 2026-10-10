@@ -178,5 +178,10 @@ void main() {
     final texts = convo.docs.map((d) => d['message'] as String).toList();
     expect(texts.any((t) => t.contains('challenged you')), isTrue);
     expect(texts.any((t) => t.contains('You won Guess the Calories')), isTrue);
+    // Each one links to the game, so the chat can open it.
+    for (final d in convo.docs) {
+      expect(d['type'], 'game');
+      expect(d['game_id'], id);
+    }
   });
 }

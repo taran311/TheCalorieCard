@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/services/coach_actions.dart';
 import 'package:namer_app/services/coach_service.dart';
+import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/pages/premium_page.dart';
 import 'package:namer_app/ui/calorie_card.dart';
@@ -37,6 +38,12 @@ class _Proposal extends ChangeNotifier {
   _ProposalState state = _ProposalState.preparing;
   PreparedAction? prepared;
   String? message;
+
+  /// Meal picked on the card (null = the one Coach suggested).
+  String? meal;
+
+  /// Lines taken out on the card before accepting.
+  final Set<int> removed = {};
   bool _disposed = false;
 
   _Proposal(this.action);
@@ -74,6 +81,7 @@ class _Item {
 
 class _CoachPageState extends State<CoachPage> {
   final _input = TextEditingController();
+  final _inputFocus = FocusNode();
   final _scroll = ScrollController();
 
   /// What's shown.
@@ -115,6 +123,7 @@ class _CoachPageState extends State<CoachPage> {
       item.proposal?.dispose();
     }
     _input.dispose();
+    _inputFocus.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -147,6 +156,17 @@ class _CoachPageState extends State<CoachPage> {
   /// A chip or card: Dining out / Drinks night out ask a couple of things
   /// first; everything else is sent as it is.
   Future<void> _tapPrompt(CoachPrompt p) async {
+    // "Add food for me" and friends start a message to finish, rather
+    // than sending something Coach would only have to ask about.
+    final prefill = p.prefill;
+    if (prefill != null) {
+      _input.value = TextEditingValue(
+        text: prefill,
+        selection: TextSelection.collapsed(offset: prefill.length),
+      );
+      _inputFocus.requestFocus();
+      return;
+    }
     final outing = p.outing;
     if (outing == null) {
       await _send(p.question);
@@ -191,7 +211,8 @@ class _CoachPageState extends State<CoachPage> {
 
   Future<void> _ask() async {
     setState(() => _setThinking(true));
-    _scrollToEnd();
+    // They just sent something, so show it.
+    _scrollToEnd(force: true);
     try {
       final reply =
           await CoachService.ask(history: _history, context: _context);
@@ -265,27 +286,54 @@ class _CoachPageState extends State<CoachPage> {
   Future<void> _accept(_Proposal p) async {
     final prepared = p.prepared;
     if (prepared == null || p.state != _ProposalState.ready) return;
-    p.update(() => p.state = _ProposalState.applying);
+    final removed = Set<int>.of(p.removed);
+    if (prepared.removable && prepared.keptCount(removed) == 0) return;
+    final meal = p.meal ?? prepared.meal;
+    p.update(() {
+      p.state = _ProposalState.applying;
+      p.message = null;
+    });
+    // Offline, Firestore keeps the change on this device and finishes it
+    // once back online. Until it's confirmed, say exactly that rather than
+    // claiming it's saved.
+    final slow = Timer(const Duration(seconds: 12), () {
+      p.update(() =>
+          p.message = "Saving… it'll finish when you're back online.");
+    });
     try {
-      String done;
-      try {
-        done = await prepared.apply().timeout(const Duration(seconds: 15));
-      } on TimeoutException {
-        // Saved on this device; Firestore sends it when back online.
-        done = "Saved. It'll sync when you're back online.";
-      }
+      final done = await prepared.apply(
+        meal: prepared.meal == null ? null : meal,
+        without: prepared.removable ? removed : null,
+      );
+      slow.cancel();
       p.update(() {
         p.state = _ProposalState.done;
         p.message = done;
       });
+      final changes = <String>[
+        if (prepared.meal != null && meal != prepared.meal)
+          'they moved it to $meal',
+        if (removed.isNotEmpty)
+          'they left out ${[
+            for (final i in removed)
+              if (i < prepared.lines.length) prepared.lines[i].name
+          ].join(', ')}',
+      ];
       _history.add(CoachMessage.coach(
-          '[App note: the user accepted, so I did it: ${prepared.summary}.]'));
+          '[App note: the user accepted, so I did it: ${prepared.summary}'
+          '${changes.isEmpty ? '' : ' (${changes.join('; ')})'}.]'));
       await _reloadContext();
     } catch (e) {
-      p.update(() => p.state = _ProposalState.ready);
+      slow.cancel();
+      p.update(() {
+        p.state = _ProposalState.ready;
+        p.message = null;
+      });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Couldn't make that change. Please try again."),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e is CoachActionException
+              ? e.message
+              : "Couldn't make that change. Please try again."),
         ));
       }
     }
@@ -325,14 +373,26 @@ class _CoachPageState extends State<CoachPage> {
     });
   }
 
-  void _scrollToEnd() {
+  /// Follows the chat down to the newest message, but only when they're
+  /// already at (or near) the bottom, so reading back up isn't yanked
+  /// away. [force] for their own messages.
+  void _scrollToEnd({bool force = false}) {
+    if (!force && _scroll.hasClients) {
+      final pos = _scroll.position;
+      if (pos.maxScrollExtent - pos.pixels > 80) return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scroll.hasClients) return;
-      _scroll.animateTo(
-        _scroll.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+      if (!mounted || !_scroll.hasClients) return;
+      final end = _scroll.position.maxScrollExtent;
+      if (MediaQuery.of(context).disableAnimations) {
+        _scroll.jumpTo(end);
+      } else {
+        _scroll.animateTo(
+          end,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
@@ -464,7 +524,7 @@ class _CoachPageState extends State<CoachPage> {
                             'Nothing changes until you tap Accept.',
                             textAlign: TextAlign.center,
                             style:
-                                TextStyle(fontSize: 11, color: AppColors.muted),
+                                TextStyle(fontSize: 12, color: AppColors.muted),
                           ),
                         ],
                       ),
@@ -487,7 +547,11 @@ class _CoachPageState extends State<CoachPage> {
                 ),
               _InputBar(
                 controller: _input,
-                enabled: !_thinking && !_loadingContext,
+                focusNode: _inputFocus,
+                // The box stays usable while Coach thinks (so the keyboard
+                // doesn't close); only sending waits.
+                enabled: !_loadingContext,
+                canSend: !_thinking && !_loadingContext,
                 onSend: () => _send(_input.text),
               ),
             ],
@@ -856,7 +920,8 @@ class _PromptChip extends StatelessWidget {
   }
 }
 
-/// A proposed change with its exact numbers and Accept / Reject.
+/// A proposed change with its exact numbers and Accept / Reject. Before
+/// accepting, the meal can be changed and single lines taken out.
 class _ProposalCard extends StatelessWidget {
   final _Proposal proposal;
   final ValueChanged<_Proposal> onAccept;
@@ -880,9 +945,17 @@ class _ProposalCard extends StatelessWidget {
         final prepared = p.prepared;
         final done = p.state == _ProposalState.done;
         final rejected = p.state == _ProposalState.rejected;
+        final ready = p.state == _ProposalState.ready;
+        final meal = p.meal ?? prepared?.meal;
+        final total = prepared?.totalWithout(p.removed);
+        final nothingLeft = prepared != null &&
+            prepared.removable &&
+            prepared.keptCount(p.removed) == 0;
 
         return AnimatedOpacity(
-          duration: const Duration(milliseconds: 250),
+          duration: MediaQuery.of(context).disableAnimations
+              ? Duration.zero
+              : const Duration(milliseconds: 250),
           opacity: rejected ? 0.6 : 1,
           child: Container(
             margin: const EdgeInsets.only(top: 4, bottom: 8, right: 24),
@@ -904,12 +977,14 @@ class _ProposalCard extends StatelessWidget {
                   Row(
                     children: [
                       CoachGlyph(
-                          size: 22, thinking: true, color: AppColors.primary),
-                      SizedBox(width: 10),
-                      Text('Looking up the numbers…',
-                          style: TextStyle(
-                              color: AppColors.muted,
-                              fontWeight: FontWeight.w600)),
+                          size: 22, thinking: true, color: AppText.primary),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text('Looking up the numbers…',
+                            style: TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w600)),
+                      ),
                     ],
                   )
                 else if (p.state == _ProposalState.failed)
@@ -922,7 +997,8 @@ class _ProposalCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          prepared.title,
+                          // Follows the meal picked below.
+                          meal != null ? 'Add to $meal' : prepared.title,
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
@@ -933,16 +1009,28 @@ class _ProposalCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  for (final line in prepared.lines) _ProposalLineRow(line),
-                  if (prepared.total != null) ...[
+                  for (var i = 0; i < prepared.lines.length; i++)
+                    _ProposalLineRow(
+                      prepared.lines[i],
+                      removed: p.removed.contains(i),
+                      onToggle: prepared.removable &&
+                              ready &&
+                              !prepared.lines[i].skipped &&
+                              prepared.lines.length > 1
+                          ? () => p.update(() {
+                                if (!p.removed.remove(i)) p.removed.add(i);
+                              })
+                          : null,
+                    ),
+                  if (total != null) ...[
                     const Divider(height: 16),
                     Row(
                       children: [
                         Text(
-                          _signedKcal(prepared.total!.calories),
+                          _signedKcal(total.calories),
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
-                            color: prepared.total!.calories < 0
+                            color: total.calories < 0
                                 ? AppText.emerald600
                                 : AppColors.ink,
                           ),
@@ -950,9 +1038,9 @@ class _ProposalCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '${prepared.total!.protein.abs().round()}g protein · '
-                            '${prepared.total!.carbs.abs().round()}g carbs · '
-                            '${prepared.total!.fat.abs().round()}g fat',
+                            '${total.protein.abs().round()}g protein · '
+                            '${total.carbs.abs().round()}g carbs · '
+                            '${total.fat.abs().round()}g fat',
                             style: TextStyle(
                                 fontSize: 12, color: AppColors.muted),
                           ),
@@ -966,8 +1054,23 @@ class _ProposalCard extends StatelessWidget {
                         style: TextStyle(
                             fontSize: 12, color: AppColors.muted)),
                   ],
+                  if (ready && meal != null) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final m in FoodLog.meals)
+                          ChoiceChip(
+                            label: Text(m),
+                            selected: meal == m,
+                            onSelected: (_) => p.update(() => p.meal = m),
+                          ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 10),
-                  if (p.state == _ProposalState.ready)
+                  if (ready)
                     Row(
                       children: [
                         Expanded(
@@ -979,7 +1082,7 @@ class _ProposalCard extends StatelessWidget {
                         const SizedBox(width: 10),
                         Expanded(
                           child: FilledButton(
-                            onPressed: () => onAccept(p),
+                            onPressed: nothingLeft ? null : () => onAccept(p),
                             style: FilledButton.styleFrom(
                               backgroundColor: prepared.destructive
                                   ? AppColors.red600
@@ -991,12 +1094,24 @@ class _ProposalCard extends StatelessWidget {
                       ],
                     )
                   else if (p.state == _ProposalState.applying)
-                    const Center(
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
-                      ),
+                    Row(
+                      children: [
+                        const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            p.message ?? 'Saving…',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ),
+                      ],
                     )
                   else
                     Row(
@@ -1036,10 +1151,17 @@ class _ProposalCard extends StatelessWidget {
 class _ProposalLineRow extends StatelessWidget {
   final ProposalLine line;
 
-  const _ProposalLineRow(this.line);
+  /// Taken out on the card (shown struck through, with a way back).
+  final bool removed;
+
+  /// Takes the line out or puts it back; null when it can't be changed.
+  final VoidCallback? onToggle;
+
+  const _ProposalLineRow(this.line, {this.removed = false, this.onToggle});
 
   @override
   Widget build(BuildContext context) {
+    final out = line.skipped || removed;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -1050,7 +1172,11 @@ class _ProposalLineRow extends StatelessWidget {
             child: Icon(
               line.skipped ? Icons.warning_amber_rounded : Icons.circle,
               size: line.skipped ? 15 : 7,
-              color: line.skipped ? AppText.amber700 : AppText.primary,
+              color: line.skipped
+                  ? AppText.amber700
+                  : removed
+                      ? AppColors.muted
+                      : AppText.primary,
             ),
           ),
           const SizedBox(width: 8),
@@ -1062,12 +1188,16 @@ class _ProposalLineRow extends StatelessWidget {
                   line.name,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: line.skipped ? AppColors.muted : AppColors.ink,
-                    decoration:
-                        line.skipped ? TextDecoration.lineThrough : null,
+                    color: out ? AppColors.muted : AppColors.ink,
+                    decoration: out ? TextDecoration.lineThrough : null,
                   ),
                 ),
-                if (line.detail.isNotEmpty)
+                if (removed)
+                  Text(
+                    'Left out',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted),
+                  )
+                else if (line.detail.isNotEmpty)
                   Text(
                     '${line.estimate ? '~ ' : ''}${line.detail}',
                     style: TextStyle(
@@ -1079,6 +1209,13 @@ class _ProposalLineRow extends StatelessWidget {
               ],
             ),
           ),
+          if (onToggle != null)
+            IconButton(
+              onPressed: onToggle,
+              tooltip: removed ? 'Put back' : 'Leave this out',
+              icon: Icon(removed ? Icons.undo : Icons.close, size: 18),
+              color: AppColors.muted,
+            ),
         ],
       ),
     );
@@ -1194,7 +1331,7 @@ class _Thinking extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CoachGlyph(size: 28, thinking: true, color: AppColors.primary),
+            CoachGlyph(size: 28, thinking: true, color: AppText.primary),
             SizedBox(width: 8),
             Text('Thinking…',
                 style: TextStyle(
@@ -1268,12 +1405,16 @@ class _PremiumNote extends StatelessWidget {
 
 class _InputBar extends StatelessWidget {
   final TextEditingController controller;
+  final FocusNode focusNode;
   final bool enabled;
+  final bool canSend;
   final VoidCallback onSend;
 
   const _InputBar({
     required this.controller,
+    required this.focusNode,
     required this.enabled,
+    required this.canSend,
     required this.onSend,
   });
 
@@ -1295,12 +1436,16 @@ class _InputBar extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: controller,
+                focusNode: focusNode,
                 enabled: enabled,
                 minLines: 1,
                 maxLines: 4,
                 maxLength: 500,
                 textInputAction: TextInputAction.send,
+                // Sending (or trying to while Coach is busy) keeps the
+                // keyboard up.
                 onSubmitted: (_) => onSend(),
+                onEditingComplete: () {},
                 decoration: InputDecoration(
                   hintText: 'Ask anything, or "add 2 eggs to breakfast"',
                   counterText: '',
@@ -1321,7 +1466,7 @@ class _InputBar extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             IconButton.filled(
-              onPressed: enabled ? onSend : null,
+              onPressed: canSend ? onSend : null,
               style: IconButton.styleFrom(
                   backgroundColor: AppColors.primaryDark),
               icon: const Icon(Icons.send_rounded),

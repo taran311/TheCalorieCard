@@ -472,7 +472,7 @@ class _RecipesPageState extends State<RecipesPage> {
                               label: 'kcal',
                               fill: AppColors.indigo50,
                               border: AppColors.indigo100,
-                              valueColor: AppColors.primaryDark,
+                              valueColor: AppText.primaryDark,
                               iconColor: AppText.primary,
                             ),
                           ),
@@ -687,7 +687,7 @@ class _RecipesPageState extends State<RecipesPage> {
                               recipe: data,
                             ),
                             icon: const Icon(Icons.credit_card, size: 18),
-                            label: const Text('Log to today'),
+                            label: const Text('Add to today'),
                           ),
                         );
                       },
@@ -843,7 +843,7 @@ class _RecipesPageState extends State<RecipesPage> {
                           recipe: item.recipe,
                         ),
                         icon: const Icon(Icons.credit_card, size: 18),
-                        label: const Text('Log to today'),
+                        label: const Text('Add to today'),
                       );
                       if (constraints.maxWidth < 300) {
                         return Column(
@@ -897,18 +897,18 @@ class _RecipesPageState extends State<RecipesPage> {
         final recipe = recipeDoc.data();
         if (!recipeDoc.exists || recipe == null) continue;
 
-        String? email;
+        Map<String, dynamic>? sharer;
         if (sharedByUserId is String && sharedByUserId.isNotEmpty) {
           final userDoc =
               await firestore.collection('users').doc(sharedByUserId).get();
-          final e = userDoc.data()?['email'];
-          email = e is String ? e : null;
+          sharer = userDoc.data();
         }
 
         results.add(_SharedRecipe(
           recipeId: recipeId,
           recipe: recipe,
-          sharedBy: FriendsService.displayName(email),
+          // Their chosen display name, else the start of their email.
+          sharedBy: FriendsService.nameFromUser(sharer),
         ));
       } catch (_) {
         // Skip a share whose recipe or sharer can't be read.

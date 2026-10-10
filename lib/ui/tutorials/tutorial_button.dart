@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/tutorials/tutorial_player.dart';
 import 'package:namer_app/ui/tutorials/tutorial_scripts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Headphones button on the Card screen that opens the tutorials.
+/// Tutorials button on the Card screen that opens the tutorials.
 ///
 /// The first time someone sees it, it's a labelled pill with a pulsing
 /// ring so it gets noticed; once they've opened it, it settles into a small
-/// round button. (The only thing it saves is that one "seen it" flag.)
+/// round button. Once they've finished a couple of tutorials it goes away
+/// (they stay in Profile via [showTutorialsSheet]), so it stops covering
+/// the list for people who already know their way round.
 class TutorialButton extends StatefulWidget {
   const TutorialButton({super.key});
 
@@ -36,6 +39,12 @@ class _TutorialButtonState extends State<TutorialButton>
   void initState() {
     super.initState();
     _checkSeen();
+    TutorialProgress.load();
+    TutorialProgress.changed.addListener(_onProgress);
+  }
+
+  void _onProgress() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -89,6 +98,7 @@ class _TutorialButtonState extends State<TutorialButton>
 
   @override
   void dispose() {
+    TutorialProgress.changed.removeListener(_onProgress);
     _pulse.dispose();
     super.dispose();
   }
@@ -100,6 +110,9 @@ class _TutorialButtonState extends State<TutorialButton>
 
   @override
   Widget build(BuildContext context) {
+    if (TutorialProgress.done.length >= TutorialProgress.hideButtonAfter) {
+      return const SizedBox.shrink();
+    }
     final button = Material(
       color: AppColors.surface,
       shape: StadiumBorder(
@@ -119,7 +132,7 @@ class _TutorialButtonState extends State<TutorialButton>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.headphones_rounded,
+              Icon(Icons.school_outlined,
                   color: AppText.primaryDark, size: 22),
               if (_fresh) ...[
                 const SizedBox(width: 6),
@@ -174,8 +187,10 @@ class _TutorialButtonState extends State<TutorialButton>
   }
 }
 
-/// The list of tutorials.
+/// The list of tutorials. Public so other screens (e.g. the Profile menu)
+/// can open it once the floating button has gone.
 Future<void> showTutorialsSheet(BuildContext context) {
+  TutorialProgress.load();
   return showModalBottomSheet<void>(
     context: context,
     useRootNavigator: true,
@@ -192,8 +207,8 @@ Future<void> showTutorialsSheet(BuildContext context) {
           children: [
             Row(
               children: [
-                Icon(Icons.headphones_rounded, color: AppText.primary),
-                SizedBox(width: 8),
+                Icon(Icons.school_outlined, color: AppText.primary),
+                const SizedBox(width: 8),
                 Text(
                   'Tutorials',
                   style: TextStyle(
@@ -219,7 +234,7 @@ Future<void> showTutorialsSheet(BuildContext context) {
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
                     final finished = await TutorialPlayer.open(context, t);
-                    if (finished) TutorialProgress.done.add(t.id);
+                    if (finished) TutorialProgress.markDone(t.id);
                   },
                 ),
               ),
@@ -230,10 +245,50 @@ Future<void> showTutorialsSheet(BuildContext context) {
   );
 }
 
-/// Which tutorials were finished in this run of the app (shown as ticks).
+/// Which tutorials have been finished (shown as ticks). Saved on this
+/// device, so the floating button can stay hidden once you know the app.
 class TutorialProgress {
   TutorialProgress._();
+
+  /// Finished tutorials needed before the floating button hides.
+  static const hideButtonAfter = 2;
+
   static final Set<String> done = {};
+
+  /// Bumped when [done] changes (after loading or finishing one).
+  static final ValueNotifier<int> changed = ValueNotifier<int>(0);
+
+  static String? _loadedFor;
+
+  static String _key(String uid) => 'tutorials_done_$uid';
+
+  /// Reads the saved list once per signed-in account.
+  static Future<void> load() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _loadedFor == uid) return;
+    _loadedFor = uid;
+    // A different account: forget the last one's ticks.
+    done.clear();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getStringList(_key(uid)) ?? const <String>[];
+      done.addAll(saved);
+      changed.value++;
+    } catch (_) {
+      // Storage blocked (private window): just this run, then.
+    }
+  }
+
+  static Future<void> markDone(String id) async {
+    if (!done.add(id)) return;
+    changed.value++;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_key(uid), done.toList());
+    } catch (_) {}
+  }
 }
 
 class _TutorialTile extends StatelessWidget {

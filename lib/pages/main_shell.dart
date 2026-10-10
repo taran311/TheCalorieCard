@@ -243,7 +243,7 @@ class _MainShellState extends State<MainShell> {
       case ShellTab.friends:
         return const FriendsPage();
       case ShellTab.hiscores:
-        return const HiscoresPage();
+        return HiscoresPage(onOpenFriends: _openFriends);
       case ShellTab.statement:
         return const StatementPage();
       case ShellTab.chat:
@@ -251,9 +251,17 @@ class _MainShellState extends State<MainShell> {
       case ShellTab.profile:
         return MenuPage(
           onOpenStatement: () => _openFromProfile(const StatementPage()),
-          onOpenHiscores: () => _openFromProfile(const HiscoresPage()),
+          onOpenHiscores: () =>
+              _openFromProfile(HiscoresPage(onOpenFriends: _openFriends)),
         );
     }
+  }
+
+  /// "Add friends" from Hiscores: switch to the Friends tab (back at its
+  /// first page) rather than stacking a second Friends page.
+  void _openFriends() {
+    _navKeys[ShellTab.friends]?.currentState?.popUntil((r) => r.isFirst);
+    _select(ShellTab.friends);
   }
 
   void _openFromProfile(Widget page) {
@@ -433,7 +441,7 @@ class _PhoneLayout extends StatelessWidget {
                             fontSize: 12,
                             fontWeight:
                                 onCoach ? FontWeight.w700 : FontWeight.w500,
-                            color: onCoach ? AppText.primary : AppColors.muted,
+                            color: onCoach ? _selectedLabel : AppColors.muted,
                           ),
                         ),
                         const SizedBox(height: 7),
@@ -450,6 +458,11 @@ class _PhoneLayout extends StatelessWidget {
     );
   }
 }
+
+/// Colour for the selected tab's label: the brand indigo is fine for an
+/// icon but too light for 12 px text on white, so text uses the darker one.
+Color get _selectedLabel =>
+    AppColors.dark ? AppText.primary : AppColors.primaryDark;
 
 /// Puts the Coach button in the middle of the bottom bar, rising above it.
 class _OrbLocation extends FloatingActionButtonLocation {
@@ -517,7 +530,8 @@ class _PhoneNavItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: color,
+                // Small text needs more contrast than the icon does.
+                color: selected ? _selectedLabel : AppColors.muted,
               ),
             ),
           ],

@@ -10,6 +10,7 @@ import 'package:namer_app/services/card_design_service.dart';
 import 'package:namer_app/services/challenge_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/pot_service.dart';
 import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/split_service.dart';
 import 'package:namer_app/services/wrapped_service.dart';
@@ -149,15 +150,33 @@ void main() {
         .doc('${uid}_$key')
         .set({'finished': true, 'balances': {'calories': left}});
 
-    test('head-to-head ranks by days on budget this week', () async {
+    test('a new challenge starts today and runs for 7 days', () async {
+      await ChallengeService.create(
+          uid: me,
+          type: ChallengeType.headToHead,
+          friendIds: [friend],
+          names: {me: 'taran', friend: 'sam'});
+      final c = (await ChallengeService.forUser(me).first).single;
+      expect(c.start, DateTime(2026, 10, 9)); // Friday, not Monday
+      expect(c.end, DateTime(2026, 10, 16));
+      expect(c.names[friend], 'sam');
+      expect(ChallengeService.daysSoFar(c), [DateTime(2026, 10, 9)]);
+      expect(c.isOver, isFalse);
+
+      w.now = DateTime(2026, 10, 16, 0, 1);
+      expect(c.isOver, isTrue);
+    });
+
+    test('head-to-head ranks by days on budget since it started', () async {
       await ChallengeService.create(
           uid: me, type: ChallengeType.headToHead, friendIds: [friend]);
-      // Week of Mon 5 Oct.
-      await finished(me, '2026-10-05', 100);
-      await finished(me, '2026-10-06', -20); // finished but over
-      await finished(friend, '2026-10-05', 10);
-      await finished(friend, '2026-10-07', 0);
-      await finished(friend, '2026-10-04', 500); // last week: ignored
+      await finished(me, '2026-10-08', 300); // before it started: ignored
+      await finished(me, '2026-10-09', 100);
+      await finished(me, '2026-10-10', -20); // finished but over
+      await finished(friend, '2026-10-09', 10);
+      await finished(friend, '2026-10-11', 0);
+      await finished(friend, '2026-10-16', 500); // after it ended: ignored
+      w.now = DateTime(2026, 10, 17, 12);
 
       final c = (await ChallengeService.forUser(me).first).single;
       final scores = await ChallengeService.scores(c);
@@ -166,18 +185,85 @@ void main() {
       expect(scores.first.onBudgetDays, 2);
       expect(scores.last.onBudgetDays, 1);
       expect(scores.last.finishedDays, 2);
-      expect(c.start, DateTime(2026, 10, 5));
     });
 
     test('team goal adds up finished days', () async {
       await ChallengeService.create(
           uid: me, type: ChallengeType.group, friendIds: [friend], target: 5);
-      await finished(me, '2026-10-05', 0);
-      await finished(friend, '2026-10-06', -300);
+      await finished(me, '2026-10-09', 0);
+      await finished(friend, '2026-10-09', -300);
       final c = (await ChallengeService.forUser(friend).first).single;
       final scores = await ChallengeService.scores(c);
       expect(c.target, 5);
       expect(scores.fold<int>(0, (s, e) => s + e.finishedDays), 2);
+    });
+
+    test('protein goal adds up everyone\'s protein since it started',
+        () async {
+      await ChallengeService.create(
+          uid: me, type: ChallengeType.protein, friendIds: [friend]);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), protein: 100); // before
+      await w.addEntry(at: DateTime(2026, 10, 9, 8), protein: 30);
+      await w.addEntry(at: DateTime(2026, 10, 9, 19), protein: 20);
+      await w.addEntry(
+          uid: friend, at: DateTime(2026, 10, 10, 13), protein: 40);
+      w.now = DateTime(2026, 10, 10, 20);
+
+      final c = (await ChallengeService.forUser(me).first).single;
+      expect(c.type, ChallengeType.protein);
+      expect(c.type.isTeam, isTrue);
+      expect(c.target, ChallengeService.proteinTarget(2)); // 1400 g
+      final scores = await ChallengeService.scores(c);
+      final total = scores.fold<num>(
+          0, (s, e) => s + e.valueFor(ChallengeType.protein));
+      expect(total, near(90));
+      expect(scores.first.userId, me); // 50 g beats 40 g
+    });
+
+    test('early logger counts days with food logged before 11am', () async {
+      await ChallengeService.create(
+          uid: me, type: ChallengeType.earlyLogger, friendIds: [friend]);
+      // Me: two early entries on one day, and a lunch: 1 early day.
+      await w.addEntry(at: DateTime(2026, 10, 9, 8));
+      await w.addEntry(at: DateTime(2026, 10, 9, 9, 30));
+      await w.addEntry(at: DateTime(2026, 10, 10, 12));
+      // Friend: 10:59 and 07:00 on different days: 2 early days.
+      await w.addEntry(uid: friend, at: DateTime(2026, 10, 9, 10, 59));
+      await w.addEntry(uid: friend, at: DateTime(2026, 10, 10, 7));
+      await w.addEntry(uid: friend, at: DateTime(2026, 10, 10, 11)); // not
+      w.now = DateTime(2026, 10, 10, 20);
+
+      final c = (await ChallengeService.forUser(me).first).single;
+      final scores = await ChallengeService.scores(c);
+      expect(scores.first.userId, friend);
+      expect(scores.first.earlyDays, 2);
+      expect(scores.last.earlyDays, 1);
+    });
+
+    test('scoring helpers', () {
+      Timestamp at(int day, int hour, [int minute = 0]) =>
+          Timestamp.fromDate(DateTime(2026, 10, day, hour, minute));
+      final entries = [
+        {'food_protein': 25, 'time_added': at(9, 10, 59)},
+        {'food_protein': '15', 'time_added': at(9, 11)},
+        {'food_protein': 10, 'time_added': at(10, 6)},
+      ];
+      expect(ChallengeService.proteinFrom(entries), near(50));
+      expect(ChallengeService.earlyDaysFrom(entries), 2);
+      expect(ChallengeType.from('early_logger'), ChallengeType.earlyLogger);
+      expect(ChallengeType.from('nonsense'), ChallengeType.headToHead);
+    });
+
+    test('older Monday-start challenges keep their week', () async {
+      await w.db.collection('challenges').add({
+        'type': 'head_to_head',
+        'member_ids': [me, friend],
+        'start_key': '2026-10-05',
+      });
+      final c = (await ChallengeService.forUser(me).first).single;
+      expect(c.start, DateTime(2026, 10, 5));
+      expect(c.end, DateTime(2026, 10, 12));
+      expect(c.names, isEmpty);
     });
 
     test('leaving removes you', () async {
@@ -241,6 +327,47 @@ void main() {
       final logged = await w.foodRows(meal: 'Breakfast');
       expect(logged.where((r) => r['food_description'] == 'Oat latte'),
           hasLength(1));
+    });
+
+    test('a debit for some days is only due on those days', () async {
+      await DirectDebitService.createFromEntry(
+        me,
+        {...latte, 'time_added': Timestamp.fromDate(DateTime(2026, 10, 7, 8))},
+        meal: 'Snacks',
+        weekdays: {DateTime.monday, DateTime.tuesday},
+      );
+      final d = (await DirectDebitService.forUser(me).first).single;
+      expect(d.meal, 'Snacks');
+      expect(d.weekdays, {1, 2});
+      expect(d.scheduleLabel, 'Mon, Tue');
+      expect(d.isDueToday, isFalse); // Friday
+      expect(d.handledToday, isFalse);
+
+      w.now = DateTime(2026, 10, 12, 8); // Monday
+      final monday = (await DirectDebitService.forUser(me).first).single;
+      expect(monday.isDueToday, isTrue);
+    });
+
+    test('every day is saved as no list, like older debits', () async {
+      await DirectDebitService.createFromEntry(me, latte,
+          weekdays: {1, 2, 3, 4, 5, 6, 7});
+      final d = (await DirectDebitService.forUser(me).first).single;
+      expect(d.weekdays, isEmpty);
+      expect(d.scheduleLabel, 'Every day');
+      expect(DirectDebitService.scheduleLabel({1, 2, 3, 4, 5}), 'Weekdays');
+      expect(DirectDebitService.scheduleLabel({6, 7}), 'Weekends');
+    });
+
+    test('recent foods: last 14 days, one per food and meal, most often first',
+        () async {
+      await w.addEntry(at: DateTime(2026, 10, 9, 8), description: 'Oat latte',
+          meal: 'Breakfast');
+      await w.addEntry(at: DateTime(2026, 10, 8, 8), description: 'oat latte',
+          meal: 'Breakfast');
+      await w.addEntry(at: DateTime(2026, 10, 8, 13), description: 'Soup');
+      await w.addEntry(at: DateTime(2026, 9, 20, 8), description: 'Old food');
+      final foods = await DirectDebitService.recentFoods(me);
+      expect(foods.map((f) => f['food_description']), ['Oat latte', 'Soup']);
     });
 
     test('skipping means not due today and nothing logged', () async {
@@ -362,6 +489,65 @@ void main() {
       await BalanceService.ensureDailyReset(me);
 
       expect(BalanceService.potFrom(await w.card()), near(0));
+    });
+
+    test('moving part of the pot leaves the rest for later', () async {
+      await potsOn(leftYesterday: 400);
+      final ud = await BalanceService.userDataDoc(me);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1600);
+      await BalanceService.ensureDailyReset(me); // pot 150
+      await ud!.reference.update({'pot': 600});
+
+      final moved = await PotService.move(me, 250);
+
+      expect(moved, near(250));
+      final card = await w.card();
+      expect(card['calories'], near(2250));
+      expect(BalanceService.potFrom(card), near(350));
+      expect(card['pot_spent'], near(250));
+      expect(card['pot_spent_date'], '2026-10-09');
+    });
+
+    test('asking for more than the pot moves just the pot', () async {
+      await potsOn(leftYesterday: 400);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1600);
+      await BalanceService.ensureDailyReset(me); // pot 150
+      expect(await PotService.move(me, 500), near(150));
+      expect(BalanceService.potFrom(await w.card()), near(0));
+      expect(await PotService.move(me, 50), near(0));
+    });
+
+    test('a part move survives a settings change and can be undone',
+        () async {
+      await potsOn(leftYesterday: 400);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1600);
+      await BalanceService.ensureDailyReset(me); // pot 150
+      await PotService.move(me, 100);
+      await BalanceService.applyGoals(me, goals: TestWorld.goals);
+      expect((await w.card())['calories'], near(2100));
+
+      expect(await PotService.undoMove(me, 100), isTrue);
+      final card = await w.card();
+      expect(card['calories'], near(2000));
+      expect(BalanceService.potFrom(card), near(150));
+      expect(card['pot_spent'], near(0));
+      // Can't undo more than was moved.
+      expect(await PotService.undoMove(me, 10), isFalse);
+    });
+
+    test("an undo after midnight doesn't touch the new day", () async {
+      await potsOn(leftYesterday: 400);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1600);
+      await BalanceService.ensureDailyReset(me);
+      await PotService.move(me, 100);
+      w.now = DateTime(2026, 10, 10, 8);
+      expect(await PotService.undoMove(me, 100), isFalse);
+    });
+
+    test('suggested amount: 250, or the whole pot if smaller', () {
+      expect(PotService.suggestedAmount(600), 250);
+      expect(PotService.suggestedAmount(120), 120);
+      expect(PotService.suggestedAmount(0), 0);
     });
 
     test('turning pots off empties the pot', () async {
@@ -500,6 +686,21 @@ void main() {
       expect(wrap.onBudgetDays, 2);
       expect(wrap.bestStreak, 2);
       expect(wrap.toShareText(), contains('October'));
+    });
+
+    test('best streak uses Streak Freezes, like Hiscores', () async {
+      // 1-7 Oct finished (earns a freeze), 8th missed, 9th-12th finished.
+      w.now = DateTime(2026, 10, 20, 12);
+      for (var d = 1; d <= 12; d++) {
+        if (d == 8) continue;
+        final k = '2026-10-${d.toString().padLeft(2, '0')}';
+        await w.db.collection('daily_logs').doc('${me}_$k').set({
+          'finished': true,
+          'balances': {'calories': 10},
+        });
+      }
+      final wrap = await WrappedService.load(me, DateTime(2026, 10, 1));
+      expect(wrap.bestStreak, 11); // the freeze covers the 8th
     });
   });
 }

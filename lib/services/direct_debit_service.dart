@@ -13,6 +13,10 @@ class DirectDebit {
   final String? lastPaidKey;
   final String? lastSkippedKey;
 
+  /// Days of the week it's taken ([DateTime.monday] … [DateTime.sunday]).
+  /// Empty means every day (debits set up before days could be picked).
+  final Set<int> weekdays;
+
   const DirectDebit({
     required this.id,
     required this.name,
@@ -21,13 +25,28 @@ class DirectDebit {
     required this.macros,
     this.lastPaidKey,
     this.lastSkippedKey,
+    this.weekdays = const {},
   });
 
-  /// Not yet paid or skipped today.
+  /// True if it's taken on [day]'s day of the week.
+  bool runsOn(DateTime day) =>
+      weekdays.isEmpty || weekdays.contains(day.weekday);
+
+  /// A day it runs, not yet paid or skipped today.
   bool get isDueToday {
-    final today = BalanceService.dateKey(BalanceService.now());
-    return lastPaidKey != today && lastSkippedKey != today;
+    final now = BalanceService.now();
+    final today = BalanceService.dateKey(now);
+    return runsOn(now) && lastPaidKey != today && lastSkippedKey != today;
   }
+
+  /// Paid or skipped today (as opposed to not running today at all).
+  bool get handledToday {
+    final today = BalanceService.dateKey(BalanceService.now());
+    return lastPaidKey == today || lastSkippedKey == today;
+  }
+
+  /// "Every day", "Weekdays", "Weekends" or "Mon, Wed, Fri".
+  String get scheduleLabel => DirectDebitService.scheduleLabel(weekdays);
 
   Map<String, dynamic> get asFoodItem => {
         'name': name,
@@ -53,6 +72,10 @@ class DirectDebit {
       ),
       lastPaidKey: d['last_paid'] as String?,
       lastSkippedKey: d['last_skipped'] as String?,
+      weekdays: {
+        for (final w in (d['weekdays'] as List? ?? const []))
+          if (w is num && w >= 1 && w <= 7) w.toInt()
+      },
     );
   }
 }
@@ -68,13 +91,21 @@ class DirectDebitService {
   /// One debit per food and meal: setting the same one up twice updates it
   /// rather than adding a second (which would log it twice every morning).
   /// If the food was eaten today, today counts as paid.
+  ///
+  /// [meal] overrides the entry's meal; [weekdays] limits it to those days
+  /// of the week (empty or null: every day).
   static Future<String> createFromEntry(
-      String uid, Map<String, dynamic> entry) async {
+      String uid, Map<String, dynamic> entry,
+      {String? meal, Set<int>? weekdays}) async {
     final m = Macros.fromEntry(entry);
     if (!m.isValid) throw ArgumentError('Food amounts must be zero or more');
     final name = (entry['food_description'] ?? 'Food').toString();
-    final meal = FoodLog.mealOf(entry['foodCategory']);
-    final slug = '$meal $name'
+    final mealName = FoodLog.mealOf(meal ?? entry['foodCategory']);
+    final days = [
+      for (final d in (weekdays ?? const <int>{}))
+        if (d >= 1 && d <= 7) d
+    ]..sort();
+    final slug = '$mealName $name'
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
         .replaceAll(RegExp(r'^-+|-+$'), '');
@@ -86,11 +117,15 @@ class DirectDebitService {
       'user_id': uid,
       'name': name,
       'portion': (entry['food_portion'] ?? '').toString(),
-      'meal': meal,
+      'meal': mealName,
       'calories': m.calories,
       'protein': m.protein,
       'carbs': m.carbs,
       'fat': m.fat,
+      // Every day is stored as no list, like debits made before days.
+      // Left alone when not given, so setting it up again from the Card
+      // keeps the days you picked.
+      if (weekdays != null) 'weekdays': days.length == 7 ? <int>[] : days,
       if (eatenToday) 'last_paid': BalanceService.dateKey(BalanceService.now()),
       'created_at': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
@@ -132,4 +167,44 @@ class DirectDebitService {
       .update({'last_skipped': BalanceService.dateKey(BalanceService.now())});
 
   static Future<void> cancel(DirectDebit debit) => _col.doc(debit.id).delete();
+
+  static const _dayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  static String scheduleLabel(Set<int> weekdays) {
+    final days = weekdays.where((d) => d >= 1 && d <= 7).toSet();
+    if (days.isEmpty || days.length == 7) return 'Every day';
+    if (days.length == 5 && days.every((d) => d <= 5)) return 'Weekdays';
+    if (days.length == 2 && days.containsAll({6, 7})) return 'Weekends';
+    return ([...days]..sort()).map((d) => _dayShort[d - 1]).join(', ');
+  }
+
+  /// Foods you've logged in the last [days] days, most often first, one
+  /// per name and meal: the choices for a new direct debit. Each is the
+  /// most recent `user_food` entry for that food.
+  static Future<List<Map<String, dynamic>>> recentFoods(String uid,
+      {int days = 14}) async {
+    final today = BalanceService.startOfDay(BalanceService.now());
+    final docs = await BalanceService.entriesBetween(uid,
+        BalanceService.addDays(today, -(days - 1)),
+        BalanceService.addDays(today, 1));
+    final latest = <String, Map<String, dynamic>>{};
+    final counts = <String, int>{};
+    for (final d in docs) {
+      final data = d.data();
+      final name = '${data['food_description'] ?? ''}'.trim();
+      if (name.isEmpty) continue;
+      final key = '${FoodLog.mealOf(data['foodCategory'])}|${name.toLowerCase()}';
+      counts[key] = (counts[key] ?? 0) + 1;
+      latest[key] = data; // docs are oldest first, so this ends newest
+    }
+    final keys = latest.keys.toList()
+      ..sort((a, b) {
+        final byCount = counts[b]!.compareTo(counts[a]!);
+        if (byCount != 0) return byCount;
+        return '${latest[a]!['food_description']}'
+            .toLowerCase()
+            .compareTo('${latest[b]!['food_description']}'.toLowerCase());
+      });
+    return [for (final k in keys) latest[k]!];
+  }
 }

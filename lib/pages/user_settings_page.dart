@@ -1,52 +1,27 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
-import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/goal_maths.dart';
+import 'package:namer_app/services/profile_limits.dart';
+import 'package:namer_app/services/units.dart';
+import 'package:namer_app/services/weight_service.dart';
+import 'package:namer_app/ui/body_inputs.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/services/card_design_service.dart';
 import 'dart:convert';
 
-/// Calories a day to stay the same weight: Mifflin–St Jeor times an
-/// activity factor for [exerciseLevel] (0 = little or none ... 4 = 10+
-/// hours a week). Null if age, height or weight is missing.
-double? maintenanceCalories({
-  required int? age,
-  required int? heightCm,
-  required int? weightKg,
-  required bool male,
-  required double exerciseLevel,
-}) {
-  if (age == null || heightCm == null || weightKg == null) return null;
-  const multipliers = [1.2, 1.375, 1.55, 1.725, 1.9];
-  final level = exerciseLevel.round().clamp(0, 4).toInt();
-  return ((10 * weightKg) + (6.25 * heightCm) - (5 * age) + (male ? 5 : -161)) *
-      multipliers[level];
-}
-
-/// The suggested daily calorie goal for a goal [mode] ('lose', 'maintain'
-/// or 'gain'; anything else counts as 'lose', as Settings does).
-int suggestedCalorieGoal(double maintenance, String? mode) {
-  if (mode == 'maintain') return maintenance.round();
-  if (mode == 'gain') return (maintenance * 1.15).round();
-  return (maintenance * 0.85).round();
-}
-
-/// A default macro split for a calorie goal (30% protein, 40% carbs,
-/// 30% fat), used when there are no AI targets.
-Macros defaultMacrosFor(int calories) => Macros(
-      calories: calories.toDouble(),
-      protein: (calories * 0.30 / 4).round().toDouble(),
-      carbs: (calories * 0.40 / 4).round().toDouble(),
-      fat: (calories * 0.30 / 9).round().toDouble(),
-    );
+// The calorie sums used to live here; other screens still import them
+// from this file.
+export 'package:namer_app/services/goal_maths.dart'
+    show maintenanceCalories, suggestedCalorieGoal, defaultMacrosFor;
 
 /// A message that is safe to show as-is when working out targets fails.
 class _EstimateError implements Exception {
@@ -105,8 +80,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     ));
 
     _ageFocusNode = FocusNode();
-    _heightFocusNode = FocusNode();
-    _weightFocusNode = FocusNode();
     _proteinFocusNode = FocusNode();
     _carbsFocusNode = FocusNode();
     _fatsFocusNode = FocusNode();
@@ -122,8 +95,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   void dispose() {
     _jiggleAnimationController?.dispose();
     _ageFocusNode.dispose();
-    _heightFocusNode.dispose();
-    _weightFocusNode.dispose();
+    _ageController.dispose();
     _proteinFocusNode.dispose();
     _carbsFocusNode.dispose();
     _fatsFocusNode.dispose();
@@ -145,13 +117,20 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   int? cardActiveCalories = 0;
   String? calorieMode;
 
-  int? _selectedHeight;
-  final TextEditingController _heightController = TextEditingController();
-  late FocusNode _heightFocusNode;
+  /// Always cm and kg; [_units] only changes what's shown.
+  double? _selectedHeight;
+  double? _selectedWeight;
 
-  int? _selectedWeight;
-  final TextEditingController _weightController = TextEditingController();
-  late FocusNode _weightFocusNode;
+  /// The weight when the page opened, so Save knows whether to add a
+  /// weigh-in to the weight log.
+  double? _loadedWeight;
+
+  UnitPrefs _units = UnitPrefs.forCountry(
+      WidgetsBinding.instance.platformDispatcher.locale.countryCode);
+
+  /// [_snapshot] as it was when loaded or last saved. Save is only on
+  /// when something differs, and leaving with changes asks first.
+  String? _savedSnapshot;
 
   int? _proteinGoal;
   int? _carbsGoal;
@@ -238,6 +217,16 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       return "Macros can't be negative.";
     }
 
+    if (_selectedAge != null && !ProfileLimits.ageOk(_selectedAge)) {
+      return ProfileLimits.ageRangeMessage;
+    }
+    if (_selectedHeight != null && !ProfileLimits.heightOk(_selectedHeight)) {
+      return Units.heightRangeMessage(_units);
+    }
+    if (_selectedWeight != null && !ProfileLimits.weightOk(_selectedWeight)) {
+      return Units.weightRangeMessage(_units);
+    }
+
     try {
       final userId = FirebaseAuth.instance.currentUser!.uid;
       await BalanceService.applyGoals(
@@ -257,8 +246,18 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           'calorie_mode': calorieMode,
           // Reopening Settings shows the tab these goals came from.
           'goal_source': _selectedTabIndex == 1 ? 'manual' : 'calculated',
+          ..._units.toFields(),
         },
       );
+      // A new weight here is a weigh-in too, so the weight log keeps up.
+      final kg = _selectedWeight;
+      if (kg != null && kg != _loadedWeight && ProfileLimits.weightOk(kg)) {
+        try {
+          await WeightService.log(userId, kg);
+        } catch (_) {
+          // The profile is saved; the log can catch up next time.
+        }
+      }
       FoodLog.notifyChanged();
       return null;
     } catch (e) {
@@ -282,45 +281,80 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       );
       return;
     }
+    _savedSnapshot = _snapshot;
+    _loadedWeight = _selectedWeight;
     // The messenger sits above the navigator, so the message stays up
-    // after this page is replaced.
+    // after this page closes. The Card refreshes itself from
+    // FoodLog.notifyChanged(), so going back is all that's needed.
     final messenger = ScaffoldMessenger.of(context);
-    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (context) => const MainShell(initialIndex: 1),
-      ),
-      (route) => false,
-    );
+    Navigator.of(context).pop();
     messenger.showSnackBar(
       const SnackBar(content: Text('Goals saved. Your card is up to date.')),
     );
   }
 
+  /// Everything Save would store, as one string to compare.
+  String get _snapshot => [
+        _selectedAge,
+        _selectedHeight,
+        _selectedWeight,
+        _exerciseLevel,
+        genderSelections.first,
+        calorieMode,
+        _selectedTabIndex,
+        _goalToSave.round(),
+        _proteinGoal,
+        _carbsGoal,
+        _fatsGoal,
+        _units.unitsField,
+        _units.weightField,
+      ].join('|');
+
+  bool get _dirty => _savedSnapshot != null && _snapshot != _savedSnapshot;
+
+  /// Back with unsaved changes: check first.
+  Future<void> _confirmLeave() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text("You've changed your goals or details but "
+            "haven't saved them."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) Navigator.of(context).pop();
+  }
+
   Future<void> populateData() async {
-    setState(() {
-      isLoading = true;
-    });
-
     try {
-      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
-          .collection('user_data')
-          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-          .get();
+      final doc = await BalanceService.userDataDoc(
+          FirebaseAuth.instance.currentUser!.uid);
+      final userData = doc?.data();
+      if (!mounted) return;
 
-      if (querySnapshot.docs.isNotEmpty) {
-        Map<String, dynamic> userData =
-            querySnapshot.docs.first.data() as Map<String, dynamic>;
-
+      if (userData != null) {
         setState(() {
+          _units = UnitPrefs.fromProfile(
+            userData,
+            countryCode:
+                WidgetsBinding.instance.platformDispatcher.locale.countryCode,
+          );
           _selectedAge = asInt(userData['age']);
-          _ageController.text =
-              _selectedAge != null ? '$_selectedAge years' : '';
-          _selectedHeight = asInt(userData['height']);
-          _heightController.text =
-              _selectedHeight != null ? '${_selectedHeight}cm' : '';
-          _selectedWeight = asInt(userData['weight']);
-          _weightController.text =
-              _selectedWeight != null ? '${_selectedWeight}kg' : '';
+          _ageController.text = _selectedAge?.toString() ?? '';
+          // Plain numbers: the unit is shown beside the field.
+          _selectedHeight = asDouble(userData['height']);
+          _selectedWeight = asDouble(userData['weight']);
+          _loadedWeight = _selectedWeight;
           _exerciseLevel = (userData['exercise_level'] as num?)?.toDouble() ??
               0.0; // Handle null and convert to double
 
@@ -333,29 +367,15 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
           // Load calorie mode (default to 'lose' if null)
           calorieMode = userData['calorie_mode'] as String?;
-          if (calorieMode == null ||
-              calorieMode == 'deficit' ||
-              calorieMode == 'lose') {
-            calorieSelections = [true, false, false];
-            calorieMode = 'lose'; // Normalize to 'lose'
-          } else if (calorieMode == 'maintain') {
+          if (calorieMode == 'maintain') {
             calorieSelections = [false, true, false];
-            calorieMode = 'maintain';
           } else if (calorieMode == 'gain') {
             calorieSelections = [false, false, true];
-            calorieMode = 'gain';
           } else {
-            // Fallback to lose if unrecognized
+            // Missing, 'deficit' (older accounts) or unrecognised: lose.
             calorieSelections = [true, false, false];
             calorieMode = 'lose';
           }
-
-          _proteinGoal = asInt(userData['protein_goal']);
-          _carbsGoal = asInt(userData['carbs_goal']);
-          _fatsGoal = asInt(userData['fats_goal']);
-          _proteinController.text = _proteinGoal?.toString() ?? '';
-          _carbsController.text = _carbsGoal?.toString() ?? '';
-          _fatsController.text = _fatsGoal?.toString() ?? '';
 
           // Load calorie_goal for manual input
           final calorieGoal = asInt(userData['calorie_goal']);
@@ -392,6 +412,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
               calorieDeficit = storedGoal;
             }
           }
+          _savedSnapshot = _snapshot;
         });
       }
     } catch (e) {
@@ -449,9 +470,18 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   void _prefillMacrosFromCalories(int? calories) {
     if (calories == null || calories <= 0) return;
 
-    final int protein = (calories * 0.30 / 4).round();
-    final int carbs = (calories * 0.40 / 4).round();
-    final int fats = (calories * 0.30 / 9).round();
+    // Keep their split (30/40/30 if there isn't one yet).
+    final m = macrosScaledTo(
+      Macros(
+        protein: (_proteinGoal ?? 0).toDouble(),
+        carbs: (_carbsGoal ?? 0).toDouble(),
+        fat: (_fatsGoal ?? 0).toDouble(),
+      ),
+      calories,
+    );
+    final int protein = m.protein.round();
+    final int carbs = m.carbs.round();
+    final int fats = m.fat.round();
 
     _proteinGoal = protein;
     _proteinController.text = protein.toString();
@@ -545,12 +575,16 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
-          final targets =
+          final raw =
               data['ai']?['final']?['targets'] ?? data['baseline']?['targets'];
 
-          if (targets != null) {
+          if (!mounted) return;
+          if (raw is Map) {
+            // "Lose" never below the safe minimum, whatever Coach says.
+            final targets =
+                withSafeLoseTarget(Map<String, dynamic>.from(raw), _safeFloor);
             setState(() {
-              _aiTargets = Map<String, dynamic>.from(targets as Map);
+              _aiTargets = targets;
               calorieDeficit = asInt(targets['lose']?['calories']);
               calorieMaintenance = asInt(targets['maintain']?['calories']);
               calorieSurplus = asInt(targets['gain']?['calories']);
@@ -663,7 +697,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
       exerciseLevel: _exerciseLevel,
     );
     if (base != null && base.isFinite) {
-      calorieDeficit = suggestedCalorieGoal(base, 'lose');
+      calorieDeficit = suggestedCalorieGoal(base, 'lose', floor: _safeFloor);
       calorieMaintenance = suggestedCalorieGoal(base, 'maintain');
       calorieSurplus = suggestedCalorieGoal(base, 'gain');
     } else {
@@ -676,7 +710,18 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     if (_selectedTabIndex == 0) updateCardActiveCalories();
   }
 
-  bool isLoading = false;
+  bool isLoading = true;
+
+  /// The lowest "Lose" goal for these details (see [safeMinimumCalories]).
+  double get _safeFloor => safeMinimumCalories(
+        male: genderSelections.first,
+        resting: restingCalories(
+          age: _selectedAge,
+          heightCm: _selectedHeight,
+          weightKg: _selectedWeight,
+          male: genderSelections.first,
+        ),
+      );
 
   void _selectGoal(int index) {
     setState(() {
@@ -710,9 +755,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             ),
           ),
           Text(
-            (kcal ?? 0) > 0 ? '$kcal' : '–',
+            kcal != null && kcal > 0 ? '${formatCardKcal(kcal)} kcal' : '–',
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -803,103 +848,112 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   /// Your details. Always shown: they're about you, whichever way you
   /// set your goal.
   Widget _aboutYou() {
+    final height = HeightInput(
+      units: _units,
+      valueCm: _selectedHeight,
+      onChanged: (cm) {
+        setState(() {
+          _selectedHeight = cm;
+          if (ProfileLimits.heightOk(cm)) updateCalories();
+        });
+      },
+    );
+    final weight = WeightInput(
+      units: _units,
+      valueKg: _selectedWeight,
+      onChanged: (kg) {
+        setState(() {
+          _selectedWeight = kg;
+          if (ProfileLimits.weightOk(kg)) updateCalories();
+        });
+      },
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            MeasurementInputField(
-              label: 'Age',
-              controller: _ageController,
-              focusNode: _ageFocusNode,
-              hintText: 'E.g. 30',
-              suffix: ' years',
-              onChanged: (value) {
-                setState(() {
-                  _selectedAge = value;
-                  if (_selectedAge != null &&
-                      _selectedAge! >= 18 &&
-                      _selectedAge! <= 117) {
-                    updateCalories();
-                  }
-                });
-              },
-            ),
             Expanded(
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                title: const Text(
-                  'Sex',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: SegmentedButton<bool>(
-                    showSelectedIcon: false,
-                    style: SegmentedButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      selectedBackgroundColor:
-                          AppColors.primary.withValues(alpha: 0.15),
-                      selectedForegroundColor: AppText.primary,
-                    ),
-                    segments: const [
-                      ButtonSegment(value: true, label: Text('Male')),
-                      ButtonSegment(value: false, label: Text('Female')),
-                    ],
-                    selected: {genderSelections.first},
-                    onSelectionChanged: (picked) {
-                      setState(() {
-                        genderSelections = [picked.first, !picked.first];
-                        updateCalories();
-                      });
-                    },
-                  ),
-                ),
+              child: MeasurementInputField(
+                label: 'Age',
+                controller: _ageController,
+                focusNode: _ageFocusNode,
+                hintText: 'E.g. 30',
+                unit: 'years',
+                min: ProfileLimits.minAge.toDouble(),
+                max: ProfileLimits.maxAge.toDouble(),
+                rangeMessage: ProfileLimits.ageRangeMessage,
+                onChanged: (value) {
+                  setState(() {
+                    _selectedAge = value?.round();
+                    if (ProfileLimits.ageOk(_selectedAge)) {
+                      updateCalories();
+                    }
+                  });
+                },
               ),
             ),
+            const Spacer(),
           ],
         ),
-        Row(
-          children: [
-            MeasurementInputField(
-              label: 'Height',
-              controller: _heightController,
-              focusNode: _heightFocusNode,
-              hintText: 'E.g. 180cm',
-              suffix: 'cm',
-              onChanged: (value) {
-                setState(() {
-                  _selectedHeight = value;
-                  if (_selectedHeight != null &&
-                      _selectedHeight! >= 120 &&
-                      _selectedHeight! <= 250) {
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Sex (used to work out your calories)',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                style: SegmentedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  selectedBackgroundColor:
+                      AppColors.primary.withValues(alpha: 0.15),
+                  selectedForegroundColor: AppText.primary,
+                ),
+                segments: const [
+                  ButtonSegment(value: true, label: Text('Male')),
+                  ButtonSegment(value: false, label: Text('Female')),
+                ],
+                selected: {genderSelections.first},
+                onSelectionChanged: (picked) {
+                  setState(() {
+                    genderSelections = [picked.first, !picked.first];
                     updateCalories();
-                  }
-                });
-              },
-            ),
-            MeasurementInputField(
-              label: 'Weight',
-              controller: _weightController,
-              focusNode: _weightFocusNode,
-              hintText: 'E.g. 80kg',
-              suffix: 'kg',
-              onChanged: (value) {
-                setState(() {
-                  _selectedWeight = value;
-                  if (_selectedWeight != null &&
-                      _selectedWeight! >= 30 &&
-                      _selectedWeight! <= 300) {
-                    updateCalories();
-                  }
-                });
-              },
-            ),
-          ],
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Units',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              UnitsPicker(
+                value: _units,
+                onChanged: (u) => setState(() => _units = u),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(height: 4),
+        // Imperial needs two boxes each, so they get a row of their own.
+        if (_units.isMetric)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: height),
+              Expanded(child: weight),
+            ],
+          )
+        else ...[
+          height,
+          weight,
+        ],
         const SizedBox(height: 20),
         const Text(
           'Activity',
@@ -1049,6 +1103,46 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     );
   }
 
+  /// "Set my own": a macro change sets the calories to match, as on Get
+  /// started.
+  void _updateCaloriesFromMacros() {
+    final p = _proteinGoal;
+    final c = _carbsGoal;
+    final f = _fatsGoal;
+    if (p == null || c == null || f == null) return;
+    final kcal = caloriesFromMacros(p, c, f);
+    setState(() {
+      _manualCalorieGoal = kcal;
+      cardActiveCalories = kcal;
+      _manualCalorieController.text = kcal.toString();
+    });
+  }
+
+  Widget _manualMacroField({
+    required String label,
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required void Function(int?) onValue,
+  }) {
+    return Expanded(
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        keyboardType: TextInputType.number,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(4),
+        ],
+        decoration: _numberDecoration(label, label.split(' ').first)
+            .copyWith(suffixText: 'g'),
+        onChanged: (value) {
+          setState(() => onValue(int.tryParse(value)));
+          _updateCaloriesFromMacros();
+        },
+      ),
+    );
+  }
+
   Widget _buildManualInputTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1061,7 +1155,12 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         TextField(
           controller: _manualCalorieController,
           keyboardType: TextInputType.number,
-          decoration: _numberDecoration('Calories', 'E.g. 2000'),
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(5),
+          ],
+          decoration: _numberDecoration('Calories', 'E.g. 2000')
+              .copyWith(suffixText: 'kcal'),
           onChanged: (value) {
             setState(() {
               _manualCalorieGoal = int.tryParse(value);
@@ -1070,6 +1169,7 @@ class _UserSettingsPageState extends State<UserSettingsPage>
             });
           },
         ),
+        LowCalorieNote(calories: _manualCalorieGoal),
         const SizedBox(height: 20),
         const Text(
           'Macros',
@@ -1078,48 +1178,32 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(
-              child: TextField(
-                controller: _proteinController,
-                focusNode: _proteinFocusNode,
-                keyboardType: TextInputType.number,
-                decoration: _numberDecoration('Protein (g)', 'Protein'),
-                onChanged: (value) {
-                  setState(() {
-                    _proteinGoal = int.tryParse(value);
-                  });
-                },
-              ),
+            _manualMacroField(
+              label: 'Protein',
+              controller: _proteinController,
+              focusNode: _proteinFocusNode,
+              onValue: (v) => _proteinGoal = v,
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _carbsController,
-                focusNode: _carbsFocusNode,
-                keyboardType: TextInputType.number,
-                decoration: _numberDecoration('Carbs (g)', 'Carbs'),
-                onChanged: (value) {
-                  setState(() {
-                    _carbsGoal = int.tryParse(value);
-                  });
-                },
-              ),
+            _manualMacroField(
+              label: 'Carbs',
+              controller: _carbsController,
+              focusNode: _carbsFocusNode,
+              onValue: (v) => _carbsGoal = v,
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _fatsController,
-                focusNode: _fatsFocusNode,
-                keyboardType: TextInputType.number,
-                decoration: _numberDecoration('Fat (g)', 'Fat'),
-                onChanged: (value) {
-                  setState(() {
-                    _fatsGoal = int.tryParse(value);
-                  });
-                },
-              ),
+            _manualMacroField(
+              label: 'Fat',
+              controller: _fatsController,
+              focusNode: _fatsFocusNode,
+              onValue: (v) => _fatsGoal = v,
             ),
           ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Changing a macro updates your calories to match.',
+          style: TextStyle(fontSize: 12, color: AppColors.muted),
         ),
       ],
     );
@@ -1234,6 +1318,17 @@ class _UserSettingsPageState extends State<UserSettingsPage>
 
   @override
   Widget build(BuildContext context) {
+    final dirty = _dirty;
+    return PopScope(
+      canPop: !dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: _buildPage(dirty),
+    );
+  }
+
+  Widget _buildPage(bool dirty) {
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(title: const Text('Goals and profile')),
@@ -1258,8 +1353,10 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                         width: double.infinity,
                         height: 50,
                         child: FilledButton(
+                          // On only once something has changed.
                           // _onSavePressed ignores taps while saving.
-                          onPressed: _onSavePressed,
+                          onPressed:
+                              dirty || _isSaving ? _onSavePressed : null,
                           child: _isSaving
                               ? const SizedBox(
                                   height: 22,

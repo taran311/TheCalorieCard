@@ -4,6 +4,7 @@ import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/share_to_chat_sheet.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
 import 'package:namer_app/ui/today_panel.dart';
 
@@ -17,10 +18,15 @@ class StatementPage extends StatefulWidget {
 
 class _StatementPageState extends State<StatementPage> {
   int _days = 7;
+  final String? _uid = FirebaseAuth.instance.currentUser?.uid;
+
+  /// Full days only, so it doesn't change during the day: loaded once.
+  late Future<WeekDigest>? _digest =
+      _uid == null ? null : StatementService.weekDigest(_uid!);
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = _uid;
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
@@ -79,6 +85,13 @@ class _StatementPageState extends State<StatementPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    if (_digest != null)
+                      _WeekDigestCard(
+                        digest: _digest!,
+                        onRetry: () => setState(() {
+                          _digest = StatementService.weekDigest(uid);
+                        }),
+                      ),
                     if (statement == null)
                       const Padding(
                         padding: EdgeInsets.only(top: 80),
@@ -89,12 +102,18 @@ class _StatementPageState extends State<StatementPage> {
                       const SizedBox(height: 16),
                       PanelCard(
                         title: 'Spending',
-                        trailing: (statement.dailyBudget ?? 0) <= 0
-                            ? null
-                            : const BudgetLegend(),
-                        child: WeeklySpendChart(
-                          statement: statement,
-                          height: 150,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            WeeklySpendChart(
+                              statement: statement,
+                              height: 150,
+                            ),
+                            if ((statement.dailyBudget ?? 0) > 0) ...[
+                              const SizedBox(height: 10),
+                              const BudgetLegend(),
+                            ],
+                          ],
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -138,7 +157,7 @@ class _StatementPageState extends State<StatementPage> {
           padding: const EdgeInsets.only(bottom: 12),
           child: PanelCard(
             title: formatDayHeading(d.day),
-            trailing: _DayTotal(spent: d.calories, budget: budget),
+            trailing: _DayTotal(day: d, fallbackBudget: budget),
             child: Column(
               children: [
                 for (final tx in d.transactions) TransactionTile(tx: tx),
@@ -151,14 +170,20 @@ class _StatementPageState extends State<StatementPage> {
 }
 
 class _DayTotal extends StatelessWidget {
-  final double spent;
-  final double? budget;
+  final DaySummary day;
+  final double? fallbackBudget;
 
-  const _DayTotal({required this.spent, required this.budget});
+  const _DayTotal({required this.day, required this.fallbackBudget});
 
   @override
   Widget build(BuildContext context) {
-    final over = budget != null && spent > budget!;
+    final spent = day.calories;
+    final onBudget = day.onBudget(fallbackBudget);
+    final budget = day.budget(fallbackBudget);
+    // A finished day shows what was left on the card when it closed (pot
+    // top-ups included), the same figure Hiscores judge it by.
+    final closing = day.finished ? day.closingBalance : null;
+    final left = closing ?? (budget == null ? null : budget - spent);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -166,23 +191,23 @@ class _DayTotal extends StatelessWidget {
           '${formatKcal(spent)} kcal',
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
-        if (budget != null) ...[
+        if (left != null && onBudget != null) ...[
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: (over ? AppColors.red : AppColors.green)
+              color: (onBudget ? AppColors.green : AppColors.red)
                   .withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              over
-                  ? '${formatKcal(spent - budget!)} over'
-                  : '${formatKcal(budget! - spent)} left',
+              onBudget
+                  ? '${formatKcal(left.abs())} left'
+                  : '${formatKcal(left.abs())} over',
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: over ? AppText.red : AppText.green,
+                color: onBudget ? AppText.emerald700 : AppText.red600,
               ),
             ),
           ),
@@ -200,30 +225,48 @@ class _SummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final logged = statement.days.where((d) => d.transactions.isNotEmpty);
-    return Row(
-      children: [
-        Expanded(
-          child: _Stat(
-            label: 'Daily average',
-            value: '${formatKcal(statement.averageCalories)} kcal',
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _Stat(
-            label: 'On budget',
-            value: formatDays(statement.daysUnderBudget),
-            color: AppColors.green,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _Stat(
-            label: 'Days logged',
-            value: '${logged.length}/${statement.days.length}',
-          ),
-        ),
-      ],
+    final average = _Stat(
+      label: 'Daily average',
+      value: '${formatKcal(statement.averageCalories)} kcal',
+    );
+    final onBudget = _Stat(
+      label: 'On budget',
+      value: formatDays(statement.daysUnderBudget),
+      color: AppText.emerald700,
+    );
+    final daysLogged = _Stat(
+      label: 'Days logged',
+      value: '${logged.length}/${statement.days.length}',
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Three across gets cramped on small phones: two, then one.
+        if (constraints.maxWidth < 360) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: average),
+                  const SizedBox(width: 12),
+                  Expanded(child: onBudget),
+                ],
+              ),
+              const SizedBox(height: 12),
+              daysLogged,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: average),
+            const SizedBox(width: 12),
+            Expanded(child: onBudget),
+            const SizedBox(width: 12),
+            Expanded(child: daysLogged),
+          ],
+        );
+      },
     );
   }
 }
@@ -349,6 +392,171 @@ class _WhereItWent extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// "Your week": the last 7 full days against the 7 before, with a button
+/// to share it in chat.
+class _WeekDigestCard extends StatelessWidget {
+  final Future<WeekDigest> digest;
+  final VoidCallback onRetry;
+
+  const _WeekDigestCard({required this.digest, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<WeekDigest>(
+      future: digest,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: PanelCard(
+              title: 'Your week',
+              trailing: TextButton(
+                onPressed: onRetry,
+                child: const Text('Try again'),
+              ),
+              child: Text(
+                "Couldn't load your week.",
+                style: TextStyle(color: AppColors.muted),
+              ),
+            ),
+          );
+        }
+        final d = snap.data;
+        // Quietly skip it until it's loaded, and for brand-new accounts.
+        if (d == null || d.isEmpty) return const SizedBox.shrink();
+        final t = d.thisWeek, l = d.lastWeek;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: PanelCard(
+            title: 'Your week',
+            trailing: Text(
+              'vs the week before',
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _DigestRow(
+                  label: 'Days on budget',
+                  value: '${t.daysOnBudget}',
+                  now: t.daysOnBudget,
+                  before: l.daysOnBudget,
+                  upIsGood: true,
+                ),
+                _DigestRow(
+                  label: 'Finished days',
+                  value: '${t.finishedDays}',
+                  now: t.finishedDays,
+                  before: l.finishedDays,
+                  upIsGood: true,
+                ),
+                _DigestRow(
+                  label: 'Average a day',
+                  value: '${formatKcal(t.averageCalories)} kcal',
+                  now: t.averageCalories,
+                  before: l.averageCalories,
+                ),
+                _DigestRow(
+                  label: 'Protein a day',
+                  value: '${t.averageProtein.round()}g',
+                  now: t.averageProtein,
+                  before: l.averageProtein,
+                  unit: 'g',
+                  upIsGood: true,
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => shareToChat(context,
+                        text: d.toShareText(), title: 'Share your week'),
+                    icon: const Icon(Icons.ios_share, size: 18),
+                    label: const Text('Share to a friend or group'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DigestRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final num now;
+  final num before;
+  final String unit;
+
+  /// Up is shown in green when true. Calories have no "good" direction
+  /// (it depends on your goal), so they stay neutral.
+  final bool upIsGood;
+
+  const _DigestRow({
+    required this.label,
+    required this.value,
+    required this.now,
+    required this.before,
+    this.unit = '',
+    this.upIsGood = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final diff = (now - before).round();
+    final change = WeekDigest.change(now, before, unit: unit);
+    final Color color;
+    if (diff == 0 || !upIsGood) {
+      color = AppColors.muted;
+    } else {
+      color = diff > 0 ? AppText.emerald700 : AppText.amber700;
+    }
+    final spoken = diff == 0
+        ? 'same as the week before'
+        : '${diff > 0 ? 'up' : 'down'} ${diff.abs()}$unit on the week before';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Semantics(
+        label: '$label: $value, $spoken',
+        excludeSemantics: true,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(fontSize: 14, color: AppColors.gray700)),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 72,
+              child: Text(
+                change,
+                textAlign: TextAlign.right,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

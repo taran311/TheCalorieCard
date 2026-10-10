@@ -554,6 +554,46 @@ class BalanceService {
     return amount;
   }
 
+  /// Changes a logged food: [fields] are written to the entry, and if its
+  /// macros change ([macros]) and it's today's, the card is charged or
+  /// refunded the difference, all in one write. Returns the old macros, or
+  /// null if the entry is gone.
+  static Future<Macros?> updateEntry(
+    String userId,
+    String entryId, {
+    Macros? macros,
+    Map<String, dynamic> fields = const {},
+  }) async {
+    if (macros != null && !macros.isValid) {
+      throw ArgumentError('Food amounts must be zero or more: $macros');
+    }
+    final ref = _db.collection('user_food').doc(entryId);
+    final snap = await ref.get();
+    final data = snap.data();
+    if (!snap.exists || data == null) return null;
+    if (data['user_id'] != userId) {
+      throw StateError("Can't change someone else's food");
+    }
+
+    final before = Macros.fromEntry(data);
+    final today = isLogEntry(data) && isToday(entryDate(data));
+    // A new day rebuilds from the entries as they are now; the difference
+    // below is then applied exactly once.
+    if (today && macros != null) await ensureDailyReset(userId);
+    final userDoc = today && macros != null ? await userDataDoc(userId) : null;
+
+    final batch = _db.batch();
+    batch.update(ref, {
+      ...fields,
+      if (macros != null) ...macros.toEntryFields(),
+    });
+    if (userDoc != null && macros != null) {
+      batch.update(userDoc.reference, spendUpdate(macros - before));
+    }
+    await batch.commit();
+    return before;
+  }
+
   /// Saves new goals and sets today's balance to goals minus what's already
   /// been eaten today.
   ///

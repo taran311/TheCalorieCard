@@ -37,12 +37,18 @@ class _WrappedPageState extends State<WrappedPage> {
     _wrap = WrappedService.load(_user.uid, _month);
   }
 
+  /// True when the month before this one needs Premium (free: this month
+  /// and last month).
+  bool get _previousLocked {
+    final now = BalanceService.now();
+    final target = DateTime(_month.year, _month.month - 1, 1);
+    final oldestFree = DateTime(now.year, now.month - 1, 1);
+    return target.isBefore(oldestFree) && !Premium.isPremium;
+  }
+
   void _shiftMonth(int delta) {
     // Free: this month and last month. Premium: every month.
-    final now = BalanceService.now();
-    final target = DateTime(_month.year, _month.month + delta, 1);
-    final oldestFree = DateTime(now.year, now.month - 1, 1);
-    if (delta < 0 && target.isBefore(oldestFree) && !Premium.isPremium) {
+    if (delta < 0 && _previousLocked) {
       showPremiumSheet(
         context,
         title: 'Older Wrapped is Premium',
@@ -110,7 +116,7 @@ class _WrappedPageState extends State<WrappedPage> {
       } else if (target is Friend) {
         await ChatService.sendToFriend(
           uid: _user.uid,
-          myName: FriendsService.displayName(_user.email),
+          myName: await FriendsService.nameFor(_user.uid, email: _user.email),
           friendId: target.id,
           friendName: target.name,
           text: text,
@@ -146,9 +152,18 @@ class _WrappedPageState extends State<WrappedPage> {
               Row(
                 children: [
                   IconButton(
-                    tooltip: 'Previous month',
+                    tooltip: _previousLocked
+                        ? 'Previous month (Premium)'
+                        : 'Previous month',
                     onPressed: () => _shiftMonth(-1),
-                    icon: const Icon(Icons.chevron_left),
+                    icon: _previousLocked
+                        ? const Badge(
+                            label: Icon(Icons.lock, size: 10,
+                                color: Colors.white),
+                            backgroundColor: AppColors.violet600,
+                            child: Icon(Icons.chevron_left),
+                          )
+                        : const Icon(Icons.chevron_left),
                   ),
                   Expanded(
                     child: Text(

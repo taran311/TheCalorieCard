@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -11,6 +14,7 @@ import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/split_service.dart';
 import 'package:namer_app/services/category_service.dart';
+import 'package:namer_app/services/food_history.dart';
 import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/services/food_log.dart';
@@ -42,8 +46,12 @@ class _AddFoodPageState extends State<AddFoodPage> {
   final List<String> _ingredients = [];
   final List<Map<String, dynamic>> _calculatedItems = [];
   bool _calculating = false;
-  bool _calculated = false;
   bool _saving = false;
+
+  /// Saving has taken a while (usually a poor connection).
+  bool _slowSave = false;
+  Timer? _slowSaveTimer;
+
   /// Foods being looked up right now (pending transactions).
   List<_PendingItem> _pending = [];
   bool _scanning = false;
@@ -52,36 +60,67 @@ class _AddFoodPageState extends State<AddFoodPage> {
   int _progressDone = 0;
   int _progressTotal = 0;
 
-  /// Foods logged recently, for one-tap re-adding (no lookup needed).
-  List<CardTransaction> _recent = const [];
+  /// The food box keeps focus after Enter or a suggestion, so several
+  /// foods can be typed in a row.
+  final FocusNode _foodFocus = FocusNode();
+
+  /// Foods logged in the last few months, for one-tap re-adding and
+  /// suggestions while typing (no lookup needed).
+  FoodHistory _history = FoodHistory.empty;
+
+  /// "Or add again" for [_rankedMeal], worked out once per meal.
+  String? _rankedMeal;
+  List<CardTransaction> _ranked = const [];
 
   bool get _hasInput =>
       _ingredients.isNotEmpty || _controller.text.trim().isNotEmpty;
+
+  /// Foods the last look-up couldn't find (offered for a manual add).
+  final Set<String> _failedLookups = {};
+
+  /// The first food still in the list that couldn't be looked up.
+  String? get _firstFailed {
+    for (final i in _ingredients) {
+      if (_failedLookups.contains(i)) return i;
+    }
+    return null;
+  }
+
+  /// Anything on the page the demo would wipe.
+  bool get _hasAnything =>
+      _hasInput || _calculatedItems.isNotEmpty || _pending.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     // Wake the lookup server while they type, so it's ready on Calculate.
     ProxyClient.warmUp();
-    _loadRecent();
+    _loadHistory();
   }
 
-  Future<void> _loadRecent() async {
+  Future<void> _loadHistory() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
-      final statement = await StatementService.load(uid, days: 14);
-      final seen = <String>{};
-      final recent = <CardTransaction>[];
-      for (final tx in statement.recent) {
-        if (tx.description.startsWith('Recipe:')) continue;
-        if (seen.add(tx.description.toLowerCase())) recent.add(tx);
-        if (recent.length >= 10) break;
+      final history = await FoodHistory.load(uid);
+      if (mounted) {
+        setState(() {
+          _history = history;
+          _rankedMeal = null; // re-rank with the new history
+        });
       }
-      if (mounted) setState(() => _recent = recent);
     } catch (_) {
-      // Recent foods are a convenience; ignore failures.
+      // Past foods are a convenience; ignore failures.
     }
+  }
+
+  /// Up to 10 past foods for [meal], most often had for it first.
+  List<CardTransaction> _recentFor(String meal) {
+    if (_rankedMeal != meal) {
+      _rankedMeal = meal;
+      _ranked = FoodHistory.rankForMeal(_history.foods, meal, limit: 10);
+    }
+    return _ranked;
   }
 
   /// Adds every complete item from the text box (anything followed by a
@@ -89,22 +128,25 @@ class _AddFoodPageState extends State<AddFoodPage> {
   /// is added too (used on Enter and before calculating).
   void _takeItemsFromInput({bool all = false}) {
     final value = _controller.text;
-    final parts = FoodResolver.splitItems(value);
-    final endsWithSeparator = RegExp(r'[,\n;]\s*$').hasMatch(value);
-    var remainder = '';
-    if (!all && !endsWithSeparator && parts.isNotEmpty) {
-      remainder = parts.removeLast();
+    final List<String> parts;
+    final String rest;
+    if (all) {
+      parts = FoodResolver.splitItems(value);
+      rest = '';
+    } else {
+      final taken = FoodResolver.takeFinished(value);
+      parts = taken.done;
+      rest = taken.rest;
     }
-    if (parts.isEmpty && remainder == value.trim()) {
-      setState(() {}); // just refresh the buttons
+    if (parts.isEmpty && rest == value) {
+      setState(() {}); // just refresh the buttons and suggestions
       return;
     }
     setState(() {
       _ingredients.addAll(parts);
-      _calculated = _calculatedItems.isNotEmpty;
       _controller.value = TextEditingValue(
-        text: remainder,
-        selection: TextSelection.collapsed(offset: remainder.length),
+        text: rest,
+        selection: TextSelection.collapsed(offset: rest.length),
       );
     });
   }
@@ -148,7 +190,32 @@ class _AddFoodPageState extends State<AddFoodPage> {
           'fat': tx.fat,
         },
       });
-      _calculated = true;
+    });
+  }
+
+  /// A suggestion from your history tapped while typing: added straight
+  /// to the list with its exact numbers, and the half-typed name cleared.
+  void _addSuggestion(CardTransaction tx) {
+    _addRecent(tx);
+    _controller.clear();
+    setState(() {});
+    _foodFocus.requestFocus();
+  }
+
+  /// Quick add: just the calories (and macros if known), no lookup.
+  /// [name] pre-fills the sheet (e.g. a food that couldn't be looked up);
+  /// once added, that item leaves the "Ready to look up" list.
+  Future<void> _quickAdd({String? name}) async {
+    final item = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _QuickAddSheet(initialName: name),
+    );
+    if (item == null || !mounted) return;
+    setState(() {
+      _calculatedItems.add(item);
+      if (name != null) _ingredients.remove(name);
     });
   }
 
@@ -196,57 +263,59 @@ class _AddFoodPageState extends State<AddFoodPage> {
     return basePortion.isEmpty ? '$m×' : '$m × $basePortion';
   }
 
+  /// Sets an item's calories outright (fixing an estimate). The base is
+  /// rescaled so changing the amount afterwards still works.
+  void _setCalories(int idx, double kcal) {
+    final item = _calculatedItems[idx];
+    final multiplier = (item['multiplier'] as num?)?.toDouble() ?? 1.0;
+    final base = Map<String, dynamic>.from((item['base'] as Map?) ??
+        {
+          'calories': item['calories'],
+          'protein': item['protein'],
+          'carbs': item['carbs'],
+          'fat': item['fat'],
+        });
+    base['calories'] = multiplier > 0 ? kcal / multiplier : kcal;
+    setState(() {
+      _calculatedItems[idx] = {
+        ...item,
+        'base': base,
+        'calories': kcal,
+        // The person set the number, so it's no longer an estimate.
+        'original_source': item['original_source'] ?? item['source'],
+        'source': 'manual',
+        'needs_review': false,
+        'edited': true,
+      };
+    });
+  }
+
   Future<void> _showAdjustSheet(int idx) async {
     final item = _calculatedItems[idx];
-    final current = (item['multiplier'] as num?)?.toDouble() ?? 1.0;
     final basePortion =
         (item['base_portion'] ?? item['portion'] ?? '').toString();
-    final per100 = _isPer100(basePortion);
-    final choices = per100
-        ? const [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
-        : const [0.5, 1.0, 1.5, 2.0, 3.0];
-    final picked = await showModalBottomSheet<double>(
+    final result = await showModalBottomSheet<_Adjustment>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                item['name'].toString(),
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-              if ((item['portion'] ?? '').toString().isNotEmpty)
-                Text('Portion: ${item['portion']}',
-                    style: TextStyle(color: AppColors.gray600)),
-              const SizedBox(height: 16),
-              const Text('How much did you have?',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final m in choices)
-                    ChoiceChip(
-                      label: Text(per100
-                          ? _scaledPortion(basePortion, m)
-                          : '${FoodLog.formatAmount(m)}×'),
-                      selected: current == m,
-                      onSelected: (_) => Navigator.pop(sheetContext, m),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => _AdjustSheet(
+        name: item['name'].toString(),
+        portion: (item['portion'] ?? '').toString(),
+        basePortion: basePortion,
+        multiplier: (item['multiplier'] as num?)?.toDouble() ?? 1.0,
+        calories: (item['calories'] as num?)?.toDouble() ?? 0,
+        // Estimates, and numbers the person typed in themselves.
+        canEditCalories: item['source'] == 'ai' ||
+            item['source'] == 'manual' ||
+            item['needs_review'] == true ||
+            item['edited'] == true,
       ),
     );
-    if (picked != null && mounted) _setMultiplier(idx, picked);
+    if (result == null || !mounted || idx >= _calculatedItems.length) return;
+    final m = result.multiplier;
+    if (m != null) _setMultiplier(idx, m);
+    final kcal = result.calories;
+    if (kcal != null) _setCalories(idx, kcal);
   }
 
   Widget _buildResultCard(int idx, Map<String, dynamic> item) {
@@ -256,6 +325,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
     final portion = (item['portion'] ?? '').toString();
     String g(String k) => ((item[k] as num?) ?? 0).round().toString();
 
+    // [color] is a text colour (AppText / *Text getters), so badges stay
+    // readable in dark mode too.
     Widget badge(String text, Color color, IconData icon) => Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
           decoration: BoxDecoration(
@@ -265,11 +336,17 @@ class _AddFoodPageState extends State<AddFoodPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 12, color: color),
+              Icon(icon, size: 13, color: color),
               const SizedBox(width: 3),
-              Text(text,
-                  style: TextStyle(
-                      fontSize: 11, color: color, fontWeight: FontWeight.w700)),
+              Flexible(
+                child: Text(text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: color,
+                        fontWeight: FontWeight.w700)),
+              ),
             ],
           ),
         );
@@ -319,27 +396,34 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       runSpacing: 4,
                       children: [
                         if (source == 'fatsecret')
-                          badge('Database match', AppColors.green,
+                          badge('Database match', AppText.emerald700,
                               Icons.verified_outlined),
                         if (source == 'ai')
-                          badge('AI estimate', AppColors.primary,
+                          badge('AI estimate', AppText.primaryDark,
                               Icons.auto_awesome),
                         if (source == 'web')
-                          badge('Label found online', AppColors.green,
+                          badge('Label found online', AppText.emerald700,
                               Icons.public),
                         if (source == 'recent')
-                          badge('From your history', AppColors.sky,
+                          badge('From your history', AppColors.sky700,
                               Icons.history),
                         if (source == 'barcode')
-                          badge('Scanned', AppColors.green,
+                          badge('Scanned', AppText.emerald700,
                               Icons.qr_code_2),
+                        if (source == 'manual')
+                          badge(
+                              item['edited'] == true
+                                  ? 'Calories set by you'
+                                  : 'Added by you',
+                              AppText.indigo700,
+                              Icons.edit_outlined),
                         if (item['guess_score'] is int)
                           badge(
                               '${item['guess_score']}% · guessed ${(item['guess'] as num).round()}',
-                              AppColors.violet600,
+                              AppText.violet600,
                               Icons.gps_fixed),
                         if (review)
-                          badge('Check this', AppColors.amber700,
+                          badge('Check this', AppText.amber700,
                               Icons.warning_amber_rounded),
                       ],
                     ),
@@ -359,14 +443,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   ),
                   Text('kcal',
                       style:
-                          TextStyle(fontSize: 11, color: AppColors.gray600)),
+                          TextStyle(fontSize: 12, color: AppColors.gray600)),
                 ],
               ),
               IconButton(
-                onPressed: () => setState(() {
-                  _calculatedItems.removeAt(idx);
-                  _calculated = _calculatedItems.isNotEmpty;
-                }),
+                onPressed: _saving
+                    ? null
+                    : () => setState(() => _calculatedItems.removeAt(idx)),
                 icon: const Icon(Icons.close),
                 color: AppColors.muted,
                 iconSize: 20,
@@ -409,6 +492,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
   @override
   void dispose() {
+    _slowSaveTimer?.cancel();
+    _foodFocus.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -434,11 +519,14 @@ class _AddFoodPageState extends State<AddFoodPage> {
   }
 
   Future<void> _runTutorial() async {
+    // The demo clears the page, so it's only offered on an empty one
+    // (the button is disabled otherwise); never wipe what they've typed.
+    if (_hasAnything || _saving || _tutorialMode) return;
+    _foodFocus.unfocus();
     setState(() {
       _tutorialMode = true;
       _ingredients.clear();
       _calculatedItems.clear();
-      _calculated = false;
     });
 
     // Step 1: Add tutorial ingredients with typing effect
@@ -492,7 +580,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
         _calculatedItems.addAll(_tutorialCachedResults);
         _ingredients.clear();
         _calculating = false;
-        _calculated = true;
       });
     }
 
@@ -514,7 +601,10 @@ class _AddFoodPageState extends State<AddFoodPage> {
     if (mounted) {
       setState(() {
         _tutorialMode = false;
-        _calculated = false;
+        // Leave the page as empty as it was before the demo.
+        _calculatedItems.clear();
+        _ingredients.clear();
+        _controller.clear();
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -527,8 +617,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
   }
 
   Future<void> _calculateWithAI() async {
+    if (_calculating || _saving) return;
     _takeItemsFromInput(all: true);
-    if (_ingredients.isEmpty || _calculating) return;
+    if (_ingredients.isEmpty) return;
     final queries = List<String>.from(_ingredients);
 
     setState(() {
@@ -584,17 +675,28 @@ class _AddFoodPageState extends State<AddFoodPage> {
       // Anything that failed stays in the list so it can be retried
       // (alongside anything typed while the lookups ran).
       _ingredients.addAll(failed);
+      _failedLookups
+        ..clear()
+        ..addAll(failed);
       _pending = [];
       _calculating = false;
-      _calculated = _calculatedItems.isNotEmpty;
     });
 
     if (failed.isNotEmpty) {
+      final first = failed.first;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          duration: const Duration(seconds: 8),
           content: Text(
               "Couldn't look up ${failed.length} item${failed.length == 1 ? '' : 's'}. "
-              "${failed.length == 1 ? 'It\'s' : 'They\'re'} still in the list; tap Look up to retry."),
+              "${failed.length == 1 ? 'It\'s' : 'They\'re'} still in the list: "
+              'tap Look up to retry, or add the calories yourself.'),
+          action: SnackBarAction(
+            label: 'Add calories manually',
+            onPressed: () {
+              if (mounted) _quickAdd(name: first);
+            },
+          ),
         ),
       );
     }
@@ -713,10 +815,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   Text("We couldn't find that product. Type it in instead.")),
         );
       } else {
-        setState(() {
-          _calculatedItems.add(_itemFromResolved(r));
-          _calculated = true;
-        });
+        setState(() => _calculatedItems.add(_itemFromResolved(r)));
       }
     } catch (_) {
       if (mounted) {
@@ -808,7 +907,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
   /// Split the bill: log your share and send friends a request for theirs.
   Future<void> _splitBill() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || _calculatedItems.isEmpty) return;
+    if (uid == null || _calculatedItems.isEmpty || _saving) return;
 
     List<Friend> friends;
     try {
@@ -842,7 +941,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       final email = FirebaseAuth.instance.currentUser?.email;
       await SplitService.create(
         uid: uid,
-        fromName: FriendsService.displayName(email),
+        fromName: await FriendsService.nameFor(uid, email: email),
         items: _calculatedItems,
         friendIds: chosen,
         meal: meal,
@@ -852,7 +951,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              'Logged your share and sent ${chosen.length} request${chosen.length == 1 ? '' : 's'}.'),
+              'Added your share and sent ${chosen.length} request${chosen.length == 1 ? '' : 's'}.'),
         ),
       );
       Navigator.pop(context, true);
@@ -952,31 +1051,57 @@ class _AddFoodPageState extends State<AddFoodPage> {
   }
 
   Future<void> _saveItems() async {
-    if (_calculatedItems.isEmpty || _saving) return;
+    // _saving is set before the first await, so a double tap can't log
+    // the same food twice.
+    if (_calculatedItems.isEmpty || _saving || _calculating) return;
 
+    final items = [
+      for (final item in _calculatedItems) Map<String, dynamic>.from(item)
+    ];
+    final category =
+        Provider.of<CategoryService>(context, listen: false).selectedCategory;
     setState(() {
       _saving = true;
+      _slowSave = false;
+    });
+
+    // On a poor connection the write can take a long time to confirm.
+    // Say so instead of spinning silently (it isn't lost: Firestore
+    // finishes it when the connection comes back).
+    _slowSaveTimer?.cancel();
+    _slowSaveTimer = Timer(const Duration(seconds: 12), () {
+      if (!mounted || !_saving) return;
+      setState(() => _slowSave = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              "Still saving… check your connection. It'll finish when "
+              "you're back online."),
+        ),
+      );
     });
 
     try {
-      final category =
-          Provider.of<CategoryService>(context, listen: false).selectedCategory;
-
       // One write logs every item and charges the card for them.
-      await FoodLog.logFoods(items: _calculatedItems, meal: category);
-      _recordGuesses(_calculatedItems);
+      final logged = await FoodLog.logFoods(items: items, meal: category);
+      _slowSaveTimer?.cancel();
+      _recordGuesses(items);
 
       if (mounted) {
-        Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        Navigator.pop(context, logged);
       }
     } catch (e) {
+      _slowSaveTimer?.cancel();
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text("Couldn't save your food. Please try again.")),
         );
         setState(() {
           _saving = false;
+          _slowSave = false;
         });
       }
     }
@@ -988,21 +1113,26 @@ class _AddFoodPageState extends State<AddFoodPage> {
         ? 0
         : FoodResolver.splitItems(_controller.text).length;
     final toLookUp = _ingredients.length + typed;
-    final canAdd = _calculated && _calculatedItems.isNotEmpty;
+    // Anything in "Ready to add" can be added; items still waiting in
+    // "Ready to look up" don't block it.
+    final canAdd = _calculatedItems.isNotEmpty;
 
+    // The button is disabled (pale grey) while busy, so the spinner uses
+    // the theme's primary colour rather than white, which wouldn't show.
     const spinner = SizedBox(
       width: 18,
       height: 18,
-      child: CircularProgressIndicator(
-        strokeWidth: 2,
-        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-      ),
+      child: CircularProgressIndicator(strokeWidth: 2),
     );
 
     final VoidCallback? onPressed;
     final Widget icon;
     final String label;
-    if (_calculating) {
+    if (_saving) {
+      onPressed = null;
+      icon = spinner;
+      label = _slowSave ? 'Still saving… check your connection' : 'Adding…';
+    } else if (_calculating) {
       onPressed = null;
       icon = spinner;
       label = 'Looking up $_progressDone/$_progressTotal…';
@@ -1011,10 +1141,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
       onPressed = _calculateWithAI;
       icon = const Icon(Icons.auto_awesome, size: 20);
       label = 'Look up $n item${n == 1 ? '' : 's'}';
-    } else if (_saving) {
-      onPressed = null;
-      icon = spinner;
-      label = 'Adding…';
     } else if (canAdd) {
       onPressed = _saveItems;
       icon = const Icon(Icons.check_circle_outline, size: 20);
@@ -1036,17 +1162,253 @@ class _AddFoodPageState extends State<AddFoodPage> {
     );
   }
 
+  /// Past foods matching what's being typed, for one-tap adding.
+  List<Widget> _buildSuggestions() {
+    if (_tutorialMode || _history.foods.isEmpty) return const [];
+    final matches =
+        FoodHistory.search(_history.foods, _controller.text, limit: 5);
+    if (matches.isEmpty) return const [];
+    return [
+      const SizedBox(height: 6),
+      Container(
+        decoration: AppDecor.card,
+        clipBehavior: Clip.antiAlias,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Text(
+                  "You've had before",
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ),
+              for (final tx in matches)
+                InkWell(
+                  onTap: _saving ? null : () => _addSuggestion(tx),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.history, size: 18, color: AppColors.muted),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  tx.description,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.ink,
+                                  ),
+                                ),
+                                if (tx.portion.trim().isNotEmpty)
+                                  Text(
+                                    tx.portion.trim(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 12, color: AppColors.muted),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${tx.calories.round()} kcal',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.add_circle_outline,
+                              size: 20, color: AppText.primary),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  /// Scan barcode, Photo of meal and Quick add. Three across when there's
+  /// room; on a phone, Quick add goes full width underneath.
+  Widget _buildQuickActions() {
+    final busy = _calculating || _saving || _tutorialMode;
+    final scan = OutlinedButton.icon(
+      onPressed: (busy || _scanning) ? null : _scanBarcode,
+      icon: _scanning
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.qr_code_scanner),
+      label: const Text('Scan barcode'),
+    );
+    final photo = OutlinedButton.icon(
+      onPressed: (busy || _readingPhoto) ? null : _photoOfMeal,
+      icon: _readingPhoto
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.photo_camera_outlined),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              _readingPhoto ? 'Reading photo…' : 'Photo of meal',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (!Premium.isPremium && !_readingPhoto) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                gradient: AppColors.brandGradient,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'PREMIUM',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 520;
+        final quick = OutlinedButton.icon(
+          onPressed: busy ? null : () => _quickAdd(),
+          icon: const Icon(Icons.bolt),
+          label: Text(wide ? 'Quick add' : 'Quick add calories'),
+        );
+        if (wide) {
+          return Row(
+            children: [
+              Expanded(child: scan),
+              const SizedBox(width: 8),
+              Expanded(child: photo),
+              const SizedBox(width: 8),
+              Expanded(child: quick),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(child: scan),
+                const SizedBox(width: 8),
+                Expanded(child: photo),
+              ],
+            ),
+            const SizedBox(height: 8),
+            quick,
+          ],
+        );
+      },
+    );
+  }
+
+  /// "Or add again": the foods most often had for [meal]. A scrolling row
+  /// on phones; on wider screens they wrap so all of them show.
+  List<Widget> _buildRecents(String meal) {
+    if (_tutorialMode) return const [];
+    final recent = _recentFor(meal);
+    if (recent.isEmpty) return const [];
+
+    Widget chip(CardTransaction tx) {
+      final label = [
+        tx.description,
+        if (tx.portion.trim().isNotEmpty) tx.portion.trim(),
+        '${tx.calories.round()} kcal',
+      ].join(' · ');
+      return ActionChip(
+        avatar: const Icon(Icons.add, size: 16),
+        label: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        onPressed: _saving ? null : () => _addRecent(tx),
+      );
+    }
+
+    return [
+      Text(
+        'Or add again',
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          color: AppColors.gray700,
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (_isPhone)
+        SizedBox(
+          height: 48,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: recent.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, i) => Center(child: chip(recent[i])),
+          ),
+        )
+      else
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [for (final tx in recent) chip(tx)],
+        ),
+      const SizedBox(height: 16),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final meal = Provider.of<CategoryService>(context).selectedCategory;
+    // The demo clears the page, so it's only offered when there's nothing
+    // to lose.
+    final canDemo = !_tutorialMode && !_saving && !_hasAnything;
     return Scaffold(
       appBar: AppBar(
         title: Text('Add to $meal'),
         actions: [
-          IconButton(
-            onPressed: _tutorialMode ? null : _runTutorial,
-            icon: const Icon(Icons.help_outline),
-            tooltip: 'Show me how',
+          Tooltip(
+            message: canDemo || _tutorialMode
+                ? 'Show me how'
+                : 'Show me how (clear your list first)',
+            child: IconButton(
+              onPressed: canDemo ? _runTutorial : null,
+              icon: const Icon(Icons.help_outline),
+            ),
           ),
         ],
       ),
@@ -1067,8 +1429,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _buildMainButton(meal),
-                  if (_calculated &&
-                      _calculatedItems.isNotEmpty &&
+                  if (_calculatedItems.isNotEmpty &&
                       !_calculating &&
                       !_tutorialMode)
                     TextButton.icon(
@@ -1103,6 +1464,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: _controller,
+                    focusNode: _foodFocus,
                     textInputAction: TextInputAction.done,
                     decoration: InputDecoration(
                       labelText: 'What did you eat?',
@@ -1110,6 +1472,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       border: const OutlineInputBorder(),
                       helperText:
                           'Separate foods with commas, or press Enter after each',
+                      helperMaxLines: 2,
                       suffixIcon: IconButton(
                         tooltip: 'Add to list',
                         icon: const Icon(Icons.add_circle_outline),
@@ -1118,106 +1481,15 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     ),
                     onChanged: (_) => _takeItemsFromInput(),
                     onSubmitted: (_) => _takeItemsFromInput(all: true),
+                    // Keep the keyboard up after Enter so the next food
+                    // can be typed straight away.
+                    onEditingComplete: () {},
                   ),
+                  ..._buildSuggestions(),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed:
-                              (_calculating || _scanning || _tutorialMode)
-                                  ? null
-                                  : _scanBarcode,
-                          icon: _scanning
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2))
-                              : const Icon(Icons.qr_code_scanner),
-                          label: const Text('Scan barcode'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed:
-                              (_calculating || _readingPhoto || _tutorialMode)
-                                  ? null
-                                  : _photoOfMeal,
-                          icon: _readingPhoto
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2))
-                              : const Icon(Icons.photo_camera_outlined),
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  _readingPhoto
-                                      ? 'Reading photo…'
-                                      : 'Photo of meal',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (!Premium.isPremium && !_readingPhoto) ...[
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    gradient: AppColors.brandGradient,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Text(
-                                    'PREMIUM',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.6,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  _buildQuickActions(),
                   const SizedBox(height: 16),
-                  if (_recent.isNotEmpty && !_tutorialMode) ...[
-                    Text(
-                      'Or add again',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.gray700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 36,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _recent.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (context, i) {
-                          final tx = _recent[i];
-                          return ActionChip(
-                            avatar: const Icon(Icons.add, size: 16),
-                            label: Text(
-                                '${tx.description} · ${tx.calories.round()} kcal'),
-                            onPressed: () => _addRecent(tx),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  ..._buildRecents(meal),
                   if (_ingredients.isNotEmpty) ...[
                     Text(
                       'Ready to look up',
@@ -1237,16 +1509,29 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         return Chip(
                           label: Text(ingredient),
                           deleteIcon: const Icon(Icons.close, size: 18),
+                          deleteButtonTooltipMessage: 'Remove',
                           onDeleted: () {
-                            setState(() {
-                              _ingredients.removeAt(idx);
-                              _calculated = false;
-                            });
+                            setState(() => _ingredients.removeAt(idx));
                           },
                           backgroundColor: AppColors.emerald100,
                         );
                       }).toList(),
                     ),
+                    if (_firstFailed != null)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: _calculating || _saving
+                              ? null
+                              : () => _quickAdd(name: _firstFailed),
+                          icon: const Icon(Icons.edit_note, size: 20),
+                          label: Text(
+                            'Add calories for "${_firstFailed!}" manually',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
                   ],
                   if (_pending.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -1412,7 +1697,7 @@ class _PendingPillState extends State<_PendingPill>
         child: Text(
           'Pending',
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: FontWeight.w700,
             color: AppText.amber700,
           ),
@@ -1494,8 +1779,423 @@ class _SplitSheetState extends State<_SplitSheet> {
                   icon: const Icon(Icons.call_split),
                   label: Text(_chosen.isEmpty
                       ? 'Pick friends'
-                      : 'Log my $share kcal & send requests'),
+                      : 'Add my $share kcal & send requests'),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Numbers typed with a decimal point or a decimal comma ("1,5").
+double? _parseNumber(String text) =>
+    double.tryParse(text.trim().replaceAll(',', '.'));
+
+final _numberInput = [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))];
+
+/// What the adjust sheet changed: a new amount, new calories, or both.
+class _Adjustment {
+  final double? multiplier;
+  final double? calories;
+
+  const _Adjustment({this.multiplier, this.calories});
+}
+
+/// Change how much of a food you had (preset chips or an exact amount),
+/// and fix the calories of an estimate.
+class _AdjustSheet extends StatefulWidget {
+  final String name;
+  final String portion;
+  final String basePortion;
+  final double multiplier;
+  final double calories;
+  final bool canEditCalories;
+
+  const _AdjustSheet({
+    required this.name,
+    required this.portion,
+    required this.basePortion,
+    required this.multiplier,
+    required this.calories,
+    required this.canEditCalories,
+  });
+
+  @override
+  State<_AdjustSheet> createState() => _AdjustSheetState();
+}
+
+class _AdjustSheetState extends State<_AdjustSheet> {
+  late final bool _per100 = _AddFoodPageState._isPer100(widget.basePortion);
+
+  /// "g" or "ml" for per-100 portions.
+  late final String _unit = (RegExp(r'^\s*100\s*(g|ml)\b',
+                  caseSensitive: false)
+              .firstMatch(widget.basePortion)
+              ?.group(1) ??
+          'g')
+      .toLowerCase();
+
+  late final TextEditingController _amount = TextEditingController(
+    text: FoodLog.formatAmount(
+        _per100 ? 100 * widget.multiplier : widget.multiplier),
+  );
+  late final TextEditingController _kcal =
+      TextEditingController(text: '${widget.calories.round()}');
+
+  bool _editingCalories = false;
+  String? _amountError;
+  String? _kcalError;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _kcal.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    double? multiplier;
+    final amountText = _amount.text.trim();
+    if (amountText.isNotEmpty) {
+      final a = _parseNumber(amountText);
+      final m = a == null ? null : (_per100 ? a / 100 : a);
+      if (m == null || !m.isFinite || m <= 0) {
+        setState(() => _amountError = 'Enter an amount more than 0');
+        return;
+      }
+      if (m > 100) {
+        setState(() => _amountError = "That's a lot. Check the amount?");
+        return;
+      }
+      if ((m - widget.multiplier).abs() > 1e-9) multiplier = m;
+    }
+
+    double? calories;
+    if (_editingCalories) {
+      final k = _parseNumber(_kcal.text);
+      if (k == null || !k.isFinite || k < 0 || k > 20000) {
+        setState(() => _kcalError = 'Enter the calories, e.g. 250');
+        return;
+      }
+      if (k.round() != widget.calories.round() || multiplier != null) {
+        calories = k.roundToDouble();
+      }
+    }
+
+    Navigator.pop(
+      context,
+      multiplier == null && calories == null
+          ? null
+          : _Adjustment(multiplier: multiplier, calories: calories),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final choices = _per100
+        ? const [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
+        : const [0.5, 1.0, 1.5, 2.0, 3.0];
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                widget.name,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+              if (widget.portion.isNotEmpty)
+                Text('Portion: ${widget.portion}',
+                    style: TextStyle(color: AppColors.gray600)),
+              const SizedBox(height: 16),
+              Text('How much did you have?',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700, color: AppColors.ink)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final m in choices)
+                    ChoiceChip(
+                      label: Text(_per100
+                          ? _AddFoodPageState._scaledPortion(
+                              widget.basePortion, m)
+                          : '${FoodLog.formatAmount(m)}×'),
+                      selected: (widget.multiplier - m).abs() < 1e-9,
+                      onSelected: (_) => Navigator.pop(
+                          context, _Adjustment(multiplier: m)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _amount,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: _numberInput,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: _per100 ? 'Exact amount' : 'How many portions',
+                  suffixText: _per100 ? _unit : '×',
+                  helperText: _per100
+                      ? 'In $_unit'
+                      : widget.basePortion.isEmpty
+                          ? '1 = as looked up'
+                          : '1 = ${widget.basePortion}',
+                  errorText: _amountError,
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: (_) {
+                  if (_amountError != null) {
+                    setState(() => _amountError = null);
+                  }
+                },
+                onSubmitted: (_) => _save(),
+              ),
+              if (widget.canEditCalories) ...[
+                const SizedBox(height: 12),
+                if (!_editingCalories)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () =>
+                          setState(() => _editingCalories = true),
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('Edit calories'),
+                    ),
+                  )
+                else
+                  TextField(
+                    controller: _kcal,
+                    autofocus: true,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: _numberInput,
+                    textInputAction: TextInputAction.done,
+                    decoration: InputDecoration(
+                      labelText: 'Calories',
+                      suffixText: 'kcal',
+                      helperText: "It's an estimate. Know better? Fix it here.",
+                      helperMaxLines: 2,
+                      errorText: _kcalError,
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (_) {
+                      if (_kcalError != null) {
+                        setState(() => _kcalError = null);
+                      }
+                    },
+                    onSubmitted: (_) => _save(),
+                  ),
+              ],
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: _save,
+                style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48)),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Quick add: a name (optional) and the calories, with macros if known.
+/// Pops with an item ready for the "Ready to add" list.
+class _QuickAddSheet extends StatefulWidget {
+  final String? initialName;
+
+  const _QuickAddSheet({this.initialName});
+
+  @override
+  State<_QuickAddSheet> createState() => _QuickAddSheetState();
+}
+
+class _QuickAddSheetState extends State<_QuickAddSheet> {
+  late final TextEditingController _name =
+      TextEditingController(text: widget.initialName ?? '');
+  final TextEditingController _kcal = TextEditingController();
+  final TextEditingController _protein = TextEditingController();
+  final TextEditingController _carbs = TextEditingController();
+  final TextEditingController _fat = TextEditingController();
+  String? _kcalError;
+  String? _macroError;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _kcal.dispose();
+    _protein.dispose();
+    _carbs.dispose();
+    _fat.dispose();
+    super.dispose();
+  }
+
+  /// An optional macro: empty is 0, anything else must be a number ≥ 0.
+  double? _macro(TextEditingController c) {
+    final text = c.text.trim();
+    if (text.isEmpty) return 0;
+    final v = _parseNumber(text);
+    return v != null && v.isFinite && v >= 0 && v <= 2000 ? v : null;
+  }
+
+  void _add() {
+    final kcal = _parseNumber(_kcal.text);
+    if (kcal == null || !kcal.isFinite || kcal < 0 || kcal > 20000) {
+      setState(() => _kcalError = 'Enter the calories, e.g. 250');
+      return;
+    }
+    final protein = _macro(_protein);
+    final carbs = _macro(_carbs);
+    final fat = _macro(_fat);
+    if (protein == null || carbs == null || fat == null) {
+      setState(() => _macroError = 'Macros need to be numbers (or blank)');
+      return;
+    }
+    final name = _name.text.trim();
+    Navigator.pop(context, <String, dynamic>{
+      'name': name.isEmpty ? 'Quick add' : name,
+      'calories': kcal.roundToDouble(),
+      'protein': protein,
+      'carbs': carbs,
+      'fat': fat,
+      'portion': '',
+      'source': 'manual',
+      'needs_review': false,
+      'multiplier': 1.0,
+      'base': {
+        'calories': kcal.roundToDouble(),
+        'protein': protein,
+        'carbs': carbs,
+        'fat': fat,
+      },
+    });
+  }
+
+  Widget _macroField(TextEditingController c, String label) => Expanded(
+        child: TextField(
+          controller: c,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: _numberInput,
+          textInputAction: TextInputAction.next,
+          decoration: InputDecoration(
+            labelText: label,
+            suffixText: 'g',
+            isDense: true,
+            border: const OutlineInputBorder(),
+          ),
+          onChanged: (_) {
+            if (_macroError != null) setState(() => _macroError = null);
+          },
+          onSubmitted: (_) => _add(),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final named = (widget.initialName ?? '').trim().isNotEmpty;
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Quick add',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Know the calories? Add them straight to your list.',
+                style: TextStyle(color: AppColors.muted),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _name,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Name (optional)',
+                  hintText: 'Quick add',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _kcal,
+                // Straight to the number when the name is already known.
+                autofocus: named,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: _numberInput,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: 'Calories',
+                  suffixText: 'kcal',
+                  errorText: _kcalError,
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: (_) {
+                  if (_kcalError != null) setState(() => _kcalError = null);
+                },
+                onSubmitted: (_) => _add(),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Protein, carbs and fat (optional)',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.gray600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _macroField(_protein, 'Protein'),
+                  const SizedBox(width: 8),
+                  _macroField(_carbs, 'Carbs'),
+                  const SizedBox(width: 8),
+                  _macroField(_fat, 'Fat'),
+                ],
+              ),
+              if (_macroError != null) ...[
+                const SizedBox(height: 6),
+                Text(_macroError!,
+                    style: TextStyle(fontSize: 12, color: AppText.red600)),
+              ],
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _add,
+                style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48)),
+                icon: const Icon(Icons.add),
+                label: const Text('Add to list'),
               ),
             ],
           ),

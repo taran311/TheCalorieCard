@@ -6,8 +6,11 @@ import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 
-String _myName() =>
-    FriendsService.displayName(FirebaseAuth.instance.currentUser?.email);
+/// Your name as friends see it: your display name if you set one.
+Future<String> _myName() {
+  final user = FirebaseAuth.instance.currentUser;
+  return FriendsService.nameFor(user?.uid ?? '', email: user?.email);
+}
 
 /// A game being started, so a double tap doesn't start two.
 bool _startingGame = false;
@@ -53,7 +56,7 @@ Future<void> startCalorieGame(
   try {
     final id = await CalorieGameService.create(
       uid: uid,
-      myName: _myName(),
+      myName: await _myName(),
       friendId: friendId,
       friendName: friendName,
     );
@@ -567,7 +570,7 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
     try {
       final id = await CalorieGameService.create(
         uid: _uid,
-        myName: _myName(),
+        myName: await _myName(),
         friendId: other,
         friendName: game.nameOf(other),
       );

@@ -3,36 +3,46 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/pages/email_verification_page.dart';
+import 'package:namer_app/services/auth_services.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/ui/auth_ui.dart';
 
+/// Creating an account. Like sign-in, it doesn't navigate: AuthPage sees
+/// the new account and shows "Verify your email" (or, for Google, goes
+/// straight to setting up the card).
 class RegisterPage extends StatefulWidget {
   /// Switches back to the sign-in form.
   final VoidCallback? onTap;
 
-  const RegisterPage({super.key, required this.onTap});
+  /// Shared with the sign-in form so the email carries over. The page
+  /// makes its own if none is given.
+  final TextEditingController? emailController;
+
+  const RegisterPage({super.key, required this.onTap, this.emailController});
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _email = TextEditingController();
+  TextEditingController? _ownEmail;
+  TextEditingController get _email =>
+      widget.emailController ?? (_ownEmail ??= TextEditingController());
+  // One password box: the eye button lets people check what they typed,
+  // which catches typos better than typing it twice.
   final _password = TextEditingController();
-  final _confirm = TextEditingController();
 
   bool _loading = false;
+  bool _googleLoading = false;
   bool _submitted = false;
   String? _emailError;
   String? _passwordError;
-  String? _confirmError;
   AuthProblem? _problem;
 
   @override
   void dispose() {
-    _email.dispose();
+    _ownEmail?.dispose();
     _password.dispose();
-    _confirm.dispose();
     super.dispose();
   }
 
@@ -40,9 +50,6 @@ class _RegisterPageState extends State<RegisterPage> {
     final email = _email.text.trim();
     _emailError = validateEmail(email);
     _passwordError = validateNewPassword(_password.text);
-    _confirmError = _confirm.text.isEmpty
-        ? 'Type your password again'
-        : (_confirm.text != _password.text ? "Passwords don't match" : null);
   }
 
   Future<void> _signUp() async {
@@ -52,28 +59,29 @@ class _RegisterPageState extends State<RegisterPage> {
       _problem = null;
       _validate();
     });
-    if (_emailError != null || _passwordError != null || _confirmError != null) {
+    if (_emailError != null || _passwordError != null) {
       return;
     }
 
     setState(() => _loading = true);
     final email = _email.text.trim();
+    final categories = Provider.of<CategoryService>(context, listen: false);
     try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         // Never trim passwords: sign-in uses exactly what was typed.
         password: _password.text,
       );
       TextInput.finishAutofillContext();
-      if (!mounted) return;
-
-      Provider.of<CategoryService>(context, listen: false).resetToDefault();
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => EmailVerificationPage(email: email),
-        ),
-      );
+      categories.resetToDefault();
+      // AuthPage is already swapping to "Verify your email" (which doesn't
+      // send one itself when it opens this way), so send the link here.
+      EmailVerificationPage.markSent();
+      try {
+        await cred.user?.sendEmailVerification();
+      } catch (_) {
+        // They can tap Resend on the next page.
+      }
     } catch (e) {
       if (!mounted) return;
       final problem = authProblemFor(e, flow: 'signup');
@@ -100,9 +108,34 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(_validate);
   }
 
+  Future<void> _google() async {
+    if (_loading || _googleLoading) return;
+    final categories = Provider.of<CategoryService>(context, listen: false);
+    setState(() {
+      _googleLoading = true;
+      _problem = null;
+    });
+    try {
+      final cred = await AuthService.signInWithGoogle();
+      if (cred?.additionalUserInfo?.isNewUser == true) {
+        categories.resetToDefault();
+      }
+      // Signed in: AuthPage takes over (Google emails are already
+      // verified, so it's straight to setting up the card).
+      if (cred == null && mounted) setState(() => _googleLoading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _googleLoading = false;
+        _problem = authProblemFor(e, flow: 'signup');
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final length = _password.text.length;
+    final busy = _loading || _googleLoading;
 
     return AuthScaffold(
       title: 'Create your card',
@@ -116,7 +149,7 @@ class _RegisterPageState extends State<RegisterPage> {
           const SizedBox(height: 16),
           AuthSecondaryButton(
             label: 'Sign in',
-            onPressed: _loading ? null : widget.onTap,
+            onPressed: busy ? null : widget.onTap,
           ),
         ],
       ),
@@ -133,6 +166,13 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
               const SizedBox(height: 20),
             ],
+            GoogleButton(
+              loading: _googleLoading,
+              onPressed: busy ? null : _google,
+            ),
+            const SizedBox(height: 20),
+            const AuthDivider(text: 'or'),
+            const SizedBox(height: 20),
             AuthField(
               controller: _email,
               label: 'Email',
@@ -141,7 +181,7 @@ class _RegisterPageState extends State<RegisterPage> {
               keyboardType: TextInputType.emailAddress,
               autofillHints: const [AutofillHints.email],
               errorText: _emailError,
-              enabled: !_loading,
+              enabled: !busy,
               onChanged: (_) => _revalidate(),
             ),
             const SizedBox(height: 18),
@@ -151,33 +191,24 @@ class _RegisterPageState extends State<RegisterPage> {
               icon: Icons.lock_outline_rounded,
               password: true,
               autofillHints: const [AutofillHints.newPassword],
+              textInputAction: TextInputAction.done,
               errorText: _passwordError,
-              enabled: !_loading,
+              enabled: !busy,
               onChanged: (_) => _revalidate(),
+              onSubmitted: (_) => _signUp(),
             ),
             if (_passwordError == null) ...[
               const SizedBox(height: 8),
               _PasswordHint(length: length),
             ],
-            const SizedBox(height: 18),
-            AuthField(
-              controller: _confirm,
-              label: 'Confirm password',
-              icon: Icons.lock_outline_rounded,
-              password: true,
-              autofillHints: const [AutofillHints.newPassword],
-              textInputAction: TextInputAction.done,
-              errorText: _confirmError,
-              enabled: !_loading,
-              onChanged: (_) => _revalidate(),
-              onSubmitted: (_) => _signUp(),
-            ),
             const SizedBox(height: 24),
             AuthButton(
               label: 'Create my card',
               loading: _loading,
-              onPressed: _signUp,
+              onPressed: _googleLoading ? null : _signUp,
             ),
+            const SizedBox(height: 8),
+            const LegalAgreement(),
           ],
         ),
       ),

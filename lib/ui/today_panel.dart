@@ -169,9 +169,10 @@ class TodayPanel extends StatelessWidget {
                           Text(
                             '${formatDays(statement.daysUnderBudget)} on budget',
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: AppText.green,
+                              // Darker than the chart's green: it's text.
+                              color: AppText.emerald700,
                             ),
                           ),
                         ],

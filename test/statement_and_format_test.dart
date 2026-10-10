@@ -59,6 +59,76 @@ void main() {
       expect(s.dailyBudget, 2000);
       expect(s.daysUnderBudget, 1);
     });
+
+    test("finished days are judged like Hiscores: by the card's close",
+        () async {
+      Future<void> log(String key, Map<String, dynamic> data) =>
+          w.db.collection('daily_logs').doc('${uid}_$key').set(data);
+      // Ate 2100 with 150 moved in from a pot: closed in credit.
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 2100);
+      await log('2026-10-08', {
+        'finished': true,
+        'balances': {'calories': 50},
+      });
+      // Under today's goal, but that day's goal was lower: over.
+      await w.addEntry(at: DateTime(2026, 10, 7, 12), calories: 1900);
+      await log('2026-10-07', {
+        'goals': {'calorie_goal': 1800},
+      });
+      // Finished today on budget: counts, even though today isn't over.
+      await w.addEntry(at: DateTime(2026, 10, 9, 8), calories: 500);
+      await log('2026-10-09', {
+        'finished': true,
+        'balances': {'calories': 1500},
+      });
+
+      final s = await StatementService.load(uid, days: 7);
+      DaySummary day(String key) =>
+          s.days.firstWhere((d) => BalanceService.dateKey(d.day) == key);
+
+      expect(day('2026-10-08').onBudget(s.dailyBudget), isTrue);
+      expect(day('2026-10-07').onBudget(s.dailyBudget), isFalse);
+      expect(day('2026-10-07').budget(s.dailyBudget), 1800);
+      expect(s.daysUnderBudget, 2); // the 8th and today
+    });
+
+    test('your week: last 7 full days against the 7 before', () async {
+      Future<void> finish(String key, num left) => w.db
+          .collection('daily_logs')
+          .doc('${uid}_$key')
+          .set({'finished': true, 'balances': {'calories': left}});
+      // This week (2nd-8th Oct): two days logged, both finished on budget.
+      await w.addEntry(
+          at: DateTime(2026, 10, 8, 12), calories: 1800, protein: 120);
+      await w.addEntry(
+          at: DateTime(2026, 10, 3, 12), calories: 1600, protein: 100);
+      await finish('2026-10-08', 200);
+      await finish('2026-10-03', 400);
+      // The week before (25 Sep - 1 Oct): one day, over budget.
+      await w.addEntry(
+          at: DateTime(2026, 9, 30, 12), calories: 2300, protein: 80);
+      await finish('2026-09-30', -300);
+      // Today doesn't count yet.
+      await w.addEntry(at: DateTime(2026, 10, 9, 8), calories: 3000);
+
+      final d = await StatementService.weekDigest(uid);
+
+      expect(d.start, DateTime(2026, 10, 2));
+      expect(d.thisWeek.daysLogged, 2);
+      expect(d.thisWeek.daysOnBudget, 2);
+      expect(d.thisWeek.finishedDays, 2);
+      expect(d.thisWeek.averageCalories, closeTo(1700, 0.001));
+      expect(d.thisWeek.averageProtein, closeTo(110, 0.001));
+      expect(d.lastWeek.daysOnBudget, 0);
+      expect(d.lastWeek.finishedDays, 1);
+      expect(d.lastWeek.averageCalories, closeTo(2300, 0.001));
+      expect(WeekDigest.change(2, 0), '▲ 2');
+      expect(WeekDigest.change(1700, 2300), '▼ 600');
+      expect(WeekDigest.change(110, 80, unit: 'g'), '▲ 30g');
+      expect(WeekDigest.change(3, 3), 'same');
+      expect(d.toShareText(), contains('2 days on budget'));
+      expect(d.isEmpty, isFalse);
+    });
   });
 
   group('Portions', () {

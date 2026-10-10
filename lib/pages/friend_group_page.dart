@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/friend_activity.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/ui/friend_today.dart';
 import 'package:namer_app/ui/responsive.dart';
-import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
@@ -32,17 +35,43 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
   late final Stream<DocumentSnapshot<Map<String, dynamic>>> _groupStream =
       _groupRef.snapshots();
 
-  /// Today's food for the members, cached until the member list changes.
+  /// Today's food for the members, cached until the member list or the
+  /// day changes. (The query covers one day: kept past midnight, it would
+  /// show everyone at zero.)
   Stream<List<Map<String, dynamic>>>? _consumption;
   String? _consumptionKey;
 
-  /// Members' emails, fetched once each.
-  final Map<String, String> _emails = {};
+  /// Members' names, fetched once each.
+  final Map<String, String> _names = {};
 
   bool _busy = false;
+  Timer? _midnight;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleMidnight();
+  }
+
+  void _scheduleMidnight() {
+    _midnight?.cancel();
+    _midnight = FriendActivity.atMidnight(() {
+      if (!mounted) return;
+      // build() sees the new date and starts a fresh stream for today.
+      setState(() {});
+      _scheduleMidnight();
+    });
+  }
+
+  @override
+  void dispose() {
+    _midnight?.cancel();
+    super.dispose();
+  }
 
   Stream<List<Map<String, dynamic>>> _consumptionFor(List<String> memberIds) {
-    final key = memberIds.join(',');
+    final key = '${BalanceService.dateKey(BalanceService.now())}|'
+        '${memberIds.join(',')}';
     if (_consumption == null || key != _consumptionKey) {
       _consumptionKey = key;
       _consumption = _getMemberConsumptionStream(memberIds);
@@ -112,7 +141,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
     }
   }
 
-  Future<void> _startChatWithMember(String memberId, String memberEmail) async {
+  Future<void> _startChatWithMember(String memberId, String name) async {
     try {
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
       if (currentUserId == null) return;
@@ -134,7 +163,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
             .doc(conversationId)
             .set({
           'participant_ids': participantIds,
-          'conversation_name': memberEmail.split('@')[0],
+          'conversation_name': name,
           'is_group': false,
           'created_at': FieldValue.serverTimestamp(),
           'last_message': '',
@@ -146,7 +175,7 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
         });
       }
 
-      _openChat(conversationId, memberEmail.split('@')[0], false);
+      _openChat(conversationId, name, false);
     } catch (_) {
       _snack("Couldn't open the chat. Please try again.");
     }
@@ -345,152 +374,144 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
 
   Widget _memberCard(Map<String, dynamic> memberData) {
     final memberId = memberData['userId'] as String;
-    final memberEmail = memberData['email'] as String;
-    final name = FriendsService.displayName(memberEmail);
+    final name = memberData['name'] as String;
     final calories = memberData['consumed_calories'] as double;
     final protein = memberData['consumed_protein'] as double;
     final carbs = memberData['consumed_carbs'] as double;
     final fats = memberData['consumed_fats'] as double;
+    final isMe = memberId == _uid;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: AppDecor.card,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        child: FriendTodayBuilder(
+          userId: memberId,
+          builder: (context, logged) {
+            // Spending comes from the live food stream; budget and
+            // "finished" from their day's history (or their goal).
+            final day = logged == null
+                ? null
+                : FriendDay(
+                    finished: logged.finished,
+                    spent: calories,
+                    budget: logged.budget,
+                  );
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: const BoxDecoration(
-                    gradient: AppColors.brandGradient,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      memberEmail.initial.toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                Row(
+                  children: [
+                    ProgressAvatar(name: name, day: day, size: 48),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isMe ? '$name (you)' : name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.gray800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          _statusLine(day),
+                        ],
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.gray800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Eaten today',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.gray600,
-                        ),
-                      ),
-                    ],
-                  ),
+                const SizedBox(height: 10),
+                // Macros are a side note: the card is about the budget.
+                Text(
+                  '${protein.round()}g protein · ${carbs.round()}g carbs · '
+                  '${fats.round()}g fat',
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Nutrition Info
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: AppDecor.inset,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _buildNutritionChip(
-                    '${calories.toStringAsFixed(0)} kcal',
-                    AppColors.primaryDark,
-                  ),
-                  _buildNutritionChip(
-                    '${protein.toStringAsFixed(0)}g protein',
-                    AppColors.proteinText,
-                  ),
-                  _buildNutritionChip(
-                    '${carbs.toStringAsFixed(0)}g carbs',
-                    AppColors.carbsText,
-                  ),
-                  _buildNutritionChip(
-                    '${fats.toStringAsFixed(0)}g fat',
-                    AppColors.fatText,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => HomePage(
-                          readOnly: true,
-                          userIdOverride: memberId,
-                          showBanner: true,
-                          bannerTitle: memberEmail,
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.credit_card, size: 20),
-                  label: const Text('View card'),
-                ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => AchievementsPage(
-                          userIdOverride: memberId,
-                          titleOverride: "$name's achievements",
-                        ),
-                      ),
-                    );
-                  },
-                  icon: Icon(
-                    Icons.emoji_events_outlined,
-                    color: AppText.violet600,
-                  ),
-                  tooltip: 'Achievements',
-                ),
-                if (memberId != _uid)
-                  IconButton(
-                    onPressed: () =>
-                        _startChatWithMember(memberId, memberEmail),
-                    icon: Icon(
-                      Icons.chat_bubble_outline,
-                      color: AppText.primary,
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => HomePage(
+                              readOnly: true,
+                              userIdOverride: memberId,
+                              showBanner: true,
+                              bannerTitle: name,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.credit_card, size: 20),
+                      label: const Text('View card'),
                     ),
-                    tooltip: 'Chat',
-                  ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AchievementsPage(
+                              userIdOverride: memberId,
+                              titleOverride: "$name's achievements",
+                            ),
+                          ),
+                        );
+                      },
+                      icon: Icon(
+                        Icons.emoji_events_outlined,
+                        color: AppText.violet600,
+                      ),
+                      tooltip: 'Achievements',
+                    ),
+                    if (!isMe)
+                      IconButton(
+                        onPressed: () => _startChatWithMember(memberId, name),
+                        icon: Icon(
+                          Icons.chat_bubble_outline,
+                          color: AppText.primary,
+                        ),
+                        tooltip: 'Chat',
+                      ),
+                  ],
+                ),
               ],
-            ),
-          ],
+            );
+          },
         ),
       ),
+    );
+  }
+
+  /// "62% of budget spent · on track", or "Finished ✓ · on budget".
+  Widget _statusLine(FriendDay? day) {
+    if (day == null) return const SizedBox(height: 16);
+    final Color color;
+    if (day.onTrack == false) {
+      color = AppText.amber700;
+    } else if (day.finished) {
+      color = AppText.emerald700;
+    } else {
+      color = AppColors.gray600;
+    }
+    final text = Text(
+      day.label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color),
+    );
+    if (!day.finished) return text;
+    return Tooltip(
+      message: "They've closed their day on the Card",
+      child: text,
     );
   }
 
@@ -500,112 +521,58 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
       return Stream.value([]);
     }
 
-    // Listen to today's food for all members (not their whole history).
+    // Listen to today's food for all members (not their whole history),
+    // 30 people per query, so big groups aren't cut short.
     final dayStart = BalanceService.startOfDay(BalanceService.now());
-    return BalanceService.entrySnapshotsBetween(memberIds.take(30).toList(),
-            dayStart, BalanceService.addDays(dayStart, 1))
-        .asyncMap((snapshot) async {
-      final today = BalanceService.now();
-      final startOfDay = BalanceService.startOfDay(today);
-      final endOfDay = BalanceService.addDays(startOfDay, 1);
-
-      // Group food items by user
-      Map<String, List<QueryDocumentSnapshot>> userFoodMap = {};
-      for (final doc in snapshot.docs) {
+    final dayEnd = BalanceService.addDays(dayStart, 1);
+    return FriendActivity.foodBetween(memberIds, dayStart, dayEnd)
+        .asyncMap((docs) async {
+      // Group food items by user: only food eaten that day (recipe
+      // ingredient rows aren't eaten; a fallback query returns more).
+      final userFoodMap = <String, List<Map<String, dynamic>>>{};
+      for (final doc in docs) {
         final data = doc.data();
         final userId = data['user_id'] as String?;
-
-        if (userId != null) {
-          // Extract date from time_added or created_at
-          DateTime? docDate;
-          final timeAdded = data['time_added'];
-          final createdAt = data['created_at'];
-
-          if (timeAdded is Timestamp) {
-            docDate = timeAdded.toDate();
-          } else if (timeAdded is DateTime) {
-            docDate = timeAdded;
-          } else if (createdAt is Timestamp) {
-            docDate = createdAt.toDate();
-          } else if (createdAt is DateTime) {
-            docDate = createdAt;
-          }
-
-          // Only food eaten today (recipe ingredient rows aren't eaten)
-          if (BalanceService.isLogEntry(data) &&
-              docDate != null &&
-              !docDate.isBefore(startOfDay) &&
-              docDate.isBefore(endOfDay)) {
-            userFoodMap.putIfAbsent(userId, () => []).add(doc);
-          }
+        final docDate = BalanceService.entryDate(data);
+        if (userId != null &&
+            BalanceService.isLogEntry(data) &&
+            docDate != null &&
+            !docDate.isBefore(dayStart) &&
+            docDate.isBefore(dayEnd)) {
+          userFoodMap.putIfAbsent(userId, () => []).add(data);
         }
       }
 
-      // Fetch any emails we don't have yet, all at once.
-      final missing = memberIds.where((id) => !_emails.containsKey(id));
+      // Fetch any names we don't have yet, all at once.
+      final missing = memberIds.where((id) => !_names.containsKey(id));
       await Future.wait(missing.map((id) async {
         try {
           final userDoc = await FirebaseFirestore.instance
               .collection('users')
               .doc(id)
               .get();
-          final email = userDoc.data()?['email'];
-          _emails[id] = email is String ? email : 'Unknown';
+          _names[id] = FriendsService.nameFromUser(userDoc.data());
         } catch (_) {
           // Shown as "Unknown" this time; tried again on the next update.
         }
       }).toList());
 
-      // Build member data list
-      final List<Map<String, dynamic>> memberData = [];
-
-      for (final memberId in memberIds) {
-        // Calculate consumed values from today's food items
-        double consumedCalories = 0;
-        double consumedProtein = 0;
-        double consumedCarbs = 0;
-        double consumedFats = 0;
-
-        final userFoodDocs = userFoodMap[memberId] ?? [];
-        for (final doc in userFoodDocs) {
-          final data = doc.data() as Map<String, dynamic>;
-          consumedCalories += (data['food_calories'] as num?)?.toDouble() ?? 0;
-          consumedProtein += (data['food_protein'] as num?)?.toDouble() ?? 0;
-          consumedCarbs += (data['food_carbs'] as num?)?.toDouble() ?? 0;
-          consumedFats += (data['food_fat'] as num?)?.toDouble() ?? 0;
-        }
-
-        memberData.add({
-          'userId': memberId,
-          'email': _emails[memberId] ?? 'Unknown',
-          'consumed_calories': consumedCalories,
-          'consumed_protein': consumedProtein,
-          'consumed_carbs': consumedCarbs,
-          'consumed_fats': consumedFats,
-        });
-      }
-
-      return memberData;
+      return [
+        for (final memberId in memberIds)
+          () {
+            final total =
+                BalanceService.totalOf(userFoodMap[memberId] ?? const []);
+            return <String, dynamic>{
+              'userId': memberId,
+              'name': _names[memberId] ?? 'Unknown',
+              'consumed_calories': total.calories,
+              'consumed_protein': total.protein,
+              'consumed_carbs': total.carbs,
+              'consumed_fats': total.fat,
+            };
+          }(),
+      ];
     });
-  }
-
-  Widget _buildNutritionChip(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
   }
 }
 

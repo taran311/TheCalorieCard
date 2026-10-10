@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/card_design_service.dart';
+import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/streak.dart';
 
 /// Everything the hiscores need for one person.
@@ -172,9 +173,7 @@ class LeaderboardService {
 
     return PlayerStats(
       userId: userId,
-      name: isMe
-          ? 'You'
-          : displayName(userDoc.data()?['email'] as String?),
+      name: isMe ? 'You' : FriendsService.nameFromUser(userDoc.data()),
       isMe: isMe,
       daysLogged: daysLogged,
       daysOnBudget: daysOnBudget,

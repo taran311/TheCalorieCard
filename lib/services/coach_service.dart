@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/coach_actions.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/meal_time.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/statement_service.dart';
 
@@ -301,7 +302,18 @@ class CoachPrompt {
   /// [CoachService.drinksOutQuestion].
   final CoachOuting? outing;
 
-  const CoachPrompt(this.emoji, this.label, this.question, [this.outing]);
+  /// Set for chips that need details only the person knows ("Add food
+  /// for me"): instead of sending, this goes in the message box, ready to
+  /// finish (e.g. "Add to lunch: ").
+  final String? prefill;
+
+  const CoachPrompt(this.emoji, this.label, this.question, [this.outing])
+      : prefill = null;
+
+  /// A chip that fills in the message box rather than sending.
+  const CoachPrompt.prefill(this.emoji, this.label, String this.prefill)
+      : question = '',
+        outing = null;
 }
 
 class CoachService {
@@ -337,6 +349,14 @@ class CoachService {
         const CoachPrompt('🌙', 'Light options for later',
             "I'm already over today. What are some light, filling options if I'm still hungry?"),
       ]);
+    } else if (c == null) {
+      // No numbers (they didn't load): don't claim "0 kcal".
+      prompts.addAll(const [
+        CoachPrompt('🍽️', 'Meal ideas',
+            'Suggest a balanced meal idea for today.'),
+        CoachPrompt('🍫', 'A snack idea',
+            'Suggest a satisfying, sensible snack.'),
+      ]);
     } else {
       prompts.addAll([
         CoachPrompt('🍽️', 'Meal ideas for my $left kcal',
@@ -367,15 +387,17 @@ class CoachService {
           'Give me a few breakfast ideas that set me up well for today.'));
     }
 
-    prompts.addAll(const [
-      CoachPrompt('✍️', 'Add food for me',
-          "I'd like you to add some food to my diary for me."),
-      CoachPrompt('📖', 'Save a recipe',
-          "Help me save one of my usual meals as a recipe."),
+    // These need details only the person knows, so they start a message
+    // for them to finish rather than sending something vague.
+    prompts.addAll([
+      CoachPrompt.prefill('✍️', 'Add food for me',
+          'Add to ${MealTime.forHour(hour).toLowerCase()}: '),
+      const CoachPrompt.prefill(
+          '📖', 'Save a recipe', 'Save a recipe called '),
     ]);
     if (c != null && c.entries.isNotEmpty) {
-      prompts.add(const CoachPrompt('🗑️', 'Remove something',
-          "I logged something by mistake today. Can you help me remove it?"));
+      prompts.add(const CoachPrompt.prefill(
+          '🗑️', 'Remove something', 'Remove from today: '));
     }
 
     prompts.addAll(const [

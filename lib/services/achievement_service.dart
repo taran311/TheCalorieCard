@@ -164,19 +164,20 @@ class AchievementService {
       final list = await ChallengeService.forUser(uid).first;
       inChallenge = list.isNotEmpty;
       for (final c in list.where((c) => c.isOver)) {
-        final isGroup = c.type == ChallengeType.group;
-        if (isGroup && (teamGoal || already.contains('team_goal'))) continue;
-        if (!isGroup && (won || already.contains('challenge_win'))) continue;
+        final isTeam = c.type.isTeam;
+        if (isTeam && (teamGoal || already.contains('team_goal'))) continue;
+        if (!isTeam && (won || already.contains('challenge_win'))) continue;
         final scores = await ChallengeService.scores(c);
         if (scores.isEmpty) continue;
-        if (isGroup) {
-          final total = scores.fold<int>(0, (s, e) => s + e.finishedDays);
+        if (isTeam) {
+          final total =
+              scores.fold<num>(0, (s, e) => s + e.valueFor(c.type));
           if (c.target > 0 && total >= c.target) teamGoal = true;
         } else {
-          final top = scores.first;
-          final outright = top.onBudgetDays > 0 &&
-              (scores.length < 2 || scores[1].onBudgetDays < top.onBudgetDays);
-          if (outright && top.userId == uid) won = true;
+          final top = scores.first.valueFor(c.type);
+          final outright = top > 0 &&
+              (scores.length < 2 || scores[1].valueFor(c.type) < top);
+          if (outright && scores.first.userId == uid) won = true;
         }
       }
     } catch (_) {}

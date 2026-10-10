@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/premium_service.dart';
@@ -18,9 +20,17 @@ class _PremiumPageState extends State<PremiumPage> {
   bool _busy = false;
   String? _error;
 
+  /// Billing can be slow to load (or unreadable). After a while we show
+  /// the plans anyway, so a free account is never stuck on a skeleton.
+  bool _waitedLong = false;
+  Timer? _waitTimer;
+
   @override
   void initState() {
     super.initState();
+    _waitTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted) setState(() => _waitedLong = true);
+    });
     Premium.foundersLeft().then((n) {
       if (!mounted) return;
       setState(() {
@@ -28,6 +38,12 @@ class _PremiumPageState extends State<PremiumPage> {
         if (n > 0) _plan = 'founder';
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _waitTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -67,6 +83,9 @@ class _PremiumPageState extends State<PremiumPage> {
         valueListenable: Premium.notifier,
         builder: (context, e, _) {
           final subscribed = e.loaded && e.subscribed;
+          // Until we know what they have, no plan picker: someone who has
+          // already paid shouldn't see a checkout flash past.
+          final checking = !e.loaded && !_waitedLong;
           return Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
@@ -113,7 +132,9 @@ class _PremiumPageState extends State<PremiumPage> {
                   const SizedBox(height: 20),
                   const _Comparison(),
                   const SizedBox(height: 20),
-                  if (subscribed) ...[
+                  if (checking)
+                    const _PlansSkeleton()
+                  else if (subscribed) ...[
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
@@ -493,6 +514,42 @@ class _PlanTile extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Grey placeholders where the plans (or "Manage subscription") will be.
+class _PlansSkeleton extends StatelessWidget {
+  const _PlansSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bar(double height, {double? width}) => Container(
+          height: height,
+          width: width,
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: AppColors.gray100,
+            borderRadius: BorderRadius.circular(AppDecor.radius),
+          ),
+        );
+    return Semantics(
+      label: 'Checking your plan',
+      liveRegion: true,
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: bar(18, width: 140),
+            ),
+            bar(64),
+            bar(64),
+            bar(48),
+          ],
         ),
       ),
     );

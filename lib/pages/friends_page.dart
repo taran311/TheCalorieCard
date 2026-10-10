@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
 import 'package:namer_app/services/calorie_game.dart';
 import 'package:namer_app/services/chat_service.dart';
+import 'package:namer_app/services/friend_activity.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/services/leaderboard_service.dart';
+import 'package:namer_app/ui/friend_today.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/pages/challenges_page.dart';
@@ -54,14 +57,20 @@ class _FriendsPageState extends State<FriendsPage> {
   late final Stream<List<CalorieGame>> _games =
       CalorieGameService.forUser(_uid);
 
-  /// Friends' user docs, fetched once each.
+  /// Friends' user docs, fetched once each. A failed read isn't kept, so
+  /// the next rebuild tries again (e.g. once a request is accepted).
   final Map<String, Future<DocumentSnapshot<Map<String, dynamic>>>>
       _friendDocs = {};
 
   Future<DocumentSnapshot<Map<String, dynamic>>> _friendDoc(String id) =>
-      _friendDocs.putIfAbsent(
-          id,
-          () => FirebaseFirestore.instance.collection('users').doc(id).get());
+      _friendDocs.putIfAbsent(id, () {
+        final read =
+            FirebaseFirestore.instance.collection('users').doc(id).get();
+        read.then<void>((_) {}, onError: (Object _) {
+          _friendDocs.remove(id);
+        });
+        return read;
+      });
 
   @override
   void initState() {
@@ -389,8 +398,9 @@ class _FriendsPageState extends State<FriendsPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Remove $name?'),
-        content:
-            const Text("You'll stop seeing each other's cards and hiscores."),
+        content: const Text(
+            "You'll stop seeing each other's cards and hiscores, and "
+            "they'll be taken out of any groups you made."),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -408,10 +418,20 @@ class _FriendsPageState extends State<FriendsPage> {
   }
 
   Future<void> _removeFriend(String friendId) async {
-    try {
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
 
+    // Groups first, while you're still friends (in case the rules want
+    // that). Groups someone else made can only be changed by them.
+    List<String>? sharedGroups;
+    try {
+      sharedGroups =
+          await FriendsService.removeFromMyGroups(currentUser.uid, friendId);
+    } catch (_) {
+      sharedGroups = null; // Couldn't check: say so honestly below.
+    }
+
+    try {
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         // Remove from current user's friends
         transaction.update(
@@ -430,13 +450,23 @@ class _FriendsPageState extends State<FriendsPage> {
         );
       });
 
-      _snack('Friend removed');
+      if (sharedGroups == null) {
+        _snack("Friend removed. They'll still see you in groups you share "
+            '— leave or edit the group to stop that.');
+      } else if (sharedGroups.isNotEmpty) {
+        final names = sharedGroups.join(', ');
+        final it = sharedGroups.length == 1 ? 'it' : 'them';
+        _snack("Friend removed. You're both still in $names, made by someone "
+            'else — leave $it to stop seeing each other there.');
+      } else {
+        _snack('Friend removed');
+      }
     } catch (_) {
       _snack('Something went wrong. Please try again.');
     }
   }
 
-  void _openFriendCard(String friendId, String friendEmail) {
+  void _openFriendCard(String friendId, String name) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -444,7 +474,7 @@ class _FriendsPageState extends State<FriendsPage> {
           readOnly: true,
           userIdOverride: friendId,
           showBanner: true,
-          bannerTitle: friendEmail,
+          bannerTitle: name,
         ),
       ),
     );
@@ -463,7 +493,7 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
-  Future<void> _startChatWithFriend(String friendId, String friendEmail) async {
+  Future<void> _startChatWithFriend(String friendId, String name) async {
     try {
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
       if (currentUserId == null) return;
@@ -485,7 +515,7 @@ class _FriendsPageState extends State<FriendsPage> {
             .doc(conversationId)
             .set({
           'participant_ids': participantIds,
-          'conversation_name': friendEmail.split('@')[0],
+          'conversation_name': name,
           'is_group': false,
           'created_at': FieldValue.serverTimestamp(),
           'last_message': '',
@@ -497,32 +527,76 @@ class _FriendsPageState extends State<FriendsPage> {
         });
       }
 
-      _openChat(conversationId, friendEmail.split('@')[0], false);
+      _openChat(conversationId, name, false);
     } catch (_) {
       _snack("Couldn't open the chat. Please try again.");
     }
   }
 
   /// Sends a quick cheer into your chat with a friend, then opens the chat.
-  Future<void> _sendCheer(String friendId, String friendEmail) async {
+  Future<void> _sendCheer(String friendId, String name) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     try {
       await ChatService.sendToFriend(
         uid: user.uid,
-        myName: FriendsService.displayName(user.email),
+        myName: await FriendsService.nameFor(user.uid, email: user.email),
         friendId: friendId,
-        friendName: FriendsService.displayName(friendEmail),
+        friendName: name,
         text: '👏 Keep it up!',
       );
       _openChat(
         ChatService.conversationId(user.uid, friendId),
-        FriendsService.displayName(friendEmail),
+        name,
         false,
       );
     } catch (_) {
       _snack('Message not sent. Check your connection and try again.');
     }
+  }
+
+  /// A friendly "have you logged today?" in your chat with them, at most
+  /// once a day per friend. Returns true once they've been nudged today
+  /// (now or earlier), false if it couldn't be sent.
+  Future<bool> _sendNudge(String friendId, String name) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+    try {
+      final sent = await FriendActivity.nudge(
+        uid: user.uid,
+        myName: await FriendsService.nameFor(user.uid, email: user.email),
+        friendId: friendId,
+        friendName: name,
+      );
+      _snack(sent
+          ? 'Nudge sent to $name'
+          : "You've already nudged $name today");
+      return true;
+    } catch (_) {
+      _snack('Nudge not sent. Check your connection and try again.');
+      return false;
+    }
+  }
+
+  /// Today at a glance for one friend, with Cheer and Nudge.
+  void _showFriendSheet(String friendId, String name) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => _FriendDaySheet(
+        friendId: friendId,
+        name: name,
+        onCheer: () {
+          Navigator.pop(sheetContext);
+          _sendCheer(friendId, name);
+        },
+        onNudge: () => _sendNudge(friendId, name),
+        onViewCard: () {
+          Navigator.pop(sheetContext);
+          _openFriendCard(friendId, name);
+        },
+      ),
+    );
   }
 
   Future<void> _startGroupChat(
@@ -657,167 +731,109 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
-  Widget _hiscoresCard() {
+  /// Hiscores, Challenges and Guess the Calories as one row of small
+  /// tiles, so your friends come first on the page.
+  Widget _shortcutTiles() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: const BorderRadius.all(Radius.circular(AppDecor.radius)),
-        clipBehavior: Clip.antiAlias,
-        child: Ink(
-          decoration: const BoxDecoration(gradient: AppColors.brandGradient),
-          child: InkWell(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const HiscoresPage(fromFriends: true),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: _ShortcutTile(
+                label: 'Hiscores',
+                icon: const Icon(Icons.leaderboard,
+                    color: Colors.white, size: 24),
+                highlighted: true,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const HiscoresPage(fromFriends: true),
+                  ),
+                ),
               ),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.leaderboard,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Hiscores',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ShortcutTile(
+                label: 'Challenges',
+                icon: Icon(Icons.emoji_events_outlined,
+                    color: AppText.primary, size: 24),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ChallengesPage()),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: StreamBuilder<List<CalorieGame>>(
+                stream: _games,
+                builder: (context, snap) {
+                  final waiting = snap.hasData
+                      ? CalorieGameService.waitingOn(_uid, snap.data!)
+                      : 0;
+                  const target = Text('🎯', style: TextStyle(fontSize: 22));
+                  return _ShortcutTile(
+                    label: 'Guess the Calories',
+                    note: waiting == 0
+                        ? null
+                        : waiting == 1
+                            ? '1 waiting for you'
+                            : '$waiting waiting for you',
+                    icon: waiting == 0
+                        ? target
+                        : Badge(
+                            label: Text(waiting > 9 ? '9+' : '$waiting'),
+                            backgroundColor: AppColors.red,
+                            child: target,
                           ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'See how you rank against friends',
-                          style: TextStyle(fontSize: 14, color: Colors.white),
-                        ),
-                      ],
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const CalorieGamesPage()),
                     ),
-                  ),
-                  const Icon(Icons.chevron_right, color: Colors.white),
-                ],
+                  );
+                },
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _challengesCard() {
-    return _tappableCard(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ChallengesPage()),
-      ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: AppColors.indigo50,
-              child: Icon(Icons.emoji_events_outlined,
-                  color: AppText.primary, size: 22),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Challenges', style: _nameStyle),
-                  SizedBox(height: 2),
-                  Text('Go head-to-head this week', style: _subStyle),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, color: AppColors.gray400),
           ],
         ),
       ),
     );
   }
 
-  Widget _gameCard() {
-    return _tappableCard(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const CalorieGamesPage()),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: AppColors.amber100,
-              child: const Text('🎯', style: TextStyle(fontSize: 20)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Guess the Calories', style: _nameStyle),
-                  const SizedBox(height: 2),
-                  StreamBuilder<List<CalorieGame>>(
-                    stream: _games,
-                    builder: (context, snap) {
-                      final waiting = snap.hasData
-                          ? CalorieGameService.waitingOn(_uid, snap.data!)
-                          : 0;
-                      if (waiting == 0) {
-                        return Text('Who knows their food best?',
-                            style: _subStyle);
-                      }
-                      return Text(
-                        waiting == 1
-                            ? '1 game waiting for you'
-                            : '$waiting games waiting for you',
-                        style: _subStyle.copyWith(
-                          color: AppText.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, color: AppColors.gray400),
-          ],
-        ),
-      ),
-    );
-  }
-
+  /// Incoming requests, highlighted at the top. Nothing at all when there
+  /// aren't any (or while loading), so the page leads with your friends.
   Widget _incomingRequestsSection() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _incomingRequests,
       builder: (context, snapshot) {
-        if (snapshot.hasError) return _loadError();
-        if (!snapshot.hasData) return _loading();
+        final docs = snapshot.data?.docs ??
+            const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        if (docs.isEmpty) return const SizedBox.shrink();
 
-        final docs = snapshot.data!.docs;
-        if (docs.isEmpty) return _emptyNote('No new requests');
-
-        return Column(
-          children: [
-            for (final doc in docs) _incomingRequestCard(doc),
-          ],
+        return Container(
+          margin: const EdgeInsets.only(bottom: 24),
+          padding: const EdgeInsets.fromLTRB(12, 14, 12, 2),
+          decoration: BoxDecoration(
+            color: AppColors.indigo50,
+            borderRadius: BorderRadius.circular(AppDecor.radius + 4),
+            border: Border.all(color: AppColors.indigo300),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 10),
+                child: Text(
+                  docs.length == 1
+                      ? 'Friend request'
+                      : 'Friend requests (${docs.length})',
+                  style: _sectionStyle,
+                ),
+              ),
+              for (final doc in docs) _incomingRequestCard(doc),
+            ],
+          ),
         );
       },
     );
@@ -843,12 +859,7 @@ class _FriendsPageState extends State<FriendsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      FriendsService.displayName(fromEmail),
-                      style: _nameStyle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    _requestName(fromUserId, fromEmail),
                     const SizedBox(height: 2),
                     Text('wants to be your friend', style: _subStyle),
                   ],
@@ -882,6 +893,26 @@ class _FriendsPageState extends State<FriendsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  /// The name on a friend request: the name they chose if their profile
+  /// can be read, otherwise the start of their email.
+  Widget _requestName(String? userId, String? email) {
+    final fallback = FriendsService.displayName(email);
+    Widget text(String name) => Text(
+          name,
+          style: _nameStyle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+    if (userId == null || userId.isEmpty) return text(fallback);
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: _friendDoc(userId),
+      builder: (context, snap) {
+        final data = snap.hasError ? null : snap.data?.data();
+        return text(data == null ? fallback : FriendsService.nameFromUser(data));
+      },
     );
   }
 
@@ -921,12 +952,7 @@ class _FriendsPageState extends State<FriendsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  FriendsService.displayName(toEmail),
-                  style: _nameStyle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                _requestName(doc.data()['to_user_id'] as String?, toEmail),
                 const SizedBox(height: 2),
                 Text('Waiting for them to accept', style: _subStyle),
               ],
@@ -959,7 +985,10 @@ class _FriendsPageState extends State<FriendsPage> {
         }
 
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _activityStrip(friendIds),
+            const SizedBox(height: 12),
             for (final friendId in friendIds)
               FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                 key: ValueKey(friendId),
@@ -968,10 +997,8 @@ class _FriendsPageState extends State<FriendsPage> {
                   if (!friendSnapshot.hasData) {
                     return const SizedBox.shrink();
                   }
-                  final friendEmail =
-                      (friendSnapshot.data!.data()?['email'] as String?) ??
-                          'Unknown';
-                  return _friendRow(friendId, friendEmail);
+                  return _friendRow(friendId,
+                      FriendsService.nameFromUser(friendSnapshot.data!.data()));
                 },
               ),
           ],
@@ -980,15 +1007,78 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
-  Widget _friendRow(String friendId, String friendEmail) {
-    final name = FriendsService.displayName(friendEmail);
+  /// Everyone's day at a glance: a ring for how much of their budget
+  /// they've spent, a ✓ once they've finished. Tap for Cheer and Nudge.
+  Widget _activityStrip(List<String> friendIds) {
+    return SizedBox(
+      height: 92,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: friendIds.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, index) {
+          final id = friendIds[index];
+          return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            future: _friendDoc(id),
+            builder: (context, userSnap) {
+              final name = userSnap.hasData
+                  ? FriendsService.nameFromUser(userSnap.data!.data())
+                  : '';
+              return FriendTodayBuilder(
+                userId: id,
+                builder: (context, day) {
+                  final status = day == null ? '' : day.label;
+                  return Semantics(
+                    button: true,
+                    label: name.isEmpty ? status : '$name: $status',
+                    excludeSemantics: true,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: name.isEmpty
+                          ? null
+                          : () => _showFriendSheet(id, name),
+                      child: SizedBox(
+                        width: 68,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ProgressAvatar(name: name, day: day),
+                            const SizedBox(height: 6),
+                            Text(
+                              name.split(' ').first,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.gray700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _friendRow(String friendId, String name) {
+    // On the narrowest phones the game button goes (it's in ⋮ too), so
+    // the name and status keep enough room.
+    final roomy = MediaQuery.sizeOf(context).width >= 360;
     return _tappableCard(
-      onTap: () => _openFriendCard(friendId, friendEmail),
+      onTap: () => _openFriendCard(friendId, name),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
         child: Row(
           children: [
-            _avatar(friendEmail),
+            _avatar(name),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1005,18 +1095,19 @@ class _FriendsPageState extends State<FriendsPage> {
                 ],
               ),
             ),
-            IconButton(
-              onPressed: () => startCalorieGame(context,
-                  friendId: friendId, friendName: name, confirm: true),
-              icon: Icon(
-                Icons.videogame_asset_outlined,
-                color: AppText.primary,
-                size: 22,
+            if (roomy)
+              IconButton(
+                onPressed: () => startCalorieGame(context,
+                    friendId: friendId, friendName: name, confirm: true),
+                icon: Icon(
+                  Icons.videogame_asset_outlined,
+                  color: AppText.primary,
+                  size: 22,
+                ),
+                tooltip: 'Play Guess the Calories',
               ),
-              tooltip: 'Play Guess the Calories',
-            ),
             IconButton(
-              onPressed: () => _startChatWithFriend(friendId, friendEmail),
+              onPressed: () => _startChatWithFriend(friendId, name),
               icon: Icon(
                 Icons.chat_bubble_outline,
                 color: AppText.primary,
@@ -1030,9 +1121,11 @@ class _FriendsPageState extends State<FriendsPage> {
               onSelected: (value) {
                 switch (value) {
                   case 'card':
-                    _openFriendCard(friendId, friendEmail);
+                    _openFriendCard(friendId, name);
                   case 'cheer':
-                    _sendCheer(friendId, friendEmail);
+                    _sendCheer(friendId, name);
+                  case 'nudge':
+                    _sendNudge(friendId, name);
                   case 'game':
                     startCalorieGame(context,
                         friendId: friendId, friendName: name, confirm: true);
@@ -1043,6 +1136,7 @@ class _FriendsPageState extends State<FriendsPage> {
               itemBuilder: (_) => [
                 PopupMenuItem(value: 'card', child: Text('View card')),
                 PopupMenuItem(value: 'cheer', child: Text('Send a cheer 👏')),
+                PopupMenuItem(value: 'nudge', child: Text('Nudge to log 👋')),
                 PopupMenuItem(
                     value: 'game', child: Text('Play Guess the Calories 🎯')),
                 PopupMenuItem(
@@ -1172,19 +1266,14 @@ class _FriendsPageState extends State<FriendsPage> {
         child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _hiscoresCard(),
-          _challengesCard(),
-          _gameCard(),
-          const SizedBox(height: 12),
-          Text('Friend requests', style: _sectionStyle),
-          const SizedBox(height: 12),
           _incomingRequestsSection(),
-          _sentRequestsSection(),
-          const SizedBox(height: 24),
           Text('Your friends', style: _sectionStyle),
           const SizedBox(height: 12),
           _friendsSection(),
-          const SizedBox(height: 24),
+          _sentRequestsSection(),
+          const SizedBox(height: 12),
+          _shortcutTiles(),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(child: Text('Groups', style: _sectionStyle)),
@@ -1447,60 +1536,30 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
   }
 }
 
-/// Shows whether a friend has finished logging today.
-class FriendTodayStatus extends StatefulWidget {
+/// A friend's day in one line ("62% of budget spent · on track",
+/// "Finished ✓ · on budget"). Live: it updates as they log, and moves on
+/// at midnight.
+class FriendTodayStatus extends StatelessWidget {
   final String friendId;
 
   const FriendTodayStatus({super.key, required this.friendId});
 
   @override
-  State<FriendTodayStatus> createState() => _FriendTodayStatusState();
-}
-
-class _FriendTodayStatusState extends State<FriendTodayStatus> {
-  late Future<DocumentSnapshot<Map<String, dynamic>>> _log = _load();
-
-  Future<DocumentSnapshot<Map<String, dynamic>>> _load() {
-    final now = DateTime.now();
-    final key =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    return FirebaseFirestore.instance
-        .collection('daily_logs')
-        .doc('${widget.friendId}_$key')
-        .get();
-  }
-
-  @override
-  void didUpdateWidget(covariant FriendTodayStatus oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.friendId != widget.friendId) _log = _load();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      future: _log,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox(height: 16);
-        final data = snapshot.data!.data();
-        final finished = data?['finished'] == true;
-        final balances = data?['balances'];
-        final left = balances is Map ? balances['calories'] : null;
-        final onBudget = left is num && left >= 0;
-
-        final String label;
+    return FriendTodayBuilder(
+      userId: friendId,
+      builder: (context, day) {
+        // Same height while loading, so rows don't jump.
+        if (day == null) return const SizedBox(height: 16);
         final Color color;
-        if (finished && onBudget) {
-          label = 'Finished today · on budget';
-          color = AppColors.emerald700;
-        } else if (finished) {
-          label = 'Finished today';
-          color = AppColors.primaryDark;
+        if (day.finished) {
+          color = day.onTrack == false ? AppText.amber700 : AppText.emerald700;
+        } else if (day.onTrack == false) {
+          color = AppText.amber700;
         } else {
-          label = 'Not finished today';
           color = AppColors.muted;
         }
-        return Row(
+        final row = Row(
           children: [
             Container(
               width: 7,
@@ -1510,7 +1569,7 @@ class _FriendTodayStatusState extends State<FriendTodayStatus> {
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-                label,
+                day.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: color),
@@ -1518,7 +1577,239 @@ class _FriendTodayStatusState extends State<FriendTodayStatus> {
             ),
           ],
         );
+        if (!day.finished) return row;
+        return Tooltip(
+          message: "They've closed their day on the Card",
+          child: row,
+        );
       },
+    );
+  }
+}
+
+/// A small tile in the row under your friends (Hiscores and so on).
+class _ShortcutTile extends StatelessWidget {
+  final String label;
+  final Widget icon;
+  final String? note;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  const _ShortcutTile({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.note,
+    this.highlighted = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = highlighted ? Colors.white : AppColors.ink;
+    return Semantics(
+      button: true,
+      label: note == null ? label : '$label, $note',
+      excludeSemantics: true,
+      child: Material(
+        color: highlighted ? Colors.transparent : AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDecor.radius),
+          side: highlighted
+              ? BorderSide.none
+              : BorderSide(color: AppColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Ink(
+          decoration: highlighted
+              ? const BoxDecoration(gradient: AppColors.brandGradient)
+              : null,
+          child: InkWell(
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 88),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(6, 12, 6, 10),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(height: 28, child: Center(child: icon)),
+                    const SizedBox(height: 6),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.15,
+                        fontWeight: FontWeight.w700,
+                        color: fg,
+                      ),
+                    ),
+                    if (note != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        note!,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppText.primary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A friend's day, from the activity strip: progress, streak, and quick
+/// ways to encourage them.
+class _FriendDaySheet extends StatefulWidget {
+  final String friendId;
+  final String name;
+  final VoidCallback onCheer;
+  final Future<bool> Function() onNudge;
+  final VoidCallback onViewCard;
+
+  const _FriendDaySheet({
+    required this.friendId,
+    required this.name,
+    required this.onCheer,
+    required this.onNudge,
+    required this.onViewCard,
+  });
+
+  @override
+  State<_FriendDaySheet> createState() => _FriendDaySheetState();
+}
+
+class _FriendDaySheetState extends State<_FriendDaySheet> {
+  /// Their streak, worked out once when the sheet opens (it reads a few
+  /// weeks of history, so it isn't on the strip itself).
+  late final Future<int> _streak = LeaderboardService.streakFor(widget.friendId)
+      .then((r) => r.current)
+      .catchError((_) => 0);
+  late final Future<bool> _nudgedAlready =
+      FriendActivity.nudgedToday(widget.friendId);
+  bool _nudging = false;
+  bool _nudged = false;
+
+  Future<void> _nudge() async {
+    setState(() => _nudging = true);
+    final sent = await widget.onNudge();
+    if (!mounted) return;
+    setState(() {
+      _nudging = false;
+      // Nudged now or earlier today: nothing more to send. (A failed send
+      // shows its own message and can be tried again.)
+      _nudged = sent || _nudged;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: FriendTodayBuilder(
+          userId: widget.friendId,
+          builder: (context, day) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  ProgressAvatar(name: widget.name, day: day, size: 60),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          day?.label ?? ' ',
+                          style:
+                              TextStyle(fontSize: 13, color: AppColors.gray700),
+                        ),
+                        FutureBuilder<int>(
+                          future: _streak,
+                          builder: (context, snap) {
+                            final streak = snap.data ?? 0;
+                            if (streak <= 0) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                '🔥 $streak-day streak',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppText.amber700,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: widget.onCheer,
+                      child: const Text('Cheer 👏'),
+                    ),
+                  ),
+                  // No point nudging someone who's already finished.
+                  if (day?.finished != true) ...[
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FutureBuilder<bool>(
+                        future: _nudgedAlready,
+                        builder: (context, snap) {
+                          final done = _nudged || snap.data == true;
+                          return OutlinedButton(
+                            onPressed:
+                                done || _nudging || !snap.hasData ? null : _nudge,
+                            child: Text(done ? 'Nudged today' : 'Nudge to log'),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 4),
+              TextButton(
+                onPressed: widget.onViewCard,
+                child: Text('View ${widget.name}\'s card'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

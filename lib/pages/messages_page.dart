@@ -6,6 +6,7 @@ import 'package:namer_app/ui/responsive.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/pages/calorie_game_page.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 /// The navigator chat screens open on.
@@ -28,9 +29,10 @@ Future<String?> _personName(String uid) {
     try {
       final doc =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final email = doc.data()?['email'] as String?;
-      if (email == null || email.isEmpty) return null;
-      return FriendsService.displayName(email);
+      final data = doc.data();
+      if (data == null) return null;
+      final name = FriendsService.nameFromUser(data);
+      return name == 'Unknown' ? null : name;
     } catch (_) {
       _personNames.remove(uid);
       return null;
@@ -67,13 +69,27 @@ String? _otherParticipant(Map<String, dynamic> data, String myUid) {
   return null;
 }
 
-class MessagesPage extends StatelessWidget {
-
+class MessagesPage extends StatefulWidget {
   const MessagesPage({Key? key}) : super(key: key);
 
   @override
+  State<MessagesPage> createState() => _MessagesPageState();
+}
+
+class _MessagesPageState extends State<MessagesPage> {
+  final String? _uid = FirebaseAuth.instance.currentUser?.uid;
+
+  /// Created once: building it in build() would re-subscribe (and flash
+  /// the spinner) on every rebuild.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _conversations =
+      FirebaseFirestore.instance
+          .collection('conversations')
+          .where('participant_ids', arrayContains: _uid ?? '')
+          .snapshots();
+
+  @override
   Widget build(BuildContext context) {
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final currentUserId = _uid;
     if (currentUserId == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Messages')),
@@ -87,11 +103,8 @@ class MessagesPage extends StatelessWidget {
         leading: ShellBack.button(context),
         title: const Text('Messages'),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('conversations')
-            .where('participant_ids', arrayContains: currentUserId)
-            .snapshots(),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: _conversations,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
@@ -126,11 +139,11 @@ class MessagesPage extends StatelessWidget {
             );
           }
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          if (snapshot.data!.docs.isEmpty) {
             return Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
@@ -166,10 +179,8 @@ class MessagesPage extends StatelessWidget {
           // Sort conversations by last_message_time
           final conversations = snapshot.data!.docs.toList();
           conversations.sort((a, b) {
-            final aTime = (a.data()
-                as Map<String, dynamic>)['last_message_time'] as Timestamp?;
-            final bTime = (b.data()
-                as Map<String, dynamic>)['last_message_time'] as Timestamp?;
+            final aTime = a.data()['last_message_time'] as Timestamp?;
+            final bTime = b.data()['last_message_time'] as Timestamp?;
 
             if (aTime == null && bTime == null) return 0;
             if (aTime == null) return 1;
@@ -183,7 +194,7 @@ class MessagesPage extends StatelessWidget {
             itemCount: conversations.length,
             itemBuilder: (context, index) {
               final conversation = conversations[index];
-              final data = conversation.data() as Map<String, dynamic>;
+              final data = conversation.data();
 
               final conversationName =
                   (data['conversation_name'] ?? 'Unknown').toString();
@@ -361,193 +372,18 @@ class MessagesPage extends StatelessWidget {
       showDragHandle: true,
       // Keep `context` = the Messages page: the chat is opened from it after
       // the sheet closes (the sheet's own context is gone by then).
-      builder: (sheetContext) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (_, controller) => Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                'New chat',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.ink,
-                ),
-              ),
-            ),
-            Expanded(
-              child: DefaultTabController(
-                length: 2,
-                child: Column(
-                  children: [
-                    TabBar(
-                      labelColor: AppText.primaryDark,
-                      unselectedLabelColor: AppColors.muted,
-                      indicatorColor: AppColors.primary,
-                      tabs: [
-                        Tab(text: 'Friends'),
-                        Tab(text: 'Groups'),
-                      ],
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          _buildFriendsList(
-                              context, sheetContext, currentUserId),
-                          _buildGroupsList(
-                              context, sheetContext, currentUserId),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+      builder: (sheetContext) => _NewChatSheet(
+        uid: currentUserId,
+        onFriend: (friendId, friendName) async {
+          Navigator.pop(sheetContext);
+          await _startChatWithFriend(
+              context, currentUserId, friendId, friendName);
+        },
+        onGroup: (groupId, memberIds, groupName) async {
+          Navigator.pop(sheetContext);
+          await _startGroupChat(context, groupId, memberIds, groupName);
+        },
       ),
-    );
-  }
-
-  static Widget _loadError() {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Text(
-          "Couldn't load this. Check your connection.",
-          textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.muted),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFriendsList(
-      BuildContext context, BuildContext sheetContext, String currentUserId) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUserId)
-          .snapshots(),
-      builder: (_, snapshot) {
-        if (snapshot.hasError) return _loadError();
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final userData = snapshot.data!.data() as Map<String, dynamic>?;
-        final friendsList = [
-          for (final id in (userData?['friends'] as List?) ?? const [])
-            id.toString()
-        ];
-
-        if (friendsList.isEmpty) {
-          return Center(
-            child: Text(
-              'No friends yet',
-              style: TextStyle(color: AppColors.muted),
-            ),
-          );
-        }
-
-        return ListView.builder(
-          itemCount: friendsList.length,
-          itemBuilder: (_, index) {
-            final friendId = friendsList[index];
-            return FutureBuilder<String?>(
-              future: _personName(friendId),
-              builder: (_, friendSnapshot) {
-                if (friendSnapshot.connectionState != ConnectionState.done) {
-                  return const SizedBox.shrink();
-                }
-                final friendName = friendSnapshot.data ?? 'Unknown';
-
-                return ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: AppColors.primary,
-                    child: Icon(Icons.person, color: Colors.white),
-                  ),
-                  title: Text(
-                    friendName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(sheetContext);
-                    await _startChatWithFriend(
-                        context, currentUserId, friendId, friendName);
-                  },
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildGroupsList(
-      BuildContext context, BuildContext sheetContext, String currentUserId) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('friend_groups')
-          .where('members', arrayContains: currentUserId)
-          .snapshots(),
-      builder: (_, snapshot) {
-        if (snapshot.hasError) return _loadError();
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.data!.docs.isEmpty) {
-          return Center(
-            child: Text(
-              'No groups yet',
-              style: TextStyle(color: AppColors.muted),
-            ),
-          );
-        }
-
-        return ListView.builder(
-          itemCount: snapshot.data!.docs.length,
-          itemBuilder: (_, index) {
-            final group = snapshot.data!.docs[index];
-            final groupData = group.data() as Map<String, dynamic>;
-            final groupName =
-                (groupData['name'] as String?) ?? 'Unnamed group';
-            final memberIds = [
-              for (final id in (groupData['members'] as List?) ?? const [])
-                id.toString()
-            ];
-
-            return ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: AppColors.primary,
-                child: Icon(Icons.group, color: Colors.white),
-              ),
-              title: Text(
-                groupName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              subtitle: Text(
-                '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
-                style: TextStyle(fontSize: 12, color: AppColors.muted),
-              ),
-              onTap: () async {
-                Navigator.pop(sheetContext);
-                await _startGroupChat(context, group.id, memberIds, groupName);
-              },
-            );
-          },
-        );
-      },
     );
   }
 
@@ -650,6 +486,214 @@ class MessagesPage extends StatelessWidget {
         ),
       );
     }
+  }
+}
+
+/// "New chat": your friends and groups, in two tabs. Its streams are made
+/// once, not on every rebuild of the sheet.
+class _NewChatSheet extends StatefulWidget {
+  final String uid;
+  final void Function(String friendId, String friendName) onFriend;
+  final void Function(String groupId, List<String> memberIds, String name)
+      onGroup;
+
+  const _NewChatSheet({
+    required this.uid,
+    required this.onFriend,
+    required this.onGroup,
+  });
+
+  @override
+  State<_NewChatSheet> createState() => _NewChatSheetState();
+}
+
+class _NewChatSheetState extends State<_NewChatSheet> {
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _userDoc =
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _groups =
+      FirebaseFirestore.instance
+          .collection('friend_groups')
+          .where('members', arrayContains: widget.uid)
+          .snapshots();
+
+  static Widget _loadError() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Text(
+          "Couldn't load this. Check your connection.",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.muted),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (_, controller) => Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              'New chat',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.ink,
+              ),
+            ),
+          ),
+          Expanded(
+            child: DefaultTabController(
+              length: 2,
+              child: Column(
+                children: [
+                  TabBar(
+                    labelColor: AppText.primaryDark,
+                    unselectedLabelColor: AppColors.muted,
+                    indicatorColor: AppColors.primary,
+                    tabs: const [
+                      Tab(text: 'Friends'),
+                      Tab(text: 'Groups'),
+                    ],
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        _friendsList(),
+                        _groupsList(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _friendsList() {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: _userDoc,
+      builder: (_, snapshot) {
+        if (snapshot.hasError) return _loadError();
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final userData = snapshot.data!.data();
+        final friendsList = [
+          for (final id in (userData?['friends'] as List?) ?? const [])
+            id.toString()
+        ];
+
+        if (friendsList.isEmpty) {
+          return Center(
+            child: Text(
+              'No friends yet',
+              style: TextStyle(color: AppColors.muted),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: friendsList.length,
+          itemBuilder: (_, index) {
+            final friendId = friendsList[index];
+            return FutureBuilder<String?>(
+              future: _personName(friendId),
+              builder: (_, friendSnapshot) {
+                if (friendSnapshot.connectionState != ConnectionState.done) {
+                  return const SizedBox.shrink();
+                }
+                final friendName = friendSnapshot.data ?? 'Unknown';
+
+                return ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: AppColors.primary,
+                    child: Icon(Icons.person, color: Colors.white),
+                  ),
+                  title: Text(
+                    friendName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  onTap: () => widget.onFriend(friendId, friendName),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _groupsList() {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _groups,
+      builder: (_, snapshot) {
+        if (snapshot.hasError) return _loadError();
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) {
+          return Center(
+            child: Text(
+              'No groups yet',
+              style: TextStyle(color: AppColors.muted),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: docs.length,
+          itemBuilder: (_, index) {
+            final group = docs[index];
+            final groupData = group.data();
+            final rawName = groupData['name'];
+            final groupName = rawName is String && rawName.isNotEmpty
+                ? rawName
+                : 'Unnamed group';
+            final memberIds = [
+              for (final id in (groupData['members'] as List?) ?? const [])
+                id.toString()
+            ];
+
+            return ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: AppColors.primary,
+                child: Icon(Icons.group, color: Colors.white),
+              ),
+              title: Text(
+                groupName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+              subtitle: Text(
+                '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
+                style: TextStyle(fontSize: 12, color: AppColors.muted),
+              ),
+              onTap: () => widget.onGroup(group.id, memberIds, groupName),
+            );
+          },
+        );
+      },
+    );
   }
 }
 
@@ -790,7 +834,6 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
-    final username = (currentUser.email ?? 'Unknown').split('@')[0];
 
     if (overrideText == null) {
       _messageController.clear();
@@ -803,6 +846,9 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
 
     try {
+      // Your display name if you set one (looked up once, then cached).
+      final username = await FriendsService.nameFor(currentUser.uid,
+          email: currentUser.email);
       final conversationDoc = await _conversationRef.get();
       final participantIds =
           List<String>.from(conversationDoc.data()?['participant_ids'] ?? []);
@@ -1146,79 +1192,33 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     );
   }
 
+  /// The ticks after your own messages. Each has a label for screen
+  /// readers, since the difference is otherwise only colour and shape.
   List<Widget> _buildMessageStatus(String status, List<dynamic> deliveredTo,
       List<dynamic> readBy, int totalParticipants) {
+    final String state;
     if (widget.isGroup) {
-      // For groups: check if all other participants have read/delivered
-      final otherParticipantsCount = totalParticipants - 1; // Exclude sender
-      final allRead = readBy.length >= otherParticipantsCount;
-      final allDelivered = deliveredTo.length >= otherParticipantsCount;
-
-      if (allRead) {
-        // Green double tick
-        return [
-          const SizedBox(width: 4),
-          Icon(
-            Icons.done_all,
-            size: 14,
-            color: AppColors.emerald300,
-          ),
-        ];
-      } else if (allDelivered) {
-        // Gray double tick
-        return [
-          const SizedBox(width: 4),
-          const Icon(
-            Icons.done_all,
-            size: 14,
-            color: Colors.white70,
-          ),
-        ];
-      } else {
-        // Gray single tick
-        return [
-          const SizedBox(width: 4),
-          const Icon(
-            Icons.done,
-            size: 14,
-            color: Colors.white70,
-          ),
-        ];
-      }
+      // For groups: have all other participants read/received it?
+      final others = totalParticipants - 1; // Exclude sender
+      state = readBy.length >= others
+          ? 'read'
+          : deliveredTo.length >= others
+              ? 'delivered'
+              : 'sent';
     } else {
-      // For 1:1 chats
-      if (status == 'read') {
-        // Green double tick
-        return [
-          const SizedBox(width: 4),
-          Icon(
-            Icons.done_all,
-            size: 14,
-            color: AppColors.emerald300,
-          ),
-        ];
-      } else if (status == 'delivered') {
-        // Gray double tick
-        return [
-          const SizedBox(width: 4),
-          const Icon(
-            Icons.done_all,
-            size: 14,
-            color: Colors.white70,
-          ),
-        ];
-      } else {
-        // Gray single tick (sent)
-        return [
-          const SizedBox(width: 4),
-          const Icon(
-            Icons.done,
-            size: 14,
-            color: Colors.white70,
-          ),
-        ];
-      }
+      state = status == 'read' || status == 'delivered' ? status : 'sent';
     }
+    return [
+      const SizedBox(width: 4),
+      switch (state) {
+        'read' => const Icon(Icons.done_all,
+            size: 14, color: AppColors.emerald300, semanticLabel: 'Read'),
+        'delivered' => const Icon(Icons.done_all,
+            size: 14, color: Colors.white, semanticLabel: 'Delivered'),
+        _ => const Icon(Icons.done,
+            size: 14, color: Colors.white, semanticLabel: 'Sent'),
+      },
+    ];
   }
 }
 
@@ -1275,6 +1275,7 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCard = data['type'] == 'card' && data['card'] is Map;
+    final gameId = data['type'] == 'game' ? data['game_id'] : null;
     final radius = Radius.circular(18);
     final tight = Radius.circular(continued ? 18 : 6);
 
@@ -1284,8 +1285,9 @@ class _MessageBubble extends StatelessWidget {
         Text(
           timeLabel,
           style: TextStyle(
-            fontSize: 10,
-            color: isMe ? Colors.white70 : AppColors.gray600,
+            fontSize: 11,
+            // Pure white on your own (indigo) bubbles: white70 was too faint.
+            color: isMe ? Colors.white : AppColors.gray600,
           ),
         ),
         ...status,
@@ -1329,6 +1331,12 @@ class _MessageBubble extends StatelessWidget {
               ),
             if (isCard)
               _SharedCard(card: Map<String, dynamic>.from(data['card'] as Map))
+            else if (gameId is String && gameId.isNotEmpty)
+              _GameMessage(
+                text: (data['message'] ?? '').toString(),
+                gameId: gameId,
+                isMe: isMe,
+              )
             else
               Align(
                 alignment: Alignment.centerLeft,
@@ -1423,6 +1431,73 @@ class _SharedCard extends StatelessWidget {
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A Guess the Calories message: tap it to open the game.
+class _GameMessage extends StatelessWidget {
+  final String text;
+  final String gameId;
+  final bool isMe;
+
+  const _GameMessage({
+    required this.text,
+    required this.gameId,
+    required this.isMe,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = isMe ? Colors.white : AppColors.ink;
+    final link = isMe ? Colors.white : AppText.primary;
+    return Semantics(
+      button: true,
+      label: '$text. Open the game',
+      excludeSemantics: true,
+      child: Material(
+        color: isMe
+            ? Colors.white.withValues(alpha: 0.14)
+            : AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => CalorieGamePage(gameId: gameId)),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    text,
+                    style: TextStyle(fontSize: 15, height: 1.3, color: fg),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Open the game',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: link,
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, size: 18, color: link),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

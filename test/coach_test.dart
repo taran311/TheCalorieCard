@@ -53,6 +53,28 @@ void main() {
     final l = labels(null);
     expect(l, contains('Motivate me'));
     expect(CoachService.greeting(null, name: 'Sam'), startsWith('Hi Sam!'));
+    // Numbers that didn't load aren't shown as "0 kcal".
+    expect(l, contains('Meal ideas'));
+    expect(l.where((x) => x.contains('kcal')), isEmpty);
+  });
+
+  test('add food, save a recipe and remove something start a message '
+      'instead of sending a vague one', () {
+    final prompts = CoachService.promptsFor(ctx(hour: 8));
+    final add = prompts.firstWhere((p) => p.label == 'Add food for me');
+    expect(add.prefill, 'Add to breakfast: ');
+    expect(add.question, isEmpty);
+    final save = prompts.firstWhere((p) => p.label == 'Save a recipe');
+    expect(save.prefill, isNotNull);
+    // Ordinary chips still send their question.
+    final motivate = prompts.firstWhere((p) => p.label == 'Motivate me');
+    expect(motivate.prefill, isNull);
+    expect(motivate.question, isNotEmpty);
+    expect(
+        CoachService.promptsFor(ctx(hour: 13))
+            .firstWhere((p) => p.label == 'Add food for me')
+            .prefill,
+        'Add to lunch: ');
   });
 
   test('greeting is kind when over', () {

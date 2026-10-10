@@ -8,7 +8,9 @@ import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/ui/auth_ui.dart';
 
 /// Waits for the user to click the link in their verification email.
-/// Checks automatically every few seconds and moves on by itself.
+/// Checks automatically (every 3 seconds for the first minute, then every
+/// 10) and straight away when they come back to the app, then moves on by
+/// itself.
 class EmailVerificationPage extends StatefulWidget {
   final String email;
 
@@ -22,6 +24,14 @@ class EmailVerificationPage extends StatefulWidget {
     this.sendOnOpen = true,
   });
 
+  /// Records that a verification email has just gone out (sign-up sends
+  /// one itself), so this page doesn't send another and Resend waits a
+  /// minute.
+  static void markSent() {
+    _EmailVerificationPageState._lastAutoSend = DateTime.now();
+    _EmailVerificationPageState._sentSignal.value++;
+  }
+
   @override
   State<EmailVerificationPage> createState() => _EmailVerificationPageState();
 }
@@ -31,12 +41,17 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
   /// (e.g. during a route change) don't both send one.
   static DateTime? _lastAutoSend;
 
+  /// Bumped by [EmailVerificationPage.markSent].
+  static final ValueNotifier<int> _sentSignal = ValueNotifier<int>(0);
+
   Timer? _pollTimer;
   Timer? _resendTimer;
   int _resendIn = 0;
   bool _checking = false;
   bool _leaving = false;
   AuthNotice? _notice;
+  late final DateTime _openedAt = DateTime.now();
+  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
@@ -47,21 +62,47 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
     if (widget.sendOnOpen && !recent) {
       _lastAutoSend = DateTime.now();
       _sendEmail(initial: true);
+    } else if (recent) {
+      // One went out moments ago: Resend waits out the rest of the minute.
+      _startResendCooldown(
+          seconds: 60 - DateTime.now().difference(last!).inSeconds);
     }
-    _pollTimer =
-        Timer.periodic(const Duration(seconds: 3), (_) => _check(quiet: true));
+    _sentSignal.addListener(_onSentElsewhere);
+    // Back from the email app or another tab: check straight away.
+    _lifecycle = AppLifecycleListener(onResume: () => _check(quiet: true));
+    _scheduleCheck();
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
     _resendTimer?.cancel();
+    _sentSignal.removeListener(_onSentElsewhere);
+    _lifecycle.dispose();
     super.dispose();
   }
 
-  void _startResendCooldown() {
+  void _onSentElsewhere() {
+    if (mounted) _startResendCooldown();
+  }
+
+  /// Every 3 seconds for the first minute, then every 10: quick while
+  /// they're likely clicking the link, gentler on the server after.
+  void _scheduleCheck() {
+    _pollTimer?.cancel();
+    if (_leaving) return;
+    final early = DateTime.now().difference(_openedAt) <
+        const Duration(minutes: 1);
+    _pollTimer = Timer(Duration(seconds: early ? 3 : 10), () async {
+      await _check(quiet: true);
+      if (mounted) _scheduleCheck();
+    });
+  }
+
+  void _startResendCooldown({int seconds = 60}) {
     _resendTimer?.cancel();
-    setState(() => _resendIn = 60);
+    if (seconds <= 0) return;
+    setState(() => _resendIn = seconds);
     _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) {
         t.cancel();

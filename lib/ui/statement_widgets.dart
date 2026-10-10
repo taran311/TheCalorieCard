@@ -91,10 +91,31 @@ class PanelCard extends StatelessWidget {
 }
 
 /// Live remaining balance (calories + macros) from the user's card.
-class LiveBalanceSummary extends StatelessWidget {
+class LiveBalanceSummary extends StatefulWidget {
   final String userId;
 
   const LiveBalanceSummary({super.key, required this.userId});
+
+  @override
+  State<LiveBalanceSummary> createState() => _LiveBalanceSummaryState();
+}
+
+class _LiveBalanceSummaryState extends State<LiveBalanceSummary> {
+  /// Made once (and again only if the user changes): building it in
+  /// build() would re-subscribe, and flash the spinner, on every rebuild.
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _card = _stream();
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _stream() => BalanceService.db
+      .collection('user_data')
+      .where('user_id', isEqualTo: widget.userId)
+      .limit(1)
+      .snapshots();
+
+  @override
+  void didUpdateWidget(covariant LiveBalanceSummary oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId) _card = _stream();
+  }
 
   double? _num(dynamic v) {
     if (v is num) return v.toDouble();
@@ -105,11 +126,7 @@ class LiveBalanceSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('user_data')
-          .where('user_id', isEqualTo: userId)
-          .limit(1)
-          .snapshots(),
+      stream: _card,
       builder: (context, snapshot) {
         final docs = snapshot.data?.docs ?? const [];
         if (docs.isEmpty) {
@@ -293,7 +310,8 @@ class WeeklySpendChart extends StatelessWidget {
                       Expanded(
                         child: Tooltip(
                           message:
-                              '${formatDayHeading(d.day)}: ${formatKcal(d.calories)} kcal',
+                              '${formatDayHeading(d.day)}: ${formatKcal(d.calories)} kcal'
+                              '${d.onBudget(statement.dailyBudget) == false ? ' · over budget' : ''}',
                           child: Padding(
                             padding: EdgeInsets.symmetric(horizontal: gap),
                             child: Container(
@@ -305,7 +323,7 @@ class WeeklySpendChart extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(6),
                                 color: d.calories <= 0
                                     ? AppColors.border
-                                    : (budget > 0 && d.calories > budget)
+                                    : d.onBudget(statement.dailyBudget) == false
                                         ? AppColors.red.withValues(alpha: 0.85)
                                         : (BalanceService.dateKey(d.day) ==
                                                 todayKey
@@ -376,21 +394,36 @@ class WeeklySpendChart extends StatelessWidget {
   }
 }
 
-/// Key for the green budget line drawn on [WeeklySpendChart].
+/// Key for [WeeklySpendChart]: the green budget line, and red bars for
+/// days over budget (named in words, not just shown by colour).
 class BudgetLegend extends StatelessWidget {
-  const BudgetLegend({super.key});
+  /// Also explain the red "over budget" bars.
+  final bool showOver;
+
+  const BudgetLegend({super.key, this.showOver = true});
 
   @override
   Widget build(BuildContext context) {
+    final style = TextStyle(fontSize: 11, color: AppColors.muted);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(width: 14, height: 2, color: AppColors.green),
         const SizedBox(width: 6),
-        Text(
-          'Daily budget',
-          style: TextStyle(fontSize: 11, color: AppColors.muted),
-        ),
+        Text('Budget', style: style),
+        if (showOver) ...[
+          const SizedBox(width: 12),
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: AppColors.red.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text('Over budget', style: style),
+        ],
       ],
     );
   }

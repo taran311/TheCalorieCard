@@ -3,6 +3,19 @@ import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
 
+/// What was just logged, so the screen that asked can offer Undo.
+class LoggedFoods {
+  final List<String> ids;
+  final double calories;
+  final String meal;
+
+  const LoggedFoods(this.ids, this.calories, this.meal);
+
+  static const none = LoggedFoods([], 0, '');
+
+  int get count => ids.length;
+}
+
 /// Shared actions for logging food, plus a signal other screens listen to.
 class FoodLog {
   FoodLog._();
@@ -67,7 +80,7 @@ class FoodLog {
   }
 
   /// Logs [multiplier] servings of a recipe to today and charges the card.
-  static Future<void> logRecipe({
+  static Future<LoggedFoods> logRecipe({
     required String recipeId,
     required Map<String, dynamic> recipe,
     required String meal,
@@ -88,7 +101,7 @@ class FoodLog {
     final servingSize =
         (recipe['serving_size'] as String?) ?? 'Per 1 Serving';
 
-    await BalanceService.logEntries(uid, [
+    final ids = await BalanceService.logEntries(uid, [
       {
         'food_description': 'Recipe: ${recipe['name'] ?? ''}',
         ...amount.toEntryFields(),
@@ -100,6 +113,7 @@ class FoodLog {
     ]);
 
     await _afterLogging(uid, foods: 1);
+    return LoggedFoods(ids, amount.calories.roundToDouble(), meal);
   }
 
   /// Logs individual foods to [meal] and charges the card. Each item needs
@@ -107,7 +121,11 @@ class FoodLog {
   ///
   /// Calories are stored as whole numbers, and the card is charged exactly
   /// what's stored, so removing a food later refunds the same amount.
-  static Future<void> logFoods({
+  ///
+  /// Where it came from (`source`: database, AI estimate, scan…) and
+  /// whether it's worth a second look (`needs_review`) are kept on the
+  /// entry, so the diary can mark estimates.
+  static Future<LoggedFoods> logFoods({
     required List<Map<String, dynamic>> items,
     required String meal,
     String? userId,
@@ -126,14 +144,110 @@ class FoodLog {
             fat: BalanceService.number(item['fat']) ?? 0,
           ).toEntryFields(),
           'foodCategory': meal,
+          if (item['source'] != null) 'food_source': '${item['source']}',
+          if (item['needs_review'] == true || item['source'] == 'ai')
+            'food_estimate': true,
         }
     ];
-    await BalanceService.logEntries(uid, entries);
+    final ids = await BalanceService.logEntries(uid, entries);
     await _afterLogging(
       uid,
       foods: entries.length,
       scans: items.where((i) => i['source'] == 'barcode').length,
     );
+    return LoggedFoods(
+      ids,
+      entries.fold<double>(
+          0, (s, e) => s + (BalanceService.number(e['food_calories']) ?? 0)),
+      meal,
+    );
+  }
+
+  /// Takes back what was just logged (the Undo on "Added …").
+  static Future<void> undo(LoggedFoods logged, {String? userId}) async {
+    final uid = _uid(userId);
+    for (final id in logged.ids) {
+      await BalanceService.deleteEntry(uid, id);
+    }
+    notifyChanged();
+  }
+
+  /// Changes a logged food and charges or refunds the card the difference.
+  ///
+  /// [multiplier] is relative to the food as first logged (1 = as logged,
+  /// 2 = double), so editing twice never compounds. [calories] replaces
+  /// the calories outright (for fixing an estimate; macros are kept).
+  /// [meal] moves it to another meal.
+  static Future<void> updateEntry(
+    String entryId, {
+    required Map<String, dynamic> entry,
+    double? multiplier,
+    double? calories,
+    String? meal,
+    String? userId,
+  }) async {
+    final uid = _uid(userId);
+    final base = baseOf(entry);
+    final basePortion =
+        '${entry['food_portion_base'] ?? entry['food_portion'] ?? ''}';
+    Macros? macros;
+    final fields = <String, dynamic>{};
+
+    if (multiplier != null) {
+      if (!multiplier.isFinite || multiplier <= 0) {
+        throw ArgumentError('Portion must be more than zero');
+      }
+      final scaled = base.scaled(multiplier);
+      macros = Macros(
+        calories: scaled.calories.roundToDouble(),
+        protein: scaled.protein,
+        carbs: scaled.carbs,
+        fat: scaled.fat,
+      );
+      fields.addAll({
+        'food_base': base.toEntryFields(),
+        'food_portion_base': basePortion,
+        'food_multiplier': multiplier,
+        'food_portion': multiplier == 1
+            ? basePortion
+            : basePortion.isEmpty
+                ? '×${formatAmount(multiplier)}'
+                : '${formatAmount(multiplier)} × $basePortion',
+      });
+    }
+    if (calories != null) {
+      if (!calories.isFinite || calories < 0) {
+        throw ArgumentError('Calories must be zero or more');
+      }
+      final current = macros ?? Macros.fromEntry(entry);
+      macros = Macros(
+        calories: calories.roundToDouble(),
+        protein: current.protein,
+        carbs: current.carbs,
+        fat: current.fat,
+      );
+      fields['food_estimate'] = false;
+      fields['food_edited'] = true;
+    }
+    if (meal != null) fields['foodCategory'] = meal;
+    if (fields.isEmpty && macros == null) return;
+
+    await BalanceService.updateEntry(uid, entryId,
+        macros: macros, fields: fields);
+    notifyChanged();
+  }
+
+  /// The food as first logged (before any portion edits).
+  static Macros baseOf(Map<String, dynamic> entry) {
+    final b = entry['food_base'];
+    if (b is Map) return Macros.fromEntry(Map<String, dynamic>.from(b));
+    return Macros.fromEntry(entry);
+  }
+
+  /// The portion multiplier applied since it was logged (1 if never edited).
+  static double multiplierOf(Map<String, dynamic> entry) {
+    final m = BalanceService.number(entry['food_multiplier']);
+    return m != null && m > 0 ? m : 1;
   }
 
   /// Removes a logged food and refunds the card if it was today's.

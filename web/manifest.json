@@ -6,7 +6,6 @@
     "background_color": "#4F46E5",
     "theme_color": "#4F46E5",
     "description": "Track calories like a bank balance: log food, keep streaks and get help from your Calorie Coach.",
-    "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
         {

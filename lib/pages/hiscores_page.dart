@@ -12,7 +12,9 @@ class _Board {
   final String emoji;
   final String description;
   final String unit;
-  final num Function(PlayerStats) value;
+
+  /// Null when this person has no score on the board yet (shown as "—").
+  final num? Function(PlayerStats) value;
 
   const _Board({
     required this.label,
@@ -59,7 +61,8 @@ final _boards = <_Board>[
         'How close your calorie guesses are this month. Shows after 5 guesses.',
     unit: '%',
     // One lucky guess shouldn't top the board: you need a few first.
-    value: (p) => p.senseGuesses >= 5 ? p.calorieSense.round() : 0,
+    // Until then there's no score (not 0 %, which reads as "terrible").
+    value: (p) => p.senseGuesses >= 5 ? p.calorieSense.round() : null,
   ),
 ];
 
@@ -68,7 +71,12 @@ class HiscoresPage extends StatefulWidget {
   /// back there.
   final bool fromFriends;
 
-  const HiscoresPage({Key? key, this.fromFriends = false}) : super(key: key);
+  /// Switches to the Friends tab, when the app shell offers it. "Add
+  /// friends" uses it instead of opening a second Friends page.
+  final VoidCallback? onOpenFriends;
+
+  const HiscoresPage({Key? key, this.fromFriends = false, this.onOpenFriends})
+      : super(key: key);
 
   @override
   State<HiscoresPage> createState() => _HiscoresPageState();
@@ -158,7 +166,10 @@ class _HiscoresPageState extends State<HiscoresPage> {
               <String>[];
 
           if (friends.isEmpty) {
-            return _NoFriends(fromFriends: widget.fromFriends);
+            return _NoFriends(
+              fromFriends: widget.fromFriends,
+              onOpenFriends: widget.onOpenFriends,
+            );
           }
 
           _ensureLoaded(user.uid, friends);
@@ -187,16 +198,18 @@ class _HiscoresPageState extends State<HiscoresPage> {
               }
 
               final board = _boards[_board];
+              // No score sorts below any score.
+              num sortValue(PlayerStats p) => board.value(p) ?? -1;
               final ranked = [...snap.data!]
                 ..sort((a, b) {
-                  final byValue = board.value(b).compareTo(board.value(a));
+                  final byValue = sortValue(b).compareTo(sortValue(a));
                   if (byValue != 0) return byValue;
                   return a.name.toLowerCase().compareTo(b.name.toLowerCase());
                 });
 
               // Nobody has scored yet: don't crown anyone.
               final noScores =
-                  ranked.isEmpty || board.value(ranked.first) <= 0;
+                  ranked.isEmpty || (board.value(ranked.first) ?? 0) <= 0;
 
               return RefreshIndicator(
                 onRefresh: () => _refresh(user.uid),
@@ -232,15 +245,21 @@ class _HiscoresPageState extends State<HiscoresPage> {
                         ),
                       )
                     else
-                      _Podium(ranked: ranked, board: board),
+                      _Podium(
+                        ranked: ranked,
+                        board: board,
+                        rankOf: (i) => _rankOf(ranked, i, board),
+                      ),
                     const SizedBox(height: 18),
                     for (var i = 0; i < ranked.length; i++)
                       _RankRow(
-                        rank: _rankOf(ranked, i, board),
+                        rank: board.value(ranked[i]) == null
+                            ? null
+                            : _rankOf(ranked, i, board),
                         player: ranked[i],
                         value: board.value(ranked[i]),
                         unit: board.unit,
-                        leaderValue: board.value(ranked.first),
+                        leaderValue: board.value(ranked.first) ?? 0,
                       ),
                   ],
                 ),
@@ -296,14 +315,24 @@ class _Podium extends StatelessWidget {
   final List<PlayerStats> ranked;
   final _Board board;
 
-  const _Podium({required this.ranked, required this.board});
+  /// Shared rank of the player at an index (ties share a place).
+  final int Function(int index) rankOf;
+
+  const _Podium(
+      {required this.ranked, required this.board, required this.rankOf});
 
   @override
   Widget build(BuildContext context) {
+    // Only people who've actually scored stand on the podium.
+    final scored = [
+      for (var i = 0; i < ranked.length && i < 3; i++)
+        if ((board.value(ranked[i]) ?? 0) > 0) i
+    ];
     // Order on screen: 2nd, 1st, 3rd.
-    final slots = <int>[1, 0, 2].where((i) => i < ranked.length).toList();
-    const heights = {0: 120.0, 1: 92.0, 2: 72.0};
-    const medals = {0: '🥇', 1: '🥈', 2: '🥉'};
+    final slots = <int>[1, 0, 2].where(scored.contains).toList();
+    // Medals and heights follow the shared rank, so a tie gets two golds.
+    const heights = {1: 120.0, 2: 92.0, 3: 72.0};
+    const medals = {1: '🥇', 2: '🥈', 3: '🥉'};
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 20, 12, 0),
@@ -319,10 +348,11 @@ class _Podium extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(medals[i]!, style: const TextStyle(fontSize: 26)),
+                  Text(medals[rankOf(i)] ?? '',
+                      style: const TextStyle(fontSize: 26)),
                   const SizedBox(height: 4),
                   CircleAvatar(
-                    radius: i == 0 ? 26 : 21,
+                    radius: rankOf(i) == 1 ? 26 : 21,
                     backgroundColor: Colors.white,
                     child: Text(
                       ranked[i].name.isEmpty
@@ -347,10 +377,11 @@ class _Podium extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Container(
-                    height: heights[i],
+                    height: heights[rankOf(i)] ?? 72.0,
                     margin: const EdgeInsets.symmetric(horizontal: 6),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: i == 0 ? 0.3 : 0.2),
+                      color: Colors.white
+                          .withValues(alpha: rankOf(i) == 1 ? 0.3 : 0.2),
                       borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(14)),
                     ),
@@ -376,9 +407,9 @@ class _Podium extends StatelessWidget {
 }
 
 class _RankRow extends StatelessWidget {
-  final int rank;
+  final int? rank; // null: no score yet
   final PlayerStats player;
-  final num value;
+  final num? value;
   final String unit;
   final num leaderValue;
 
@@ -392,7 +423,8 @@ class _RankRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final share = leaderValue <= 0 ? 0.0 : value / leaderValue;
+    final v = value;
+    final share = v == null || leaderValue <= 0 ? 0.0 : v / leaderValue;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -411,7 +443,7 @@ class _RankRow extends StatelessWidget {
           SizedBox(
             width: 28,
             child: Text(
-              '#$rank',
+              rank == null ? '–' : '#$rank',
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 color: AppColors.muted,
@@ -448,7 +480,7 @@ class _RankRow extends StatelessWidget {
           ),
           const SizedBox(width: 14),
           Text(
-            '$value $unit',
+            v == null ? '—' : '$v $unit',
             style: TextStyle(
               fontWeight: FontWeight.w800,
               color: AppColors.ink,
@@ -462,8 +494,9 @@ class _RankRow extends StatelessWidget {
 
 class _NoFriends extends StatelessWidget {
   final bool fromFriends;
+  final VoidCallback? onOpenFriends;
 
-  const _NoFriends({required this.fromFriends});
+  const _NoFriends({required this.fromFriends, this.onOpenFriends});
 
   @override
   Widget build(BuildContext context) {
@@ -492,7 +525,9 @@ class _NoFriends extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton(
               onPressed: () {
-                if (fromFriends) {
+                if (onOpenFriends != null) {
+                  onOpenFriends!();
+                } else if (fromFriends) {
                   Navigator.of(context).pop();
                 } else {
                   Navigator.of(context).push(

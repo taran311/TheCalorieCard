@@ -165,6 +165,7 @@ class CalorieCardShell extends StatelessWidget {
 /// Front of the card, laid out like a bank card:
 ///
 ///   TheCalorieCard                      )))
+///                                 LEFT TODAY
 ///   [chip]                       1,840 kcal
 ///
 ///   ● PROTEIN   ● CARBS   ● FAT
@@ -174,7 +175,8 @@ class CalorieCardFront extends StatelessWidget {
   /// The balance in kcal. Negative means overspent.
   final num amount;
 
-  /// Optional small caption above the balance (none by default).
+  /// Small caption above the balance saying what the number is, e.g.
+  /// "LEFT TODAY" (none by default, for previews).
   final String? label;
 
   /// Remaining macros shown as pills under the balance.
@@ -208,162 +210,178 @@ class CalorieCardFront extends StatelessWidget {
     final over = amount < 0;
     final name = (holder ?? '').trim().toUpperCase();
 
-    return CalorieCardShell(
-      design: design,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (label != null) ...[
-            Text(
-              label!,
-              style: TextStyle(
-                color: over
-                    ? CalorieCardColors.overBudget
-                    : Colors.white.withValues(alpha: 0.55),
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.8,
-              ),
-            ),
-            const SizedBox(height: 2),
-          ],
-          // Like a bank card: brand top-left, contactless top-right, the
-          // chip under the brand with the balance alongside it.
-          Row(
-            children: [
-              const Expanded(child: _Wordmark()),
-              Icon(
-                Icons.contactless_outlined,
-                color: Colors.white.withValues(alpha: 0.75),
-                size: 20,
-              ),
-            ],
-          ),
-          const Spacer(),
-          Row(
-            children: [
-              _CardChip(color: design.chip),
-              const SizedBox(width: 16),
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: Text.rich(
-                    TextSpan(children: [
-                      TextSpan(
-                          text: '${over ? '−' : ''}${formatCardKcal(amount)}'),
-                      TextSpan(
-                        text: ' kcal',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: (over
-                                  ? CalorieCardColors.overBudget
-                                  : Colors.white)
-                              .withValues(alpha: 0.75),
-                        ),
-                      ),
-                    ]),
-                    key: tourKeys?.balance,
-                    style: TextStyle(
-                      color: over ? CalorieCardColors.overBudget : Colors.white,
-                      fontSize: 22,
-                      height: 1.15,
-                      fontWeight: FontWeight.w700,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
+    // The card is a fixed-size picture: let text grow a little with the
+    // system setting, but not so far that the bigger balance overflows.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.1,
+      child: CalorieCardShell(
+        design: design,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Like a bank card: brand top-left, contactless top-right, the
+            // chip under the brand with the balance alongside it.
+            Row(
+              children: [
+                Expanded(child: _Wordmark()),
+                Icon(
+                  Icons.contactless_outlined,
+                  color: Colors.white.withValues(alpha: 0.75),
+                  size: 20,
                 ),
-              ),
-            ],
-          ),
-          // Flexible gaps: roomy on big cards, still fits on small ones.
-          const Spacer(flex: 2),
-          // Macros where a card number would be, each with a small caption
-          // (like "VALID THRU") so it's clear what each number is.
-          if (macros.isNotEmpty)
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < macros.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 22),
-                    MacroNumber(
-                      macro: macros[i],
-                      contentKey: tourKeys?.macro(i),
-                    ),
-                  ],
-                ],
-              ),
+              ],
             ),
-          const Spacer(),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: holder == null
-                    ? const SizedBox.shrink()
-                    : _tourMark(
-                        tourKeys?.holder,
-                        AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        // Keep the name on the left like a real card
-                        // (the default layout centres it).
-                        layoutBuilder: (current, previous) => Stack(
-                          alignment: Alignment.centerLeft,
-                          children: [...previous, if (current != null) current],
-                        ),
-                        child: Text(
-                          name.isEmpty ? 'YOUR NAME' : name,
-                          key: ValueKey(name),
+            const Spacer(),
+            Row(
+              children: [
+                _CardChip(color: design.chip),
+                const SizedBox(width: 16),
+                // The balance is the hero; the caption says what it means.
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (label != null)
+                        Text(
+                          label!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.white
-                                .withValues(alpha: name.isEmpty ? 0.4 : 0.9),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.6,
+                            color: over
+                                ? CalorieCardColors.overBudget
+                                : Colors.white.withValues(alpha: 0.8),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text.rich(
+                          TextSpan(children: [
+                            TextSpan(
+                                text:
+                                    '${over ? '−' : ''}${formatCardKcal(amount)}'),
+                            TextSpan(
+                              text: ' kcal',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: (over
+                                        ? CalorieCardColors.overBudget
+                                        : Colors.white)
+                                    .withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ]),
+                          key: tourKeys?.balance,
+                          style: TextStyle(
+                            color: over
+                                ? CalorieCardColors.overBudget
+                                : Colors.white,
+                            fontSize: 34,
+                            height: 1.0,
+                            fontWeight: FontWeight.w800,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                       ),
-                      ),
-              ),
-              if (validThru != null) ...[
-                const SizedBox(width: 12),
-                Column(
-                  key: tourKeys?.validThru,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'VALID THRU',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 8,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      validThru!,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.2,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
-            ],
-          ),
-        ],
+            ),
+            // Flexible gaps: roomy on big cards, still fits on small ones.
+            const Spacer(flex: 2),
+            // Macros where a card number would be, each with a small caption
+            // (like "VALID THRU") so it's clear what each number is.
+            if (macros.isNotEmpty)
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = 0; i < macros.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 22),
+                      MacroNumber(
+                        macro: macros[i],
+                        contentKey: tourKeys?.macro(i),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            const Spacer(),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: holder == null
+                      ? const SizedBox.shrink()
+                      : _tourMark(
+                          tourKeys?.holder,
+                          AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          // Keep the name on the left like a real card
+                          // (the default layout centres it).
+                          layoutBuilder: (current, previous) => Stack(
+                            alignment: Alignment.centerLeft,
+                            children: [...previous, if (current != null) current],
+                          ),
+                          child: Text(
+                            name.isEmpty ? 'YOUR NAME' : name,
+                            key: ValueKey(name),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white
+                                  .withValues(alpha: name.isEmpty ? 0.4 : 0.9),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1.6,
+                            ),
+                          ),
+                        ),
+                        ),
+                ),
+                if (validThru != null) ...[
+                  const SizedBox(width: 12),
+                  Column(
+                    key: tourKeys?.validThru,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'VALID THRU',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        validThru!,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.2,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -489,8 +507,8 @@ class MacroNumber extends StatelessWidget {
               Text(
                 macro.name.toUpperCase(),
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 8.5,
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 10,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 1.3,
                 ),
@@ -539,81 +557,6 @@ class CardTourKeys {
         2 => fat,
         _ => null,
       };
-}
-
-/// One macro on the front of the card: a small coloured label over what's
-/// left, e.g. "● PROTEIN" / "112g left" (or "20g over").
-class MacroPill extends StatelessWidget {
-  final CardMacro macro;
-
-  /// Put on the label + amount (not the whole column), for the tour.
-  final Key? contentKey;
-
-  const MacroPill({super.key, required this.macro, this.contentKey});
-
-  @override
-  Widget build(BuildContext context) {
-    final over = macro.remaining < 0;
-    final grams = macro.remaining.abs().round();
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: Alignment.centerLeft,
-      child: Column(
-        key: contentKey,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: macro.color,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 5),
-              Text(
-                macro.name.toUpperCase(),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text.rich(
-            TextSpan(children: [
-              TextSpan(
-                text: '${grams}g',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-              TextSpan(
-                text: over ? ' over' : ' left',
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: over
-                      ? CalorieCardColors.overBudget
-                      : Colors.white.withValues(alpha: 0.7),
-                ),
-              ),
-            ]),
-            maxLines: 1,
-            style: TextStyle(
-              color: over ? CalorieCardColors.overBudget : Colors.white,
-              fontSize: 13,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// One macro's remaining balance for the back of the card.
@@ -669,7 +612,7 @@ class CalorieCardBack extends StatelessWidget {
                 Text(
                   footnote!,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.65),
+                    color: Colors.white.withValues(alpha: 0.8),
                     fontSize: 12,
                   ),
                 ),
@@ -684,7 +627,7 @@ class CalorieCardBack extends StatelessWidget {
           Text(
             'Tap to flip back',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.5),
+              color: Colors.white.withValues(alpha: 0.75),
               fontSize: 11,
             ),
           ),

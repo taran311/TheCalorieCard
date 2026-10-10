@@ -7,8 +7,9 @@ import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/spotlight_tour.dart';
 
 /// The end of sign-up: the card "prints" while your goals are saved, then
-/// your name and date appear, the balance counts up, and a short tour shows
-/// what each part means.
+/// your name and date appear, the balance counts up, and a two-step tour
+/// shows the card and the balance. (Macros and the rest are covered in
+/// Tutorials, so sign-up stays short.)
 class CardRevealPage extends StatefulWidget {
   /// Saves the card. Runs while it prints; throws if saving fails.
   final Future<void> Function() save;
@@ -130,34 +131,6 @@ class _CardRevealPageState extends State<CardRevealPage>
         title: 'Your calorie balance',
         body: "What you've got left to spend today. If you go over, it "
             'turns red with a minus.',
-        radius: 10,
-      ),
-      TourStep(
-        target: _tourKeys.protein,
-        title: 'Protein',
-        body: "How much protein you've got left today. It keeps you full "
-            'and helps build muscle.',
-        radius: 10,
-      ),
-      TourStep(
-        target: _tourKeys.carbs,
-        title: 'Carbs',
-        body: 'Your main energy for the day: bread, rice, pasta, fruit '
-            'and the like.',
-        radius: 10,
-      ),
-      TourStep(
-        target: _tourKeys.fat,
-        title: 'Fat',
-        body: 'From things like oils, nuts, cheese and meat. You need '
-            'some, but it adds up fast.',
-        radius: 10,
-      ),
-      TourStep(
-        target: _tourKeys.validThru,
-        title: "Today's date",
-        body: 'Each card is good for one day. At midnight it starts again '
-            'with a full balance.',
         radius: 10,
       ),
     ]);

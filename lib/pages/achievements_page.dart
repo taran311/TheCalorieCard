@@ -443,20 +443,36 @@ class _AchievementTile extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // Tier colours (bronze, silver…) are too light to read
+                    // as text, so they only colour the dot and border.
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: tierColor.withValues(alpha: 0.14),
+                        color: tierColor.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: tierColor.withValues(alpha: 0.7)),
                       ),
-                      child: Text(
-                        '${a.tier.label} · ${a.tier.points}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: tierColor,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                                color: tierColor, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            '${a.tier.label} · ${a.tier.points}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

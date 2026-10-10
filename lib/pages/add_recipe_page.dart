@@ -39,6 +39,13 @@ class _AddRecipePageState extends State<AddRecipePage> {
   bool _isAiLoading = false;
   bool _tutorialMode = false;
 
+  /// The recipe as it was when the page opened (or finished loading), so
+  /// leaving with unsaved changes can ask first. Null while loading.
+  String? _savedSignature;
+
+  /// Set when leaving on purpose (saved, or chose Discard).
+  bool _leaving = false;
+
   // Cached tutorial data for instant demo
   static const List<Map<String, dynamic>> _tutorialCachedResults = [
     {
@@ -84,7 +91,69 @@ class _AddRecipePageState extends State<AddRecipePage> {
     if (widget.recipeId != null) {
       _loading = true;
       _loadRecipeForEdit(widget.recipeId!);
+    } else {
+      _savedSignature = _signature();
     }
+  }
+
+  /// Everything the person can change, as one string to compare.
+  String _signature() => [
+        _nameController.text.trim(),
+        _servingSizeController.text.trim(),
+        _servingUnit,
+        for (final i in _ingredients)
+          '${i.name}|${i.portion}|${i.calories.round()}',
+        ..._freeTextIngredients,
+        _freeTextController.text.trim(),
+      ].join('\n');
+
+  /// True when leaving now would lose something.
+  bool get _dirty =>
+      !_tutorialMode &&
+      _savedSignature != null &&
+      _signature() != _savedSignature;
+
+  /// Anything typed or added (the demo would wipe it).
+  bool get _hasAnyInput =>
+      _nameController.text.trim().isNotEmpty ||
+      _ingredients.isNotEmpty ||
+      _freeTextIngredients.isNotEmpty ||
+      _freeTextController.text.trim().isNotEmpty;
+
+  /// Back / close: ask before throwing away an unsaved recipe.
+  Future<void> _confirmLeave() async {
+    if (_saving) return;
+    if (!_dirty) {
+      _leave();
+      return;
+    }
+    final editing = widget.recipeId != null;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(editing ? 'Discard your changes?' : 'Discard this recipe?'),
+        content: Text(editing
+            ? "Your changes to this recipe haven't been saved."
+            : "You'll lose what you've added so far."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.red600),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) _leave();
+  }
+
+  void _leave([Object? result]) {
+    _leaving = true;
+    Navigator.pop(context, result);
   }
 
   @override
@@ -97,6 +166,10 @@ class _AddRecipePageState extends State<AddRecipePage> {
   }
 
   Future<void> _runTutorial() async {
+    // The demo clears the form, so it only runs on an empty one (the
+    // button is disabled otherwise).
+    if (_hasAnyInput || _tutorialMode || _saving) return;
+    FocusScope.of(context).unfocus();
     setState(() {
       _tutorialMode = true;
       _ingredients.clear();
@@ -131,6 +204,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
     await Future.delayed(const Duration(milliseconds: 300));
 
     // Type serving size
+    if (!mounted) return;
     _servingSizeController.clear();
     const servingSize = '250';
     for (int i = 0; i <= servingSize.length; i++) {
@@ -151,6 +225,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       '1 banana',
       '20g honey'
     ];
+    if (!mounted) return;
     _freeTextController.text = '';
 
     for (int i = 0; i < tutorialIngredients.length; i++) {
@@ -242,16 +317,28 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final canDemo = !_tutorialMode && !_saving && !_hasAnyInput;
+    // Back always comes through here, so nothing unsaved is lost by
+    // accident (the check happens at the moment they try to leave).
+    return PopScope(
+      canPop: _leaving,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
         title: Text(widget.recipeId != null ? 'Edit recipe' : 'New recipe'),
         actions: [
           if (widget.recipeId == null)
-            IconButton(
-              onPressed: _tutorialMode ? null : _runTutorial,
-              icon: const Icon(Icons.help_outline),
-              tooltip: 'Show me how',
+            Tooltip(
+              message: canDemo || _tutorialMode
+                  ? 'Show me how'
+                  : 'Show me how (clear the form first)',
+              child: IconButton(
+                onPressed: canDemo ? _runTutorial : null,
+                icon: const Icon(Icons.help_outline),
+              ),
             ),
         ],
       ),
@@ -270,7 +357,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                     child: FilledButton.icon(
-                      onPressed: _saving
+                      onPressed: _saving || _calculatingAi
                           ? null
                           : (widget.recipeId != null
                               ? _updateRecipe
@@ -308,6 +395,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                         children: [
                     TextFormField(
                       controller: _nameController,
+                      onChanged: (_) => setState(() {}),
                       decoration: const InputDecoration(
                         labelText: 'Recipe name',
                         hintText: 'e.g. Chicken curry',
@@ -487,6 +575,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
             ),
         ],
       ),
+      ),
     );
   }
 
@@ -582,6 +671,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
       );
     }
 
+    // Tap a row to change its amount or remove it, so the name gets the
+    // full width even on a small phone.
     return Column(
       children: _ingredients.asMap().entries.map((entry) {
         final idx = entry.key;
@@ -592,22 +683,31 @@ class _AddRecipePageState extends State<AddRecipePage> {
           children: [
             Card(
               margin: const EdgeInsets.only(bottom: 8),
+              clipBehavior: Clip.antiAlias,
               child: ListTile(
-                title: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(ing.name),
-                    if (ing.portion.isNotEmpty)
-                      Text(
-                        '(${ing.portion})',
+                onTap: () {
+                  if (isEditing) {
+                    setState(() => _editingIngredientIndex = null);
+                  } else {
+                    _startEditingIngredient(idx, ing.portion);
+                  }
+                },
+                title: Text(
+                  ing.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: ing.portion.isNotEmpty
+                    ? Text(
+                        'Amount: ${ing.portion}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: AppColors.gray600,
                           fontSize: 12,
-                          fontWeight: FontWeight.w400,
                         ),
-                      ),
-                  ],
-                ),
+                      )
+                    : null,
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -618,130 +718,128 @@ class _AddRecipePageState extends State<AddRecipePage> {
                         color: AppText.primary,
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Change amount',
-                      icon: Icon(Icons.edit_outlined, color: AppText.primary),
-                      onPressed: () {
-                        _startEditingIngredient(idx, ing.portion);
-                      },
-                    ),
-                    IconButton(
-                      tooltip: 'Remove',
-                      icon: Icon(Icons.delete_outline, color: AppText.red600),
-                      onPressed: () => _removeIngredient(idx),
+                    const SizedBox(width: 4),
+                    Icon(
+                      isEditing ? Icons.expand_less : Icons.edit_outlined,
+                      size: 18,
+                      color: AppColors.muted,
                     ),
                   ],
                 ),
               ),
             ),
-            if (isEditing)
-              Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: AppColors.indigo50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.indigo300, width: 1.5),
-                ),
-                child: Row(
-                  children: [
-                    const Text(
-                      'per ',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    SizedBox(
-                      width: 72,
-                      child: TextField(
-                        controller: _ingredientPortionController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          hintText: 'Amount',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        _extractPortionUnit(ing.portion),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      tooltip: 'Save amount',
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.emerald600,
-                        foregroundColor: Colors.white,
-                      ),
-                      icon: const Icon(Icons.check),
-                      onPressed: () {
-                        final newPortion = double.tryParse(
-                            _ingredientPortionController.text.trim());
-                        if (newPortion == null ||
-                            !newPortion.isFinite ||
-                            newPortion <= 0) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text(
-                                    'Enter an amount more than 0.')),
-                          );
-                          return;
-                        }
-                        final portionUnit = _extractPortionUnit(ing.portion);
-                        final amount = FoodLog.formatAmount(newPortion);
-                        final newPortionDisplay = portionUnit.isNotEmpty
-                            ? '$amount $portionUnit'
-                            : amount;
-
-                        // Calculate adjusted macros based on portion ratio
-                        final adjustedMacros =
-                            _calculateAdjustedIngredientMacros(ing, newPortion);
-
-                        setState(() {
-                          _ingredients[idx] = _IngredientEntry(
-                            name: ing.name,
-                            calories: adjustedMacros['calories']!,
-                            protein: adjustedMacros['protein']!,
-                            carbs: adjustedMacros['carbs']!,
-                            fat: adjustedMacros['fat']!,
-                            portion: newPortionDisplay,
-                          );
-                          _editingIngredientIndex = null;
-                        });
-                      },
-                    ),
-                    IconButton(
-                      tooltip: 'Cancel',
-                      icon: const Icon(Icons.close),
-                      onPressed: () {
-                        setState(() {
-                          _editingIngredientIndex = null;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
+            if (isEditing) _buildIngredientEditor(idx, ing),
           ],
         );
       }).toList(),
     );
+  }
+
+  /// Change an ingredient's amount, or remove it.
+  Widget _buildIngredientEditor(int idx, _IngredientEntry ing) {
+    final unit = _extractPortionUnit(ing.portion);
+    // Short units fit beside the number; longer ones go underneath.
+    final shortUnit = unit.isNotEmpty && unit.length <= 6;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      decoration: BoxDecoration(
+        color: AppColors.indigo50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.indigo300, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _ingredientPortionController,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textInputAction: TextInputAction.done,
+            decoration: InputDecoration(
+              labelText: 'Amount',
+              suffixText: shortUnit ? unit : null,
+              helperText: unit.isNotEmpty && !shortUnit ? 'In $unit' : null,
+              helperMaxLines: 2,
+              isDense: true,
+              filled: true,
+              fillColor: AppColors.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onSubmitted: (_) => _saveIngredientAmount(idx),
+          ),
+          const SizedBox(height: 4),
+          OverflowBar(
+            alignment: MainAxisAlignment.end,
+            overflowAlignment: OverflowBarAlignment.end,
+            spacing: 4,
+            children: [
+              TextButton.icon(
+                onPressed: () => _removeIngredient(idx),
+                icon: Icon(Icons.delete_outline, color: AppText.red600),
+                label: Text('Remove',
+                    style: TextStyle(color: AppText.red600)),
+              ),
+              TextButton(
+                onPressed: () =>
+                    setState(() => _editingIngredientIndex = null),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => _saveIngredientAmount(idx),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Applies the amount typed in the editor, scaling the ingredient.
+  void _saveIngredientAmount(int idx) {
+    if (idx >= _ingredients.length) return;
+    final ing = _ingredients[idx];
+    final newPortion = double.tryParse(
+        _ingredientPortionController.text.trim().replaceAll(',', '.'));
+    if (newPortion == null || !newPortion.isFinite || newPortion <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter an amount more than 0.')),
+      );
+      return;
+    }
+    final portionUnit = _extractPortionUnit(ing.portion);
+    final amount = FoodLog.formatAmount(newPortion);
+    final newPortionDisplay =
+        portionUnit.isNotEmpty ? '$amount $portionUnit' : amount;
+
+    // Scale the macros by the change in amount.
+    final adjustedMacros = _calculateAdjustedIngredientMacros(ing, newPortion);
+
+    setState(() {
+      _ingredients[idx] = _IngredientEntry(
+        name: _renameForAmount(ing.name, ing.portion, amount),
+        calories: adjustedMacros['calories']!,
+        protein: adjustedMacros['protein']!,
+        carbs: adjustedMacros['carbs']!,
+        fat: adjustedMacros['fat']!,
+        portion: newPortionDisplay,
+      );
+      _editingIngredientIndex = null;
+    });
+  }
+
+  /// "200g chicken breast" changed to 300 g reads "300g chicken breast",
+  /// so the name never contradicts the amount. Only when the name starts
+  /// with the old amount.
+  String _renameForAmount(String name, String oldPortion, String newAmount) {
+    final m = RegExp(r'^(\s*)(\d+(?:[.,]\d+)?)').firstMatch(name);
+    if (m == null) return name;
+    final lead = double.tryParse(m.group(2)!.replaceAll(',', '.'));
+    if (lead == null || lead != _extractPortionNumber(oldPortion)) return name;
+    return '${m.group(1)}$newAmount${name.substring(m.end)}';
   }
 
   void _startEditingIngredient(int idx, String currentPortion) {
@@ -822,13 +920,18 @@ class _AddRecipePageState extends State<AddRecipePage> {
       }
       return;
     }
-    if (mounted) setState(() => _loading = false);
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _savedSignature = _signature();
+      });
+    }
   }
 
   /// Closes the editor and explains why.
   void _leaveWithMessage(String message) {
     final messenger = ScaffoldMessenger.of(context);
-    Navigator.pop(context);
+    _leave();
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
@@ -859,7 +962,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
   /// Checks the form; explains what's missing instead of doing nothing.
   bool _readyToSave() {
-    if (!_formKey.currentState!.validate()) return false;
     if (_ingredients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Add at least one ingredient first.')),
@@ -867,6 +969,46 @@ class _AddRecipePageState extends State<AddRecipePage> {
       return false;
     }
     return true;
+  }
+
+  /// Ingredients still waiting to be looked up (chips, or text in the
+  /// box) are worked out before saving, so none are silently dropped.
+  /// False (with a message saying which) if some couldn't be found.
+  Future<bool> _settleIngredients() async {
+    _takeFreeText(all: true);
+    if (_freeTextIngredients.isEmpty) return true;
+    await _calculateAllWithAi(quiet: true);
+    if (!mounted) return false;
+    if (_freeTextIngredients.isEmpty) return true;
+    final missing = _freeTextIngredients;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          "Not saved yet: we couldn't work out "
+          '${missing.length == 1 ? '"${missing.first}"' : '${missing.length} ingredients'}. '
+          'Check the spelling and tap Work out calories, or remove '
+          '${missing.length == 1 ? 'it' : 'them'}.',
+        ),
+      ),
+    );
+    return false;
+  }
+
+  /// Validates, works out any pending ingredients, then runs [save].
+  /// _saving is set before the first await, so a double tap saves once.
+  Future<void> _save(Future<void> Function() save) async {
+    if (_saving || _calculatingAi) return;
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+    final settled = await _settleIngredients();
+    if (!mounted) return;
+    if (!settled || !_readyToSave()) {
+      setState(() => _saving = false);
+      return;
+    }
+    await save();
   }
 
   List<RecipeIngredient> get _recipeIngredients => [
@@ -884,10 +1026,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
       ];
 
   Future<void> _updateRecipe() async {
-    if (_saving || widget.recipeId == null) return;
-    if (!_readyToSave()) return;
+    if (widget.recipeId == null) return;
+    await _save(_writeUpdate);
+  }
 
-    setState(() => _saving = true);
+  Future<void> _writeUpdate() async {
     try {
       // Food already logged from this recipe keeps its own numbers, so
       // past days and today's balance don't change when a recipe is edited.
@@ -899,7 +1042,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
         ingredients: _recipeIngredients,
       );
       if (!mounted) return;
-      Navigator.pop(context, widget.recipeId);
+      _leave(widget.recipeId);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -915,11 +1058,9 @@ class _AddRecipePageState extends State<AddRecipePage> {
     }
   }
 
-  Future<void> _saveRecipe() async {
-    if (_saving) return;
-    if (!_readyToSave()) return;
+  Future<void> _saveRecipe() => _save(_writeNew);
 
-    setState(() => _saving = true);
+  Future<void> _writeNew() async {
     try {
       final recipeId = await RecipeService.create(
         FirebaseAuth.instance.currentUser!.uid,
@@ -928,7 +1069,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
         ingredients: _recipeIngredients,
       );
       if (!mounted) return;
-      Navigator.pop(context, recipeId);
+      _leave(recipeId);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -968,18 +1109,25 @@ class _AddRecipePageState extends State<AddRecipePage> {
   /// the unfinished last item is taken too.
   void _takeFreeText({bool all = false}) {
     final value = _freeTextController.text;
-    final parts = FoodResolver.splitItems(value);
-    final endsWithSeparator = RegExp(r'[,\n;]\s*$').hasMatch(value);
-    var remainder = '';
-    if (!all && !endsWithSeparator && parts.isNotEmpty) {
-      remainder = parts.removeLast();
+    final List<String> parts;
+    final String rest;
+    if (all) {
+      parts = FoodResolver.splitItems(value);
+      rest = '';
+    } else {
+      final taken = FoodResolver.takeFinished(value);
+      parts = taken.done;
+      rest = taken.rest;
     }
-    if (parts.isEmpty) return;
+    if (parts.isEmpty && rest == value) {
+      setState(() {}); // refresh "Show me how" and the Save check
+      return;
+    }
     setState(() {
       _freeTextIngredients.addAll(parts);
       _freeTextController.value = TextEditingValue(
-        text: remainder,
-        selection: TextSelection.collapsed(offset: remainder.length),
+        text: rest,
+        selection: TextSelection.collapsed(offset: rest.length),
       );
     });
   }
@@ -1006,6 +1154,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
           ),
           onChanged: (_) => _takeFreeText(),
           onSubmitted: (_) => _takeFreeText(all: true),
+          // Keep the keyboard up so the next ingredient can be typed.
+          onEditingComplete: () {},
         ),
         const SizedBox(height: 12),
         if (_freeTextIngredients.isNotEmpty)
@@ -1057,7 +1207,10 @@ class _AddRecipePageState extends State<AddRecipePage> {
   }
 
   // Calculate all free text ingredients with AI
-  Future<void> _calculateAllWithAi() async {
+  /// With [quiet], no "Added N ingredients" message (used when saving,
+  /// which explains anything that couldn't be found itself).
+  Future<void> _calculateAllWithAi({bool quiet = false}) async {
+    if (_calculatingAi) return;
     _takeFreeText(all: true); // include anything still in the text box
     if (_freeTextIngredients.isEmpty) return;
     final queries = List<String>.from(_freeTextIngredients);
@@ -1071,12 +1224,14 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
     final results = <_IngredientEntry>[];
     final failed = <String>[];
+    final found = <String>[];
     for (var i = 0; i < queries.length; i++) {
       final r = resolved[i];
       if (r == null) {
         failed.add(queries[i]);
         continue;
       }
+      found.add(queries[i]);
       results.add(_IngredientEntry(
         name: queries[i], // keep the user's own wording
         calories: r.calories,
@@ -1090,18 +1245,21 @@ class _AddRecipePageState extends State<AddRecipePage> {
     if (mounted) {
       setState(() {
         _ingredients.addAll(results);
-        // Failed items stay so they can be retried.
-        _freeTextIngredients
-          ..clear()
-          ..addAll(failed);
+        // Failed items stay so they can be retried (and anything added
+        // while the look-up ran stays too).
+        for (final q in found) {
+          _freeTextIngredients.remove(q);
+        }
         _calculatingAi = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_lookupMessage(results.length, failed.length)),
-        ),
-      );
+      if (!quiet) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_lookupMessage(results.length, failed.length)),
+          ),
+        );
+      }
     }
   }
 }

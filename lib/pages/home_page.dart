@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/pages/achievements_page.dart';
@@ -18,7 +19,11 @@ import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
+import 'package:namer_app/services/pacing.dart';
+import 'package:namer_app/services/usuals.dart';
 import 'package:namer_app/ui/coach_nudge.dart';
+import 'package:namer_app/ui/entry_sheet.dart';
+import 'package:namer_app/ui/log_recipe_sheet.dart';
 import 'package:namer_app/ui/streak_pill.dart';
 import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/services/premium_service.dart';
@@ -46,65 +51,63 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _SelectExistingRecipePage extends StatefulWidget {
-  /// The meal the recipe will be logged to (for the button label).
-  final String meal;
-
-  const _SelectExistingRecipePage({required this.meal});
+/// Pick a saved recipe to log. Tapping one opens the shared recipe sheet
+/// (meal, servings, Spend), which shows its own "Logged … · Undo" note.
+class _RecipePickerPage extends StatefulWidget {
+  const _RecipePickerPage();
 
   @override
-  State<_SelectExistingRecipePage> createState() =>
-      _SelectExistingRecipePageState();
+  State<_RecipePickerPage> createState() => _RecipePickerPageState();
 }
 
-class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
-  int? _editingRecipeIndex;
-  final TextEditingController _portionController = TextEditingController();
+class _RecipePickerPageState extends State<_RecipePickerPage> {
   int _selectedTabIndex = 0; // 0 = My recipes, 1 = Shared with me
 
-  // Created once, so typing a portion (which rebuilds the page) doesn't
-  // re-subscribe and drop the text field's focus.
-  late final Stream<QuerySnapshot> _myRecipes = FirebaseFirestore.instance
-      .collection('recipes')
-      .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-      .snapshots();
-  late final Stream<QuerySnapshot> _sharedRecipes = FirebaseFirestore.instance
-      .collection('shared_recipes')
-      .where('shared_with_user_id',
-          isEqualTo: FirebaseAuth.instance.currentUser!.uid)
-      .snapshots();
+  // Created once, so rebuilding the page doesn't re-subscribe.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _myRecipes =
+      BalanceService.db
+          .collection('recipes')
+          .where('user_id', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+          .snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _sharedRecipes =
+      BalanceService.db
+          .collection('shared_recipes')
+          .where('shared_with_user_id',
+              isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+          .snapshots();
 
   // Shared recipe details, cached for the current set of shared docs.
   Future<List<Map<String, dynamic>>>? _sharedDetails;
   String? _sharedDetailsKey;
 
-  @override
-  void dispose() {
-    _portionController.dispose();
-    super.dispose();
-  }
-
   Future<List<Map<String, dynamic>>> _sharedDetailsFor(
-      List<QueryDocumentSnapshot> docs) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
     final key = docs.map((d) => d.id).join(',');
     final cached = _sharedDetails;
     if (cached != null && key == _sharedDetailsKey) return cached;
     _sharedDetailsKey = key;
-    final future = _loadSharedRecipeDetailsForHome(docs);
+    final future = _loadSharedRecipeDetails(docs);
     _sharedDetails = future;
     return future;
+  }
+
+  /// Opens the recipe sheet; once something's logged, back to the Card.
+  Future<void> _log(String recipeId, Map<String, dynamic> recipe) async {
+    // Typed loosely so this works whether the sheet returns what it
+    // logged or nothing.
+    final logged = await showLogRecipeSheet(
+      context,
+      recipeId: recipeId,
+      recipe: recipe,
+    ).then<Object?>((Object? r) => r);
+    if (logged is LoggedFoods && mounted) Navigator.pop(context, logged);
   }
 
   Widget _tab(int index, String label) {
     final selected = _selectedTabIndex == index;
     return Expanded(
       child: InkWell(
-        onTap: () {
-          setState(() {
-            _selectedTabIndex = index;
-            _editingRecipeIndex = null;
-          });
-        },
+        onTap: () => setState(() => _selectedTabIndex = index),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 13),
           decoration: BoxDecoration(
@@ -154,6 +157,32 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
         icon: Icons.cloud_off_outlined,
       );
 
+  Widget _recipeTile(
+    String recipeId,
+    Map<String, dynamic> recipe, {
+    String? sharedBy,
+  }) {
+    final calories = BalanceService.number(recipe['total_calories']) ?? 0;
+    final servingSize = (recipe['serving_size'] as String?) ?? 'Per 1 Serving';
+    return ListTile(
+      minVerticalPadding: 10,
+      title: Text(
+        (recipe['name'] ?? 'Recipe').toString(),
+        style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        sharedBy == null
+            ? '${calories.toStringAsFixed(0)} kcal ($servingSize)'
+            : '${calories.toStringAsFixed(0)} kcal ($servingSize)\n'
+                'Shared by $sharedBy',
+        style: TextStyle(color: AppColors.muted),
+      ),
+      isThreeLine: sharedBy != null,
+      trailing: Icon(Icons.add_circle_outline, color: AppText.primary),
+      onTap: () => _log(recipeId, recipe),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -180,7 +209,7 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
   }
 
   Widget _buildMyRecipesTab() {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _myRecipes,
       builder: (context, snapshot) {
         if (snapshot.hasError) return _errorMessage();
@@ -192,83 +221,28 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
               "No recipes yet. Save one on the Recipes tab and it'll show here.");
         }
 
-        final recipes = List<QueryDocumentSnapshot>.from(snapshot.data!.docs);
-        // Sort by created_at descending (client-side)
-        recipes.sort((a, b) {
-          // data()[...] rather than doc[...]: older recipes may be missing
-          // fields, and doc[...] throws for those.
-          final timeA = (a.data() as Map)['created_at'] as Timestamp?;
-          final timeB = (b.data() as Map)['created_at'] as Timestamp?;
-          if (timeA == null || timeB == null) return 0;
-          return timeB.compareTo(timeA);
-        });
+        final recipes = snapshot.data!.docs.toList()
+          // Newest first. data()[...] rather than doc[...]: older recipes
+          // may be missing fields, and doc[...] throws for those.
+          ..sort((a, b) {
+            final timeA = a.data()['created_at'];
+            final timeB = b.data()['created_at'];
+            if (timeA is! Timestamp || timeB is! Timestamp) return 0;
+            return timeB.compareTo(timeA);
+          });
 
         return ListView.builder(
           padding: const EdgeInsets.only(top: 8, bottom: 48),
           itemCount: recipes.length,
-          itemBuilder: (context, index) {
-            final recipe = recipes[index];
-            final r = recipe.data() as Map<String, dynamic>;
-            final calories = BalanceService.number(r['total_calories']) ?? 0;
-            final protein = BalanceService.number(r['total_protein']) ?? 0;
-            final carbs = BalanceService.number(r['total_carbs']) ?? 0;
-            final fat = BalanceService.number(r['total_fat']) ?? 0;
-            final servingSize =
-                (r['serving_size'] as String?) ?? 'Per 1 Serving';
-            final isEditing = _editingRecipeIndex == index;
-
-            // Parse serving size to determine unit and value
-            final isGrams = servingSize.contains('g') &&
-                !servingSize.toLowerCase().contains('serving');
-            final originalServingValue = FoodLog.servingAmount(servingSize);
-            final unit = isGrams
-                ? 'g'
-                : 'serving${originalServingValue != 1 ? 's' : ''}';
-
-            return Column(
-              children: [
-                ListTile(
-                  title: Text(
-                    (r['name'] ?? 'Recipe').toString(),
-                    style: TextStyle(
-                        color: AppColors.ink, fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(
-                    '${calories.toStringAsFixed(0)} kcal ($servingSize)',
-                    style: TextStyle(color: AppColors.muted),
-                  ),
-                  trailing: Icon(Icons.add_circle_outline,
-                      color: AppText.primary),
-                  onTap: () {
-                    setState(() {
-                      _editingRecipeIndex = index;
-                      _portionController.text =
-                          FoodLog.formatAmount(originalServingValue);
-                    });
-                  },
-                ),
-                if (isEditing)
-                  _buildExpandedPortionView(
-                    recipe.id,
-                    r,
-                    calories,
-                    protein,
-                    carbs,
-                    fat,
-                    originalServingValue,
-                    isGrams,
-                    unit,
-                  ),
-              ],
-            );
-          },
+          itemBuilder: (context, index) =>
+              _recipeTile(recipes[index].id, recipes[index].data()),
         );
       },
     );
   }
 
   Widget _buildSharedRecipesTab() {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _sharedRecipes,
       builder: (context, snapshot) {
         if (snapshot.hasError) return _errorMessage();
@@ -280,86 +254,28 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
               icon: Icons.people_outline);
         }
 
-        final sharedRecipeDocs = snapshot.data!.docs;
-
         return FutureBuilder<List<Map<String, dynamic>>>(
-          future: _sharedDetailsFor(sharedRecipeDocs),
+          future: _sharedDetailsFor(snapshot.data!.docs),
           builder: (context, detailSnapshot) {
             if (detailSnapshot.hasError) return _errorMessage();
             if (detailSnapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-
             if (!detailSnapshot.hasData || detailSnapshot.data!.isEmpty) {
               return _message("Those recipes aren't available any more.",
                   icon: Icons.people_outline);
             }
 
             final recipes = detailSnapshot.data!;
-
             return ListView.builder(
               padding: const EdgeInsets.only(top: 8, bottom: 48),
               itemCount: recipes.length,
               itemBuilder: (context, index) {
                 final item = recipes[index];
-                final recipe = item['recipe'] as Map<String, dynamic>;
-                final recipeId = item['recipe_id'] as String;
-                final calories =
-                    BalanceService.number(recipe['total_calories']) ?? 0;
-                final protein =
-                    BalanceService.number(recipe['total_protein']) ?? 0;
-                final carbs = BalanceService.number(recipe['total_carbs']) ?? 0;
-                final fat = BalanceService.number(recipe['total_fat']) ?? 0;
-                final servingSize =
-                    recipe['serving_size'] as String? ?? 'Per 1 Serving';
-                final isEditing = _editingRecipeIndex == index;
-
-                final isGrams = servingSize.contains('g') &&
-                    !servingSize.toLowerCase().contains('serving');
-                final originalServingValue =
-                    FoodLog.servingAmount(servingSize);
-                final unit = isGrams
-                    ? 'g'
-                    : 'serving${originalServingValue != 1 ? 's' : ''}';
-                final sharedBy = FriendsService.displayName(
-                    item['sharedByEmail'] as String?);
-
-                return Column(
-                  children: [
-                    ListTile(
-                      title: Text(
-                        (recipe['name'] ?? 'Recipe').toString(),
-                        style: TextStyle(
-                            color: AppColors.ink, fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: Text(
-                        '${calories.toStringAsFixed(0)} kcal ($servingSize)\nShared by $sharedBy',
-                        style: TextStyle(color: AppColors.muted),
-                      ),
-                      isThreeLine: true,
-                      trailing: Icon(Icons.add_circle_outline,
-                          color: AppText.primary),
-                      onTap: () {
-                        setState(() {
-                          _editingRecipeIndex = index;
-                          _portionController.text =
-                              FoodLog.formatAmount(originalServingValue);
-                        });
-                      },
-                    ),
-                    if (isEditing)
-                      _buildExpandedPortionView(
-                        recipeId,
-                        recipe,
-                        calories,
-                        protein,
-                        carbs,
-                        fat,
-                        originalServingValue,
-                        isGrams,
-                        unit,
-                      ),
-                  ],
+                return _recipeTile(
+                  item['recipe_id'] as String,
+                  item['recipe'] as Map<String, dynamic>,
+                  sharedBy: item['sharedBy'] as String,
                 );
               },
             );
@@ -369,247 +285,33 @@ class _SelectExistingRecipePageState extends State<_SelectExistingRecipePage> {
     );
   }
 
-  Widget _macroBox(String name, Color color, double grams) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        decoration: AppDecor.inset,
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration:
-                      BoxDecoration(color: color, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 5),
-                Flexible(
-                  child: Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.muted,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${grams.toStringAsFixed(1)}g',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.ink,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExpandedPortionView(
-    String recipeId,
-    Map<String, dynamic> recipe,
-    num calories,
-    double protein,
-    double carbs,
-    double fat,
-    double originalServingValue,
-    bool isGrams,
-    String unit,
-  ) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: AppDecor.card,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Amount',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: AppColors.ink,
-                ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 80,
-                child: TextField(
-                  controller: _portionController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) => setState(() {}),
-                  onTapOutside: (_) {
-                    FocusScope.of(context).unfocus();
-                    setState(() {});
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                unit,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: AppColors.gray700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Builder(
-            builder: (context) {
-              final typed = double.tryParse(_portionController.text.trim());
-              // Only amounts above zero can be logged; anything else would
-              // log nothing or credit the card.
-              final validPortion =
-                  typed != null && typed.isFinite && typed > 0;
-              final newPortion = validPortion ? typed! : originalServingValue;
-              final ratio = newPortion / originalServingValue;
-              final adjustedCalories = (calories * ratio).round();
-              final adjustedProtein = protein * ratio;
-              final adjustedCarbs = carbs * ratio;
-              final adjustedFat = fat * ratio;
-
-              return Column(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.indigo50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '$adjustedCalories',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: AppText.primaryDark,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'kcal',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppText.primaryDark,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _macroBox('Protein', AppColors.protein, adjustedProtein),
-                      const SizedBox(width: 8),
-                      _macroBox('Carbs', AppColors.carbs, adjustedCarbs),
-                      const SizedBox(width: 8),
-                      _macroBox('Fat', AppColors.fat, adjustedFat),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _editingRecipeIndex = null;
-                          });
-                        },
-                        child: const Text('Cancel'),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: FilledButton(
-                          onPressed: !validPortion
-                              ? null
-                              : () {
-                                  final multiplier = ratio;
-                                  Navigator.pop(context, {
-                                    'recipeId': recipeId,
-                                    'multiplier': multiplier,
-                                  });
-                                },
-                          child: Text(
-                            'Add to ${widget.meal}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> _loadSharedRecipeDetailsForHome(
-    List<QueryDocumentSnapshot> sharedRecipeDocs,
+  Future<List<Map<String, dynamic>>> _loadSharedRecipeDetails(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> sharedRecipeDocs,
   ) async {
-    final firestore = FirebaseFirestore.instance;
-    final results = <Map<String, dynamic>>[];
-
-    for (final doc in sharedRecipeDocs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final recipeId = data['recipe_id'] as String;
-      final sharedByUserId = data['shared_by_user_id'] as String;
-
+    final firestore = BalanceService.db;
+    final found = await Future.wait(sharedRecipeDocs.map((doc) async {
+      final data = doc.data();
+      final recipeId = data['recipe_id'];
+      final sharedByUserId = data['shared_by_user_id'];
+      if (recipeId is! String) return null;
       try {
         final recipeDoc =
             await firestore.collection('recipes').doc(recipeId).get();
-        if (!recipeDoc.exists) continue;
-
-        final userDoc =
-            await firestore.collection('users').doc(sharedByUserId).get();
-        final sharedByEmail =
-            userDoc.data()?['email'] as String? ?? 'Unknown';
-
-        results.add({
+        final recipe = recipeDoc.data();
+        if (recipe == null) return null;
+        final sharedBy = sharedByUserId is String
+            ? await FriendsService.nameFor(sharedByUserId)
+            : 'Unknown';
+        return <String, dynamic>{
           'recipe_id': recipeId,
-          'recipe': recipeDoc.data(),
-          'sharedByEmail': sharedByEmail,
-        });
-      } catch (e) {
-        continue;
+          'recipe': recipe,
+          'sharedBy': sharedBy,
+        };
+      } catch (_) {
+        return null;
       }
-    }
-
-    return results;
+    }));
+    return [for (final r in found) if (r != null) r];
   }
 }
 
@@ -651,10 +353,8 @@ class _HomePageState extends State<HomePage>
 
   // First-time walkthrough of the Card screen.
   final _tourCard = GlobalKey(debugLabel: 'tour-home-card');
-  final _tourDay = GlobalKey(debugLabel: 'tour-home-day');
-  final _tourMeals = GlobalKey(debugLabel: 'tour-home-meals');
   final _tourAdd = GlobalKey(debugLabel: 'tour-home-add');
-  final _tourTutorials = GlobalKey(debugLabel: 'tour-home-tutorials');
+  final _tourClose = GlobalKey(debugLabel: 'tour-home-close');
   bool _isDayFinished = false;
   bool _isUpdatingDailyLog = false;
   double _cardDragDx = 0;
@@ -674,8 +374,22 @@ class _HomePageState extends State<HomePage>
   double _totalCarbs = 0.0;
   double _totalFat = 0.0;
 
-  /// Calories logged per meal on the selected day (for the meal tabs).
-  Map<String, int> _mealKcal = const {};
+  /// The day's food couldn't be loaded: show Retry, not "Nothing yet".
+  bool _foodLoadFailed = false;
+
+  /// The meal picked on the Add food button's menu, and the time-of-day
+  /// meal it replaced. Once the clock moves on to the next meal, the
+  /// button goes back to guessing.
+  String? _mealOverride;
+  String? _mealOverrideFor;
+
+  /// Foods often logged at [_usualsMeal] (one-tap chips under Add food).
+  List<UsualFood> _usuals = const [];
+  String? _usualsMeal;
+  bool _loggingUsual = false;
+
+  /// Names of people who reacted, looked up once each.
+  final Map<String, String> _reactionNames = {};
 
   /// Today's live balance, as the card loaded it (null until it has).
   int? _liveBalance;
@@ -693,7 +407,7 @@ class _HomePageState extends State<HomePage>
   // Individual food item macro visibility tracking
   Map<String, bool> _foodMacrosVisibility = {};
 
-  // Food reaction tracking
+  // Food reaction tracking (food id → reactions), loaded after the food.
   Map<String, List<Map<String, dynamic>>> _foodReactions = {};
   Map<String, bool> _showEmojiPicker = {};
   Map<String, bool> _showReactions = {};
@@ -773,6 +487,9 @@ class _HomePageState extends State<HomePage>
   void _onFoodLogChanged() {
     if (!mounted || !_isOwnCard) return;
     _refreshAfterChange();
+    // What you just logged can become one of your usuals.
+    _usualsMeal = null;
+    _loadUsuals();
   }
 
   /// Reloads the food list, totals, the day's history snapshot and the
@@ -808,11 +525,17 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _creditCardRefreshKey++;
     });
+    _loadUsuals();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _checkForNewDay();
+    if (state == AppLifecycleState.resumed) {
+      _checkForNewDay();
+      // The meal the Add food button guesses may have moved on.
+      if (mounted) setState(() {});
+      _loadUsuals();
+    }
   }
 
   void _scheduleMidnightCheck() {
@@ -865,9 +588,12 @@ class _HomePageState extends State<HomePage>
     if (_cardDragResetController == null) return;
     _pendingSwipePrompt = promptAfterReset;
     _dragEndDx = _cardDragDx;
-    _isResettingCard = true;
-    _cardDragResetController!.reset();
-    await _cardDragResetController!.forward();
+    // Reduce motion: snap back instead of sliding.
+    if (!MediaQuery.of(context).disableAnimations) {
+      _isResettingCard = true;
+      _cardDragResetController!.reset();
+      await _cardDragResetController!.forward();
+    }
     if (!mounted) return;
     setState(() {
       _isResettingCard = false;
@@ -883,12 +609,13 @@ class _HomePageState extends State<HomePage>
     // New day? Put the card back to today's goals before showing it.
     // Only for your own card — never write to a friend's data.
     if (!widget.readOnly && widget.userIdOverride == null) {
-      try {
-        // One-off: give old entries a time_added so date-range reads see them.
-        await BalanceService.backfillEntryTimes(_activeUserId);
-      } catch (_) {
-        // Tried again next launch.
-      }
+      // One-off: give old entries a time_added so date-range reads see
+      // them. Not awaited: it's a no-op for almost everyone, and shouldn't
+      // hold up the card. If it fails it's tried again next launch.
+      unawaited(BalanceService.backfillEntryTimes(_activeUserId)
+          .then<void>((fixed) {
+        if (fixed > 0 && mounted) _refreshAfterChange();
+      }, onError: (_) {}));
       try {
         final didReset = await BalanceService.ensureDailyReset(_activeUserId);
         if (didReset && mounted) {
@@ -900,14 +627,18 @@ class _HomePageState extends State<HomePage>
         // Card still shows the stored balance; next load will retry.
       }
     }
-    await _fetchUserGoals();
-    await populateFoodItems();
-    await _fetchDailyLogForDate(_selectedLogDate);
+    // Independent reads: run them side by side.
+    await Future.wait([
+      _fetchUserGoals(),
+      populateFoodItems(),
+      _fetchDailyLogForDate(_selectedLogDate),
+    ]);
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
       _startHomeTour();
+      _loadUsuals();
     }
   }
 
@@ -924,71 +655,41 @@ class _HomePageState extends State<HomePage>
     Future.delayed(const Duration(milliseconds: 700), () {
       if (!onScreen()) return;
       final shell = ShellTourScope.maybeOf(context);
+      // Kept short: the four things you need on day one. Same id as
+      // before, so anyone who's seen it doesn't get it again.
       SpotlightTour.showOnce(context, id: 'home_intro', canStart: onScreen,
           steps: [
         TourStep(
           target: _tourCard,
           title: 'Your card',
-          body: 'Tap it to flip it over and see your macros. When you\'re '
-              'done for the day, swipe it sideways to close the day.',
+          body: "The big number is what you've got left to spend today. "
+              'Food you log comes off it. Tap the card to see your macros.',
           padding: 6,
           radius: 24,
         ),
         TourStep(
-          target: _tourDay,
-          title: 'Your days',
-          body: 'Step back to look at earlier days and how you did.',
-        ),
-        TourStep(
-          target: _tourMeals,
-          title: 'Your meals',
-          body: 'Your day is split into meals. Tap a meal to switch between '
-              'calories and macros.',
-        ),
-        TourStep(
           target: _tourAdd,
           title: 'Add food',
-          body: 'Each meal has its own Add button. You can also log a saved '
-              'recipe, and swipe a food left to remove it.',
+          body: 'One tap to log what you had. It picks the meal from the '
+              'time of day; tap the meal next to it to change it.',
           radius: 16,
         ),
         TourStep(
-          target: _tourTutorials,
-          title: 'Tutorials',
-          body: 'Tap the headphones any time to watch how things work on a '
-              "practice card. It never touches your real data.",
-          padding: 4,
-          radius: 28,
+          target: _tourClose,
+          title: 'Close today',
+          body: "When you're done eating, close the day. Closed days count "
+              'towards your streak, and you can reopen if you need to.',
+          radius: 16,
         ),
         if (shell != null)
           TourStep(
             target: shell.coach,
-          title: 'Calorie Coach',
-          body: 'Ask for a meal that fits what you\'ve got left, a pep talk, '
-              'or help if you\'ve gone over.',
-          padding: 4,
-          radius: 40,
-        ),
-        if (shell != null)
-          TourStep(
-            target: shell.recipes,
-          title: 'Recipes',
-          body: 'Save meals you make often and log them in one tap.',
-        ),
-        if (shell != null)
-          TourStep(
-            target: shell.friends,
-          title: 'Friends',
-          body: 'Add friends, see the hiscores, take on challenges and chat. '
-              'Messages are at the top.',
-        ),
-        if (shell != null)
-          TourStep(
-            target: shell.profile,
-          title: 'Profile',
-          body: 'Your statement, achievements, pots, card designs and '
-              'settings all live here.',
-        ),
+            title: 'Calorie Coach',
+            body: "Ask for a meal that fits what you've got left, a pep "
+                "talk, or help if you've gone over.",
+            padding: 4,
+            radius: 40,
+          ),
       ]);
     });
   }
@@ -1214,34 +915,57 @@ class _HomePageState extends State<HomePage>
     return result ?? false;
   }
 
+  /// The card was swiped: close today, or reopen it if it's closed.
   Future<void> _handleCardSwipe() async {
-    if (_isUpdatingDailyLog) return;
-    if (!_isSelectedDateToday || !_isOwnCard) return;
     if (_isDayFinished) {
-      final confirm = await _showConfirmDialog(
-        title: 'Reopen today?',
-        message: "You can add or remove food again. Close it when you're done.",
-        cancelLabel: 'Cancel',
-        confirmLabel: 'Reopen',
-      );
-      if (!confirm) return;
-      setState(() {
-        _isDayFinished = false;
-      });
-      await _setDailyLogFinished(_selectedLogDate, false);
-      await _fetchDailyLogForDate(_selectedLogDate);
-      MyStreak.load(_activeUserId, force: true);
-      return;
+      await _reopenDay();
+    } else {
+      await _closeDay();
     }
+  }
 
+  Future<void> _reopenDay() async {
+    if (_isUpdatingDailyLog) return;
+    if (!_isSelectedDateToday || !_isOwnCard || !_isDayFinished) return;
     final confirm = await _showConfirmDialog(
-      title: 'Close today?',
-      message: "This locks today's card and counts it towards your streak. "
-          'You can reopen it if you need to.',
-      cancelLabel: 'Not yet',
-      confirmLabel: 'Close day',
+      title: 'Reopen today?',
+      message: "You can add or remove food again. Close it when you're done.",
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Reopen',
     );
-    if (!confirm) return;
+    if (!confirm || !mounted) return;
+    setState(() {
+      _isDayFinished = false;
+    });
+    await _setDailyLogFinished(_selectedLogDate, false);
+    await _fetchDailyLogForDate(_selectedLogDate);
+    MyStreak.load(_activeUserId, force: true);
+  }
+
+  /// Closes today (from the Close today button, a card swipe, the inbox
+  /// or the card's "Close day" accessibility action).
+  Future<void> _closeDay() async {
+    if (_isUpdatingDailyLog) return;
+    if (!_isSelectedDateToday || !_isOwnCard || _isDayFinished) return;
+
+    // An empty day is usually a mistake, so say so first.
+    final nothingLogged = _foodDocs.isEmpty;
+    final confirm = nothingLogged
+        ? await _showConfirmDialog(
+            title: 'Close today?',
+            message: 'Nothing logged today. Close anyway? You can reopen '
+                'it if you need to.',
+            cancelLabel: 'Not yet',
+            confirmLabel: 'Close anyway',
+          )
+        : await _showConfirmDialog(
+            title: 'Close today?',
+            message: "This locks today's card and counts it towards your "
+                'streak. You can reopen it if you need to.',
+            cancelLabel: 'Not yet',
+            confirmLabel: 'Close day',
+          );
+    if (!confirm || !mounted) return;
 
     setState(() {
       _isDayFinished = true;
@@ -1278,8 +1002,9 @@ class _HomePageState extends State<HomePage>
     } catch (_) {}
   }
 
-  /// Loads the selected day's food (every meal, oldest first), per-meal
-  /// totals, and the whole day's totals (for past days' cards).
+  /// Loads the selected day's food (every meal, oldest first) and the
+  /// whole day's totals (for past days' cards). Reactions follow after the
+  /// food is on screen, so they never hold it up.
   Future<void> populateFoodItems() async {
     final token = ++_foodLoadToken;
     try {
@@ -1297,18 +1022,9 @@ class _HomePageState extends State<HomePage>
         });
       final mealTotals = BalanceService.totalOf(mealDocs.map((d) => d.data()));
 
-      final mealKcal = <String, int>{};
-      for (final m in _tabs) {
-        mealKcal[m] = BalanceService.totalOf(dayDocs
-                .where((d) => FoodLog.mealOf(d.data()['foodCategory']) == m)
-                .map((d) => d.data()))
-            .calories
-            .round();
-      }
-
       setState(() {
+        _foodLoadFailed = false;
         _foodDocs = mealDocs;
-        _mealKcal = mealKcal;
         _dayTotals = BalanceService.totalOf(dayDocs.map((d) => d.data()));
         _totalCalories = mealTotals.calories.round();
         _totalProtein = mealTotals.protein;
@@ -1319,12 +1035,12 @@ class _HomePageState extends State<HomePage>
           ..addEntries(mealDocs.map((d) => MapEntry(d.id, _showMacrosTotal)));
       });
       _loadYesterday();
-      await _fetchReactionsForFoodItems();
+      unawaited(_fetchReactionsForFoodItems());
     } catch (e) {
       if (!mounted || token != _foodLoadToken) return;
       setState(() {
+        _foodLoadFailed = true;
         _foodDocs = [];
-        _mealKcal = const {};
         _dayTotals = Macros.zero;
         _totalCalories = 0;
         _totalProtein = 0;
@@ -1335,48 +1051,56 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  /// Reactions to the food on screen: one query per 30 foods (Firestore's
+  /// whereIn limit), all at once, with each person's name looked up once.
   Future<void> _fetchReactionsForFoodItems() async {
-    try {
-      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-      if (currentUserId == null) return;
-
-      for (var doc in _foodDocs) {
-        final reactionsSnapshot = await FirebaseFirestore.instance
-            .collection('food_reactions')
-            .where('food_item_id', isEqualTo: doc.id)
-            .get();
-
-        final reactions =
-            await Future.wait(reactionsSnapshot.docs.map((reactionDoc) async {
-          final userId = reactionDoc['user_id'];
-          // Fetch user email/username
-          String username = 'Unknown';
-          try {
-            final userDoc = await FirebaseFirestore.instance
-                .collection('users')
-                .doc(userId)
-                .get();
-            username = userDoc.data()?['email']?.split('@')[0] ?? 'Unknown';
-          } catch (e) {
-            // Error fetching user data
-          }
-
-          return {
-            'id': reactionDoc.id,
-            'emoji': reactionDoc['emoji'],
-            'user_id': userId,
-            'username': username,
-          };
-        }));
-
-        if (mounted) {
-          setState(() {
-            _foodReactions[doc.id] = reactions;
-          });
-        }
+    final token = _foodLoadToken;
+    final ids = [for (final d in _foodDocs) d.id];
+    if (ids.isEmpty) {
+      if (mounted && _foodReactions.isNotEmpty) {
+        setState(() => _foodReactions = {});
       }
+      return;
+    }
+    try {
+      final db = BalanceService.db;
+      final snaps = await Future.wait([
+        for (var i = 0; i < ids.length; i += 30)
+          db
+              .collection('food_reactions')
+              .where('food_item_id',
+                  whereIn: ids.sublist(i, math.min(i + 30, ids.length)))
+              .get(),
+      ]);
+      final docs = [for (final snap in snaps) ...snap.docs];
+
+      final unknown = {
+        for (final d in docs)
+          if (d.data()['user_id'] is String &&
+              !_reactionNames.containsKey(d.data()['user_id']))
+            d.data()['user_id'] as String
+      };
+      await Future.wait(unknown.map((uid) async {
+        _reactionNames[uid] = await FriendsService.nameFor(uid);
+      }));
+      if (!mounted || token != _foodLoadToken) return;
+
+      final byFood = <String, List<Map<String, dynamic>>>{};
+      for (final d in docs) {
+        final data = d.data();
+        final userId = data['user_id'];
+        byFood.putIfAbsent('${data['food_item_id']}', () => []).add({
+          'id': d.id,
+          'emoji': data['emoji'],
+          'user_id': userId,
+          'username': userId is String
+              ? (_reactionNames[userId] ?? 'Someone')
+              : 'Someone',
+        });
+      }
+      setState(() => _foodReactions = byFood);
     } catch (e) {
-      // Error fetching reactions
+      // Reactions are a nice extra; the food is already showing.
     }
   }
 
@@ -1451,18 +1175,88 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  void _handleFoodItemTap(String foodItemId) {
+  void _handleFoodItemTap(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final foodItemId = doc.id;
     if (widget.readOnly) {
       // Show emoji picker
       setState(() {
         _showEmojiPicker[foodItemId] = !(_showEmojiPicker[foodItemId] ?? false);
       });
+    } else if (_isOwnCard) {
+      _openEntrySheet(doc);
     } else {
       // Toggle reactions display
       setState(() {
         _showReactions[foodItemId] = !(_showReactions[foodItemId] ?? false);
       });
     }
+  }
+
+  /// One of your foods was tapped (or long-pressed): see it, change the
+  /// portion or meal, fix the calories, delete, log again or set up a
+  /// direct debit.
+  Future<void> _openEntrySheet(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    if (!_isOwnCard) return;
+    final entry = doc.data();
+    final name = (entry['food_description'] ?? 'Food').toString();
+    final result = await showEntrySheet(
+      context,
+      entryId: doc.id,
+      entry: entry,
+      canEdit: _canEditSelectedDay,
+      reactions: _foodReactions[doc.id] ?? const [],
+    );
+    if (result == null || !mounted) return;
+    switch (result.action) {
+      case EntrySheetAction.saved:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved $name')),
+        );
+        await (_refreshing ?? _refreshAfterChange());
+      case EntrySheetAction.delete:
+        await _deleteFoodItem(doc.id);
+      case EntrySheetAction.loggedAgain:
+        final logged = result.logged;
+        if (logged != null) {
+          await (_refreshing ?? _refreshAfterChange());
+          if (mounted) _showLoggedUndo(logged);
+        }
+      case EntrySheetAction.directDebit:
+        await _offerDirectDebit(entry);
+    }
+  }
+
+  /// "Added 412 kcal to Lunch · Undo" after logging from here.
+  void _showLoggedUndo(LoggedFoods logged, {String? message}) {
+    if (logged.count == 0 || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        content: Text(message ??
+            'Added ${formatCardKcal(logged.calories)} kcal to ${logged.meal}'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            try {
+              await FoodLog.undo(logged);
+            } catch (_) {
+              messenger.showSnackBar(const SnackBar(
+                  content: Text("Couldn't undo that. Swipe the food away "
+                      'to remove it.')));
+            }
+          },
+        ),
+      ),
+    );
+    // Snackbars with an action can stay up in newer Flutter; close it.
+    var closed = false;
+    controller.closed.then((_) => closed = true);
+    Timer(const Duration(seconds: 6), () {
+      if (!closed) messenger.hideCurrentSnackBar();
+    });
   }
   /// Removes a logged food (and refunds the card). [swiped] removals were
   /// checked when the row was swiped and confirmed by the Undo snackbar
@@ -1567,7 +1361,7 @@ class _HomePageState extends State<HomePage>
     if (_copyingYesterday || !_canEditSelectedDay || entries.isEmpty) return;
     setState(() => _copyingYesterday = true);
     try {
-      await FoodLog.logFoods(
+      final logged = await FoodLog.logFoods(
         items: [
           for (final e in entries)
             {
@@ -1583,9 +1377,9 @@ class _HomePageState extends State<HomePage>
       );
       if (mounted) await (_refreshing ?? _refreshAfterChange());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Added yesterday's $meal")),
-        );
+        _showLoggedUndo(logged,
+            message: "Added yesterday's $meal "
+                '(${formatCardKcal(logged.calories)} kcal)');
       }
     } catch (_) {
       if (mounted) {
@@ -1613,41 +1407,94 @@ class _HomePageState extends State<HomePage>
         .setSelectedCategory(meal);
   }
 
+  /// The meal the Add food button logs to: your pick on its menu, or a
+  /// guess from the time of day.
+  String get _addMeal {
+    final guess = Pacing.mealAt(BalanceService.now());
+    final picked = _mealOverride;
+    return picked != null && _mealOverrideFor == guess ? picked : guess;
+  }
+
+  void _pickAddMeal(String meal) {
+    setState(() {
+      _mealOverride = meal;
+      _mealOverrideFor = Pacing.mealAt(BalanceService.now());
+    });
+    _loadUsuals();
+  }
+
   Future<void> _openAddFood(String meal) async {
     if (!_canEditSelectedDay) return;
     _useMeal(meal);
     // On phones, open above the bottom bar so the Coach button doesn't
     // cover the page's buttons.
     final saved = await Navigator.of(context, rootNavigator: _isPhone)
-        .push<bool>(
+        .push<Object?>(
       MaterialPageRoute(builder: (_) => const AddFoodPage()),
     );
-    // Logging signals a refresh on its own; this covers the rest.
-    if (saved == true && mounted) {
+    if (!mounted) return;
+    // Logging signals a refresh on its own; this covers the rest. Older
+    // versions of the page popped `true`; now it says what was logged.
+    if (saved is LoggedFoods) {
+      await (_refreshing ?? _refreshAfterChange());
+      if (mounted) _showLoggedUndo(saved);
+    } else if (saved == true) {
       await (_refreshing ?? _refreshAfterChange());
     }
   }
 
+  /// Log a saved recipe. The picker opens above the bottom bar on phones
+  /// (so the Coach button can't cover it), and the recipe sheet shows its
+  /// own "Logged … · Undo" note.
   Future<void> _openRecipePicker(String meal) async {
     if (!_canEditSelectedDay) return;
     _useMeal(meal);
-    final result = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _SelectExistingRecipePage(meal: meal),
-      ),
+    await Navigator.of(context, rootNavigator: _isPhone).push<Object?>(
+      MaterialPageRoute(builder: (_) => const _RecipePickerPage()),
     );
-    if (result == null || !mounted) return;
-    final category =
-        Provider.of<CategoryService>(context, listen: false).selectedCategory;
-    await _addRecipeToHome(
-      result['recipeId'] as String,
-      category,
-      multiplier: result['multiplier'] as double,
-    );
+    if (mounted) await (_refreshing ?? _refreshAfterChange());
   }
 
-  /// Long-press a food: have it every day? Set up a direct debit.
+  /// Loads the "usuals" chips for the Add food meal, off the critical
+  /// path (only when the meal they're for has changed).
+  Future<void> _loadUsuals() async {
+    if (!_isOwnCard || widget.showBanner) return;
+    final meal = _addMeal;
+    if (_usualsMeal == meal) return;
+    _usualsMeal = meal;
+    try {
+      final usuals = await Usuals.load(_activeUserId, meal);
+      if (!mounted || _usualsMeal != meal) return;
+      setState(() => _usuals = usuals);
+    } catch (_) {
+      // Just a shortcut; try again next time.
+      if (_usualsMeal == meal) _usualsMeal = null;
+    }
+  }
+
+  /// One tap on a usual: log it to the Add food meal, with Undo.
+  Future<void> _logUsual(UsualFood usual) async {
+    if (_loggingUsual || !_canEditSelectedDay) return;
+    final meal = _addMeal;
+    setState(() => _loggingUsual = true);
+    try {
+      final logged =
+          await FoodLog.logFoods(items: [usual.toLogItem()], meal: meal);
+      if (mounted) await (_refreshing ?? _refreshAfterChange());
+      if (mounted) _showLoggedUndo(logged);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Couldn't log that. Please try again.")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loggingUsual = false);
+    }
+  }
+
+  /// From the food sheet: have it every day? Set up a direct debit.
   Future<void> _offerDirectDebit(Map<String, dynamic> entry) async {
     final name = (entry['food_description'] ?? 'this').toString();
     final yes = await showModalBottomSheet<bool>(
@@ -1700,42 +1547,12 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  Future<void> _addRecipeToHome(String recipeId, String category,
-      {double multiplier = 1.0}) async {
-    try {
-      final recipeDoc = await FirebaseFirestore.instance
-          .collection('recipes')
-          .doc(recipeId)
-          .get();
-      final data = recipeDoc.data();
-      if (data == null) {
-        throw StateError('That recipe no longer exists.');
-      }
-      // Logs it and charges the card in one write; the change signal then
-      // refreshes this screen.
-      await FoodLog.logRecipe(
-        recipeId: recipeId,
-        recipe: data,
-        meal: category,
-        multiplier: multiplier,
-      );
-      await (_refreshing ?? _refreshAfterChange());
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e is StateError
-                ? e.message
-                : "Couldn't add that recipe. Please try again."),
-          ),
-        );
-      }
-    }
-  }
-
   /// The card was flipped: jiggle it and match every food row to it.
   void _onCardFlipped(bool showMacros) {
-    _jiggleAnimationController?.forward(from: 0);
+    // Reduce motion: no jiggle.
+    if (!MediaQuery.of(context).disableAnimations) {
+      _jiggleAnimationController?.forward(from: 0);
+    }
     setState(() {
       _showMacrosTotal = showMacros;
       for (var doc in _foodDocs) {
@@ -1839,38 +1656,51 @@ class _HomePageState extends State<HomePage>
             final shouldPrompt = _cardDragDx.abs() > 40;
             _resetCardPosition(promptAfterReset: shouldPrompt);
           },
-          child: Stack(
-            key: _tourCard,
-            children: [
-              _isSelectedDateToday
-                  ? CreditCard(
-                      key: ValueKey(_creditCardRefreshKey),
-                      userIdOverride: widget.userIdOverride,
-                      cardUserNameOverride: widget.bannerTitle,
-                      design: _cardDesign,
-                      validThruDate: validThru,
-                      onToggleMacros: _onCardFlipped,
-                      onBalance: (calories) {
-                        if (mounted && calories != _liveBalance) {
-                          setState(() => _liveBalance = calories);
-                        }
-                      },
-                    )
-                  : CreditCard(
-                      key: ValueKey(
-                          '$_creditCardRefreshKey-${_selectedLogDate.toIso8601String()}'),
-                      skipFetch: true,
-                      caloriesOverride: _selectedDayBalance.calories.round(),
-                      proteinOverride: _selectedDayBalance.protein,
-                      carbsOverride: _selectedDayBalance.carbs,
-                      fatsOverride: _selectedDayBalance.fat,
-                      userIdOverride: widget.userIdOverride,
-                      cardUserNameOverride: widget.bannerTitle,
-                      design: _cardDesign,
-                      validThruDate: validThru,
-                      onToggleMacros: _onCardFlipped,
-                    ),
-            ],
+          child: Semantics(
+            // Swiping isn't available to everyone: same actions here.
+            customSemanticsActions: !_isOwnCard || !_isSelectedDateToday
+                ? null
+                : {
+                    if (_isDayFinished)
+                      CustomSemanticsAction(label: 'Reopen day'):
+                          _reopenDay
+                    else
+                      CustomSemanticsAction(label: 'Close day'):
+                          _closeDay,
+                  },
+            child: Stack(
+              key: _tourCard,
+              children: [
+                _isSelectedDateToday
+                    ? CreditCard(
+                        key: ValueKey(_creditCardRefreshKey),
+                        userIdOverride: widget.userIdOverride,
+                        cardUserNameOverride: widget.bannerTitle,
+                        design: _cardDesign,
+                        validThruDate: validThru,
+                        onToggleMacros: _onCardFlipped,
+                        onBalance: (calories) {
+                          if (mounted && calories != _liveBalance) {
+                            setState(() => _liveBalance = calories);
+                          }
+                        },
+                      )
+                    : CreditCard(
+                        key: ValueKey(
+                            '$_creditCardRefreshKey-${_selectedLogDate.toIso8601String()}'),
+                        skipFetch: true,
+                        caloriesOverride: _selectedDayBalance.calories.round(),
+                        proteinOverride: _selectedDayBalance.protein,
+                        carbsOverride: _selectedDayBalance.carbs,
+                        fatsOverride: _selectedDayBalance.fat,
+                        userIdOverride: widget.userIdOverride,
+                        cardUserNameOverride: widget.bannerTitle,
+                        design: _cardDesign,
+                        validThruDate: validThru,
+                        onToggleMacros: _onCardFlipped,
+                      ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1891,17 +1721,27 @@ class _HomePageState extends State<HomePage>
     final kcal = totals.calories.round();
     final macros = '${_roundMacro(totals.protein)}g protein · '
         '${_roundMacro(totals.carbs)}g carbs · ${_roundMacro(totals.fat)}g fat';
+    // Small "+" and recipe buttons; the big Add food button is under the
+    // card, so these stay light and never truncate on a 320 px phone.
+    final canAdd = _canEditSelectedDay;
+    final width = MediaQuery.sizeOf(context).width;
+    final narrow = width < 420;
+    // On the smallest phones the meal icon makes way for the totals.
+    final showIcon = !canAdd || width >= 360;
 
     return Material(
       color: AppColors.gray50,
       child: InkWell(
         onTap: docs.isEmpty ? null : _toggleMacros,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          padding: EdgeInsets.fromLTRB(16, canAdd ? 2 : 12, canAdd ? 4 : 12,
+              canAdd ? 2 : 12),
           child: Row(
             children: [
-              Icon(_mealIcon(meal), size: 20, color: AppText.primary),
-              const SizedBox(width: 8),
+              if (showIcon) ...[
+                Icon(_mealIcon(meal), size: 20, color: AppText.primary),
+                const SizedBox(width: 8),
+              ],
               Text(
                 meal,
                 style: TextStyle(
@@ -1910,7 +1750,7 @@ class _HomePageState extends State<HomePage>
                   fontSize: 15,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Flexible(
                 fit: FlexFit.tight,
                 child: Text(
@@ -1929,7 +1769,7 @@ class _HomePageState extends State<HomePage>
                   ),
                 ),
               ),
-              if (docs.isNotEmpty) ...[
+              if (docs.isNotEmpty && !(canAdd && narrow)) ...[
                 const SizedBox(width: 8),
                 Icon(
                   _showMacrosTotal
@@ -1937,6 +1777,38 @@ class _HomePageState extends State<HomePage>
                       : Icons.show_chart,
                   color: AppColors.muted,
                   size: 18,
+                ),
+              ],
+              if (canAdd) ...[
+                const SizedBox(width: 4),
+                if (narrow)
+                  IconButton(
+                    tooltip: 'Add a recipe to $meal',
+                    constraints:
+                        const BoxConstraints(minWidth: 44, minHeight: 44),
+                    padding: EdgeInsets.zero,
+                    color: AppText.primary,
+                    onPressed: () => _openRecipePicker(meal),
+                    icon: const Icon(Icons.menu_book_outlined, size: 20),
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: () => _openRecipePicker(meal),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    icon: const Icon(Icons.menu_book_outlined, size: 18),
+                    label: const Text('Recipe'),
+                  ),
+                IconButton(
+                  tooltip: 'Add to $meal',
+                  constraints:
+                      const BoxConstraints(minWidth: 44, minHeight: 44),
+                  padding: EdgeInsets.zero,
+                  color: AppText.primary,
+                  onPressed: () => _openAddFood(meal),
+                  icon: const Icon(Icons.add_circle_outline, size: 24),
                 ),
               ],
             ],
@@ -1966,10 +1838,10 @@ class _HomePageState extends State<HomePage>
     if (!_isOwnCard || !_isSelectedDateToday || left == null) return null;
     final goal = _goalsForSelectedDay.calories;
     final Color leftColor = left < 0
-        ? AppColors.red600
+        ? AppText.red600
         : (goal > 0 && left <= goal * 0.1)
-            ? AppColors.amber700
-            : AppColors.emerald700;
+            ? AppText.amber700
+            : AppText.emerald700;
     final eaten = _dayTotals.calories.round();
     return Text.rich(
       TextSpan(
@@ -1997,13 +1869,69 @@ class _HomePageState extends State<HomePage>
     } else if (!_isOwnCard) {
       text = 'Nothing logged yet.';
     } else {
-      text = 'Nothing yet. Add what you had and it comes off your card.';
+      text = 'Nothing yet.';
     }
+    final yesterday = _canEditSelectedDay
+        ? _yesterdayFor(meal)
+        : const <Map<String, dynamic>>[];
+    final yesterdayKcal = BalanceService.totalOf(yesterday).calories.round();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Text(
-        text,
-        style: TextStyle(color: AppColors.muted, fontSize: 13),
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
+          ),
+          if (yesterday.isNotEmpty)
+            Flexible(
+              flex: 3,
+              child: TextButton.icon(
+                onPressed: _copyingYesterday
+                    ? null
+                    : () => _copyYesterday(meal, yesterday),
+                style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
+                icon: const Icon(Icons.history, size: 18),
+                label: Text(
+                  'Same as yesterday · ${formatCardKcal(yesterdayKcal)} kcal',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Shown instead of the meals when the day's food couldn't be loaded,
+  /// so an error never looks like an empty day.
+  Widget _buildFoodLoadError() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: AppColors.red50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.red100),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_outlined, color: AppText.red600, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              "Couldn't load your food.",
+              style: TextStyle(color: AppColors.ink, fontSize: 14),
+            ),
+          ),
+          TextButton(
+            onPressed: _refreshAfterChange,
+            style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
+            child: const Text('Retry'),
+          ),
+        ],
       ),
     );
   }
@@ -2026,14 +1954,14 @@ class _HomePageState extends State<HomePage>
     final portion = (data['food_portion'] ?? '').toString();
     final showMacros = _foodMacrosVisibility[doc.id] ?? _showMacrosTotal;
     final reactions = _foodReactions[doc.id];
+    final estimate = data['food_estimate'] == true;
 
     final row = Material(
       color: AppColors.surface,
       child: InkWell(
-        onTap: () {
-          _handleFoodItemTap(doc.id);
-        },
-        onLongPress: _isOwnCard ? () => _offerDirectDebit(data) : null,
+        onTap: () => _handleFoodItemTap(doc),
+        // Same sheet as a tap (it has Make it a direct debit too).
+        onLongPress: _isOwnCard ? () => _openEntrySheet(doc) : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -2056,9 +1984,22 @@ class _HomePageState extends State<HomePage>
                             fontSize: 15,
                           ),
                         ),
-                        if (portion.isNotEmpty)
+                        if (portion.isNotEmpty ||
+                            (_isOwnCard &&
+                                reactions != null &&
+                                reactions.isNotEmpty))
                           Text(
-                            portion,
+                            [
+                              if (portion.isNotEmpty) portion,
+                              // Your own card: a hint that friends reacted
+                              // (tap to see who).
+                              if (_isOwnCard &&
+                                  reactions != null &&
+                                  reactions.isNotEmpty)
+                                reactions
+                                    .map((r) => '${r['emoji'] ?? ''}')
+                                    .join(),
+                            ].join(' · '),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -2069,49 +2010,28 @@ class _HomePageState extends State<HomePage>
                       ],
                     ),
                   ),
+                  if (estimate) ...[
+                    const SizedBox(width: 6),
+                    const EstimateMark(),
+                  ],
                   const SizedBox(width: 8),
                   Container(
-                    padding: EdgeInsets.symmetric(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 10,
-                      vertical: showMacros ? 3 : 5,
+                      vertical: 5,
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.indigo50,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: showMacros
-                        ? Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${_roundMacro(data['food_protein'])}g protein',
-                                style: TextStyle(
-                                  color: AppText.primaryDark,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 10.5,
-                                  height: 1.25,
-                                ),
-                              ),
-                              Text(
-                                '${_roundMacro(data['food_carbs'])}g carbs',
-                                style: TextStyle(
-                                  color: AppText.primaryDark,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 10.5,
-                                  height: 1.25,
-                                ),
-                              ),
-                              Text(
-                                '${_roundMacro(data['food_fat'])}g fat',
-                                style: TextStyle(
-                                  color: AppText.primaryDark,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 10.5,
-                                  height: 1.25,
-                                ),
-                              ),
-                            ],
+                        ? MacroText(
+                            protein:
+                                BalanceService.number(data['food_protein']) ??
+                                    0,
+                            carbs:
+                                BalanceService.number(data['food_carbs']) ?? 0,
+                            fat: BalanceService.number(data['food_fat']) ?? 0,
                           )
                         : Text(
                             '${_roundMacro(data['food_calories'])} kcal',
@@ -2225,73 +2145,166 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Widget _buildAddActions(String meal, bool showCopy, {bool tour = false}) {
-    final canEdit = _canEditSelectedDay;
-    final yesterday =
-        showCopy ? _yesterdayFor(meal) : const <Map<String, dynamic>>[];
-    final yesterdayKcal =
-        BalanceService.totalOf(yesterday).calories.round();
-    return Column(
-      key: tour ? _tourAdd : null,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+  /// The one obvious way to log: a big Add food button for the meal it's
+  /// about time for, with a small menu to pick another meal.
+  Widget _buildAddFoodBar() {
+    final meal = _addMeal;
+    return Row(
+      key: _tourAdd,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: canEdit ? () => _openAddFood(meal) : null,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 48),
-                ),
-                icon: const Icon(Icons.add),
-                label: Text(
-                  'Add to $meal',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+        Expanded(
+          child: SizedBox(
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: () => _openAddFood(meal),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'Add food',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: canEdit ? () => _openRecipePicker(meal) : null,
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 48),
-              ),
-              icon: const Icon(Icons.menu_book_outlined),
-              label: const Text('Recipe'),
-            ),
-          ],
-        ),
-        if (canEdit && yesterday.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _copyingYesterday
-                ? null
-                : () => _copyYesterday(meal, yesterday),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(0, 48),
-            ),
-            icon: const Icon(Icons.history),
-            label: Text(
-              "Copy yesterday's $meal ($yesterdayKcal kcal)",
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
-        ],
+        ),
+        const SizedBox(width: 8),
+        PopupMenuButton<String>(
+          tooltip: 'Change meal',
+          initialValue: meal,
+          onSelected: _pickAddMeal,
+          itemBuilder: (context) => [
+            for (final m in FoodLog.meals)
+              PopupMenuItem<String>(
+                value: m,
+                child: Row(
+                  children: [
+                    Icon(_mealIcon(m), size: 20, color: AppText.primary),
+                    const SizedBox(width: 10),
+                    Text(m),
+                  ],
+                ),
+              ),
+          ],
+          child: Semantics(
+            button: true,
+            label: 'Meal: $meal. Change meal',
+            excludeSemantics: true,
+            child: Container(
+              height: 52,
+              padding: const EdgeInsets.only(left: 12, right: 6),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(26),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(_mealIcon(meal), size: 18, color: AppText.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    meal,
+                    style: TextStyle(
+                      color: AppColors.ink,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Icon(Icons.arrow_drop_down, color: AppColors.muted),
+                ],
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildFoodPanel(String meal, {bool first = false}) {
+  /// One-tap chips for what you usually have at this meal.
+  Widget? _buildUsuals() {
+    if (_usuals.isEmpty || _usualsMeal != _addMeal) return null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Your usual ${_addMeal.toLowerCase()}',
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 48,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _usuals.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, i) {
+              final usual = _usuals[i];
+              return Center(
+                child: ActionChip(
+                  avatar: Icon(Icons.add, size: 16, color: AppText.primary),
+                  label: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 200),
+                    child: Text(
+                      usual.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  tooltip: 'Log ${usual.name} '
+                      '(${usual.calories.round()} kcal) to $_addMeal',
+                  onPressed: _loggingUsual ? null : () => _logUsual(usual),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// "About 650 kcal for dinner": how to pace what's left today.
+  Widget? _buildPacing() {
+    final left = _liveBalance;
+    if (left == null || left <= 0) return null;
+    final plan = Pacing.plan(
+      left: left,
+      now: BalanceService.now(),
+      mealsWithFood: {
+        for (final d in _foodDocs)
+          if (!_pendingRemoval.contains(d.id))
+            FoodLog.mealOf(d.data()['foodCategory'])
+      },
+    );
+    if (plan == null) return null;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.restaurant_outlined, size: 16, color: AppText.emerald700),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            plan.message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.gray700,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFoodPanel(String meal) {
     final visible = _visibleIn(meal);
     final canEdit = _canEditSelectedDay;
-    final footer = _isOwnCard && _isSelectedDateToday
-        ? _buildAddActions(meal, visible.isEmpty, tour: first)
-        : null;
 
     return Container(
-      key: first ? _tourMeals : null,
       decoration: AppDecor.card,
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -2307,15 +2320,7 @@ class _HomePageState extends State<HomePage>
                 Divider(height: 1, thickness: 1, color: AppColors.border),
               _buildFoodRow(visible[i], canEdit),
             ],
-          if (footer != null) ...[
-            if (visible.isNotEmpty)
-              Divider(height: 1, thickness: 1, color: AppColors.border),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: footer,
-            ),
-          ] else
-            const SizedBox(height: 8),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -2354,13 +2359,16 @@ class _HomePageState extends State<HomePage>
 
     final ownHome = _isOwnCard && !widget.showBanner;
     final overBy = _liveBalance == null ? 0 : -_liveBalance!;
+    final canAdd = _canEditSelectedDay;
+    final pacing = canAdd ? _buildPacing() : null;
+    final usuals = canAdd ? _buildUsuals() : null;
+    final visibleFood = _foodDocs.any((d) => !_pendingRemoval.contains(d.id));
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
       // Tutorials, bottom-left so it never sits under the Coach button.
-      floatingActionButton: ownHome
-          ? KeyedSubtree(key: _tourTutorials, child: const TutorialButton())
-          : null,
+      // It hides itself once you've watched a couple.
+      floatingActionButton: ownHome ? const TutorialButton() : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       body: Column(
         children: [
@@ -2375,10 +2383,27 @@ class _HomePageState extends State<HomePage>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildCard(),
+                    if (pacing != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: pacing,
+                      ),
+                    // Logging is one obvious tap, right under the card.
+                    if (canAdd)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: _buildAddFoodBar(),
+                      ),
+                    if (usuals != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                        child: usuals,
+                      ),
+                    // Closed: one quiet row instead of any add buttons.
                     if (_isOwnCard && _isSelectedDateToday && _isDayFinished)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                        child: _ClosedDayStrip(onReopen: _handleCardSwipe),
+                        child: _ClosedDayStrip(onReopen: _reopenDay),
                       ),
                     // Over budget: a kind note with a plan to even it out.
                     if (_isOwnCard &&
@@ -2419,7 +2444,6 @@ class _HomePageState extends State<HomePage>
                         children: [
                           Expanded(
                             child: DayStepper(
-                              key: _tourDay,
                               selected: _selectedLogDate,
                               onChanged: _changeDay,
                             ),
@@ -2438,7 +2462,7 @@ class _HomePageState extends State<HomePage>
                           userId: _activeUserId,
                           isDayFinished: _isDayFinished,
                           hasFoodToday: _dayTotals.calories > 0,
-                          onFinishDay: _handleCardSwipe,
+                          onFinishDay: _closeDay,
                           onBalanceChanged: _refreshAfterChange,
                         ),
                       ),
@@ -2455,16 +2479,36 @@ class _HomePageState extends State<HomePage>
                           onToday: () => _changeDay(BalanceService.now()),
                         ),
                       ),
-                    if (_isDeletingItem || _copyingYesterday)
+                    if (_isDeletingItem || _copyingYesterday || _loggingUsual)
                       const Padding(
                         padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
                         child: LinearProgressIndicator(minHeight: 2),
                       ),
-                    // Every meal, one after another.
-                    for (var i = 0; i < _tabs.length; i++)
+                    if (_foodLoadFailed)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        child: _buildFoodPanel(_tabs[i], first: i == 0),
+                        child: _buildFoodLoadError(),
+                      )
+                    else
+                      // Every meal, one after another.
+                      for (final meal in _tabs)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: _buildFoodPanel(meal),
+                        ),
+                    // Done for the day? Close it here (or swipe the card).
+                    if (canAdd && visibleFood)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        child: OutlinedButton.icon(
+                          key: _tourClose,
+                          onPressed: _isUpdatingDailyLog ? null : _closeDay,
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 48),
+                          ),
+                          icon: const Icon(Icons.task_alt_rounded),
+                          label: const Text('Close today'),
+                        ),
                       ),
                   ],
                 ),
@@ -2477,7 +2521,8 @@ class _HomePageState extends State<HomePage>
   }
 }
 
-/// Under the card once today is closed, with a way to reopen it.
+/// Under the card once today is closed: one quiet row (in place of the
+/// add buttons) with a way to reopen it.
 class _ClosedDayStrip extends StatelessWidget {
   final VoidCallback onReopen;
 
@@ -2485,32 +2530,41 @@ class _ClosedDayStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
-      decoration: BoxDecoration(
-        color: AppColors.emerald50,
+    return Material(
+      color: AppColors.gray50,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.emerald300),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.check_circle, color: AppText.emerald600, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              "Today's closed. Nice work.",
-              style: TextStyle(
-                color: AppColors.ink,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
+        onTap: onReopen,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.lock_outline_rounded,
+                  color: AppColors.muted, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Day closed · Reopen to add more',
+                  style: TextStyle(
+                    color: AppColors.gray700,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
               ),
-            ),
+              TextButton(
+                onPressed: onReopen,
+                style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
+                child: const Text('Reopen'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: onReopen,
-            child: const Text('Reopen'),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -234,7 +234,8 @@ class CalorieGameService {
     });
     if (notify) {
       await _tell(uid, myName, friendId, friendName,
-          "🎯 I've challenged you to Guess the Calories! Find it in Friends.");
+          "🎯 I've challenged you to Guess the Calories! Tap to play.",
+          gameId: ref.id);
     }
     return ref.id;
   }
@@ -338,7 +339,8 @@ class CalorieGameService {
           : after.winner == uid
               ? '🏆 I won Guess the Calories, $me to $them!'
               : '🏆 You won Guess the Calories, $them to $me!';
-      await _tell(uid, after.nameOf(uid), other, after.nameOf(other), line);
+      await _tell(uid, after.nameOf(uid), other, after.nameOf(other), line,
+          gameId: after.id);
     }
     return after;
   }
@@ -374,7 +376,8 @@ class CalorieGameService {
   static Future<void> nudge(CalorieGame g, String uid) {
     final other = g.opponentOf(uid);
     return _tell(uid, g.nameOf(uid), other, g.nameOf(other),
-        '🎯 Your turn in Guess the Calories!');
+        '🎯 Your turn in Guess the Calories!',
+        gameId: g.id);
   }
 
   /// Removes a game that hasn't finished (finished ones stay in the record).
@@ -383,9 +386,15 @@ class CalorieGameService {
     await _col.doc(g.id).delete();
   }
 
-  /// Chat messages are a nice extra: the game works without them.
+  /// Chat message fields that make a game message a tappable card.
+  static Map<String, dynamic> chatFields(String gameId) =>
+      {'type': 'game', 'game_id': gameId};
+
+  /// Chat messages are a nice extra: the game works without them. They
+  /// carry the game's id ([chatFields]) so the chat can open the game.
   static Future<void> _tell(String uid, String myName, String friendId,
-      String friendName, String text) async {
+      String friendName, String text,
+      {required String gameId}) async {
     try {
       await ChatService.sendToFriend(
         uid: uid,
@@ -393,6 +402,7 @@ class CalorieGameService {
         friendId: friendId,
         friendName: friendName,
         text: text,
+        extra: chatFields(gameId),
       );
     } catch (_) {}
   }

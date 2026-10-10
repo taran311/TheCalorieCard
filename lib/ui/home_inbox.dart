@@ -317,6 +317,26 @@ class _HomeInboxState extends State<HomeInbox> {
     return items;
   }
 
+  /// Moves to inbox item [i] (dots and arrows; swiping still works).
+  void _goTo(int i, int count) {
+    if (i < 0 || i >= count || !_pages.hasClients) return;
+    if (MediaQuery.of(context).disableAnimations) {
+      _pages.jumpToPage(i);
+    } else {
+      _pages.animateToPage(i,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    }
+  }
+
+  /// True on a tablet/desktop-sized window, where swiping with a mouse
+  /// isn't obvious. Uses the real window width (the page column is
+  /// narrower than the window on desktop).
+  bool get _wideWindow {
+    final view = View.of(context);
+    return view.physicalSize.width / view.devicePixelRatio >=
+        Breakpoints.tablet;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_items().isEmpty) return const SizedBox.shrink();
@@ -347,21 +367,59 @@ class _HomeInboxState extends State<HomeInbox> {
             ),
             if (items.length > 1)
               Padding(
-                padding: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.only(top: 2),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    if (_wideWindow)
+                      IconButton(
+                        tooltip: 'Previous',
+                        visualDensity: VisualDensity.compact,
+                        iconSize: 20,
+                        color: AppText.primary,
+                        disabledColor: AppColors.gray300,
+                        onPressed: page > 0
+                            ? () => _goTo(page - 1, items.length)
+                            : null,
+                        icon: const Icon(Icons.chevron_left_rounded),
+                      ),
                     for (var i = 0; i < items.length; i++)
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.symmetric(horizontal: 3),
-                        width: i == page ? 16 : 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color:
-                              i == page ? AppColors.primary : AppColors.gray300,
-                          borderRadius: BorderRadius.circular(3),
+                      Semantics(
+                        button: true,
+                        selected: i == page,
+                        label: 'Item ${i + 1} of ${items.length}',
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _goTo(i, items.length),
+                          child: Padding(
+                            // A bigger tap area than the dot itself.
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 3, vertical: 9),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: i == page ? 16 : 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: i == page
+                                    ? AppColors.primary
+                                    : AppColors.gray300,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
                         ),
+                      ),
+                    if (_wideWindow)
+                      IconButton(
+                        tooltip: 'Next',
+                        visualDensity: VisualDensity.compact,
+                        iconSize: 20,
+                        color: AppText.primary,
+                        disabledColor: AppColors.gray300,
+                        onPressed: page < items.length - 1
+                            ? () => _goTo(page + 1, items.length)
+                            : null,
+                        icon: const Icon(Icons.chevron_right_rounded),
                       ),
                   ],
                 ),
@@ -402,14 +460,26 @@ class _InboxCard extends StatelessWidget {
     this.stacked = false,
   });
 
+  /// A fill dark enough for white button text: the lighter accents
+  /// (sky, emerald) are fine for the icon but not behind 14 px text.
+  static Color _buttonFill(Color c) {
+    if (c == AppColors.sky) return const Color(0xFF0369A1);
+    if (c == AppColors.emerald600 || c == AppColors.green) {
+      return AppColors.emerald700;
+    }
+    if (c == AppColors.primary) return AppColors.primaryDark;
+    return c;
+  }
+
   Widget _button(_InboxAction a) {
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: a.primary
           ? FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: color,
-                visualDensity: VisualDensity.compact,
+                backgroundColor: _buttonFill(color),
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
               ),
               onPressed: a.onPressed,
@@ -417,7 +487,7 @@ class _InboxCard extends StatelessWidget {
             )
           : TextButton(
               style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
+                minimumSize: const Size(0, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
               ),
               onPressed: a.onPressed,

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:namer_app/services/web_platform.dart' as web;
 
 /// The evening "you haven't logged today" reminder.
 ///
@@ -34,6 +35,16 @@ class NotificationService {
         defaultTargetPlatform == TargetPlatform.iOS;
   }
 
+  /// On an iPhone or iPad, web notifications only work once the app has
+  /// been added to the Home Screen (and opened from there). In Safari
+  /// itself the permission request is refused, which would otherwise look
+  /// like the person had blocked notifications.
+  static bool get needsHomeScreen => kIsWeb && web.iosNeedsHomeScreen;
+
+  static const homeScreenMessage =
+      'Add The Calorie Card to your Home Screen first: tap Share, then '
+      '"Add to Home Screen". Open it from there and turn the reminder on.';
+
   static String hourLabel(int hour) {
     final h = hour % 12 == 0 ? 12 : hour % 12;
     return '$h${hour < 12 ? 'am' : 'pm'}';
@@ -57,6 +68,7 @@ class NotificationService {
     final uid = _uid;
     if (uid == null) return 'Sign in first.';
     if (!supported) return "Reminders aren't available on this device yet.";
+    if (needsHomeScreen) return homeScreenMessage;
     try {
       final messaging = FirebaseMessaging.instance;
       final settings = await messaging.requestPermission();

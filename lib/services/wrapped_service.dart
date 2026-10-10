@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/spend_category.dart';
+import 'package:namer_app/services/streak.dart';
 
 /// One food and how many times it was logged.
 class FoodCount {
@@ -18,7 +19,9 @@ class MonthWrap {
   final int daysLogged; // days with any food
   final int finishedDays;
   final int onBudgetDays;
-  final int bestStreak; // longest run of finished days this month
+  /// Longest streak this month, with the same rules as Hiscores (Streak
+  /// Freezes cover a missed day).
+  final int bestStreak;
   final double totalCalories;
   final double averageCalories; // per logged day
   final double totalProtein;
@@ -127,21 +130,23 @@ class WrappedService {
       ));
     }
 
-    var finished = 0, onBudget = 0, run = 0, best = 0;
-    for (final log in logs) {
-      final data = log.data();
+    var finished = 0, onBudget = 0;
+    final finishedKeys = <String>{};
+    for (var i = 0; i < logs.length; i++) {
+      final data = logs[i].data();
       if (data != null && data['finished'] == true) {
         finished++;
-        run++;
-        if (run > best) best = run;
+        finishedKeys.add(BalanceService.dateKey(days[i]));
         final balances = data['balances'];
         final left =
             balances is Map ? BalanceService.number(balances['calories']) : null;
         if (left != null && left >= 0) onBudget++;
-      } else {
-        run = 0;
       }
     }
+    final best = days.isEmpty
+        ? 0
+        : Streaks.compute(finishedKeys, from: days.first, today: days.last)
+            .longest;
 
     final top = counts.values.toList()
       ..sort((a, b) => b.count != a.count

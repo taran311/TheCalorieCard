@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
@@ -8,6 +9,11 @@ import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/goal_maths.dart';
+import 'package:namer_app/services/profile_limits.dart';
+import 'package:namer_app/services/units.dart';
+import 'package:namer_app/services/weight_service.dart';
+import 'package:namer_app/ui/body_inputs.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/card_reveal.dart';
 import 'dart:convert';
@@ -54,13 +60,13 @@ class _GetStartedPageState extends State<GetStartedPage> {
   List<bool> genderSelections = [true, false];
   List<bool> calorieSelections = [true, false, false];
 
-  int? _selectedHeight;
-  final TextEditingController _heightController = TextEditingController();
-  late FocusNode _heightFocusNode;
+  /// Always cm and kg; [_units] only changes what's shown.
+  double? _selectedHeight;
+  double? _selectedWeight;
 
-  int? _selectedWeight;
-  final TextEditingController _weightController = TextEditingController();
-  late FocusNode _weightFocusNode;
+  /// kg/cm or stones/pounds/feet. Starts from the device's country.
+  UnitPrefs _units = UnitPrefs.forCountry(
+      WidgetsBinding.instance.platformDispatcher.locale.countryCode);
 
   // Macro input fields
   int? _proteinGoal;
@@ -96,8 +102,6 @@ class _GetStartedPageState extends State<GetStartedPage> {
     // Wake the lookup server early (it sleeps when idle).
     ProxyClient.warmUp();
     _ageFocusNode = FocusNode();
-    _heightFocusNode = FocusNode();
-    _weightFocusNode = FocusNode();
     _proteinFocusNode = FocusNode();
     _carbsFocusNode = FocusNode();
     _fatsFocusNode = FocusNode();
@@ -106,14 +110,10 @@ class _GetStartedPageState extends State<GetStartedPage> {
   @override
   void dispose() {
     _ageFocusNode.dispose();
-    _heightFocusNode.dispose();
-    _weightFocusNode.dispose();
     _proteinFocusNode.dispose();
     _carbsFocusNode.dispose();
     _fatsFocusNode.dispose();
     _ageController.dispose();
-    _heightController.dispose();
-    _weightController.dispose();
     _proteinController.dispose();
     _carbsController.dispose();
     _fatsController.dispose();
@@ -158,7 +158,18 @@ class _GetStartedPageState extends State<GetStartedPage> {
       'protein_balance': _proteinGoal ?? 0,
       'carbs_balance': _carbsGoal ?? 0,
       'fats_balance': _fatsGoal ?? 0,
+      ..._units.toFields(),
     });
+
+    // Starts the weight log, so the trend has a first point.
+    final kg = _selectedWeight;
+    if (kg != null && ProfileLimits.weightOk(kg)) {
+      try {
+        await WeightService.log(userId, kg);
+      } catch (_) {
+        // Not worth failing sign-up over; they can log it later.
+      }
+    }
 
     // Create user document with friends list
     await FirebaseFirestore.instance.collection('users').doc(userId).set({
@@ -202,10 +213,18 @@ class _GetStartedPageState extends State<GetStartedPage> {
 
     final int calories = cardActiveCalories ?? 0;
 
-    // Simple macro split: 30% protein, 40% carbs, 30% fats
-    final int protein = (calories * 0.30 / 4).round();
-    final int carbs = (calories * 0.40 / 4).round();
-    final int fats = (calories * 0.30 / 9).round();
+    // Keep the split they have (30/40/30 if there isn't one yet).
+    final m = macrosScaledTo(
+      Macros(
+        protein: (_proteinGoal ?? 0).toDouble(),
+        carbs: (_carbsGoal ?? 0).toDouble(),
+        fat: (_fatsGoal ?? 0).toDouble(),
+      ),
+      calories,
+    );
+    final int protein = m.protein.round();
+    final int carbs = m.carbs.round();
+    final int fats = m.fat.round();
 
     setState(() {
       _proteinGoal = protein;
@@ -223,8 +242,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
     }
 
     // Calculate calories from macros: Protein & Carbs = 4 cal/g, Fat = 9 cal/g
-    final int calculatedCalories =
-        ((_proteinGoal ?? 0) * 4) + ((_carbsGoal ?? 0) * 4) + ((_fatsGoal ?? 0) * 9);
+    final int calculatedCalories = caloriesFromMacros(
+        _proteinGoal ?? 0, _carbsGoal ?? 0, _fatsGoal ?? 0);
 
     setState(() {
       cardActiveCalories = calculatedCalories;
@@ -248,31 +267,21 @@ class _GetStartedPageState extends State<GetStartedPage> {
   }
 
   /// Age, height and weight are all filled in and believable.
-  bool get _inputsValid {
-    final age = _selectedAge;
-    final height = _selectedHeight;
-    final weight = _selectedWeight;
-    return age != null &&
-        age >= 13 &&
-        age <= 120 &&
-        height != null &&
-        height >= 100 &&
-        height <= 250 &&
-        weight != null &&
-        weight >= 30 &&
-        weight <= 350;
-  }
+  bool get _inputsValid =>
+      ProfileLimits.ageOk(_selectedAge) &&
+      ProfileLimits.heightOk(_selectedHeight) &&
+      ProfileLimits.weightOk(_selectedWeight);
 
-  /// 2150 -> "2,150".
-  String _thousands(int n) {
-    final digits = n.abs().toString();
-    final out = StringBuffer();
-    for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
-      out.write(digits[i]);
-    }
-    return n < 0 ? '-$out' : out.toString();
-  }
+  /// The lowest "Lose" goal for these details (see [safeMinimumCalories]).
+  double get _safeFloor => safeMinimumCalories(
+        male: genderSelections.first,
+        resting: restingCalories(
+          age: _selectedAge,
+          heightCm: _selectedHeight,
+          weightKg: _selectedWeight,
+          male: genderSelections.first,
+        ),
+      );
 
   void _markFieldsChanged() {
     if (!_isEstimatingWithAI && _lastAIData != null) {
@@ -316,15 +325,18 @@ class _GetStartedPageState extends State<GetStartedPage> {
           'weight_kg': _selectedWeight,
           'exercise_level': _getExerciseLevelText(),
         });
+      if (!mounted) return false;
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final targets =
+        final raw =
             data['ai']?['final']?['targets'] ?? data['baseline']?['targets'];
 
-        if (targets != null) {
+        if (raw is Map) {
+          final targets = withSafeLoseTarget(
+              Map<String, dynamic>.from(raw), _safeFloor);
           setState(() {
-            _aiTargets = Map<String, dynamic>.from(targets as Map);
+            _aiTargets = targets;
             calorieDeficit = asInt(targets['lose']?['calories']);
             calorieMaintenance = asInt(targets['maintain']?['calories']);
             calorieSurplus = asInt(targets['gain']?['calories']);
@@ -384,37 +396,20 @@ class _GetStartedPageState extends State<GetStartedPage> {
     _markFieldsChanged();
     // New details: back to the formula until Coach is asked again.
     _aiTargets = null;
-    var genderAdjustment = genderSelections.first ? 5 : -161;
-    double activityMultiplier = 0;
 
-    switch (_exerciseLevel.round()) {
-      case 0:
-        activityMultiplier = 1.2;
-      case 1:
-        activityMultiplier = 1.375;
-      case 2:
-        activityMultiplier = 1.55;
-      case 3:
-        activityMultiplier = 1.725;
-      case 4:
-        activityMultiplier = 1.9;
-    }
-
-    try {
-      var baseCalories =
-          ((((10 * _selectedWeight!) + (6.25 * _selectedHeight!)) -
-                  (5 * _selectedAge!) +
-                  genderAdjustment) *
-              activityMultiplier);
-
-      calorieDeficit = (baseCalories * 0.85).round();
-      calorieMaintenance = baseCalories.round();
-      calorieSurplus = (baseCalories * 1.15).round();
-
-      if (calorieDeficit! < 0) calorieDeficit = 0;
-      if (calorieMaintenance! < 0) calorieMaintenance = 0;
-      if (calorieSurplus! < 0) calorieSurplus = 0;
-    } catch (e) {
+    // Same sums as Goals and profile, so the two never disagree.
+    final base = maintenanceCalories(
+      age: _selectedAge,
+      heightCm: _selectedHeight,
+      weightKg: _selectedWeight,
+      male: genderSelections.first,
+      exerciseLevel: _exerciseLevel,
+    );
+    if (base != null && base.isFinite && base > 0) {
+      calorieDeficit = suggestedCalorieGoal(base, 'lose', floor: _safeFloor);
+      calorieMaintenance = suggestedCalorieGoal(base, 'maintain');
+      calorieSurplus = suggestedCalorieGoal(base, 'gain');
+    } else {
       calorieDeficit = 0;
       calorieMaintenance = 0;
       calorieSurplus = 0;
@@ -714,6 +709,44 @@ class _GetStartedPageState extends State<GetStartedPage> {
     );
   }
 
+  /// Imperial heights and weights need two boxes each, so they get a row
+  /// of their own; metric ones sit side by side.
+  Widget _bodyFields() {
+    final height = HeightInput(
+      units: _units,
+      valueCm: _selectedHeight,
+      onChanged: (cm) {
+        setState(() {
+          _selectedHeight = cm;
+          if (ProfileLimits.heightOk(cm)) updateCalories();
+        });
+      },
+    );
+    final weight = WeightInput(
+      units: _units,
+      valueKg: _selectedWeight,
+      onChanged: (kg) {
+        setState(() {
+          _selectedWeight = kg;
+          if (ProfileLimits.weightOk(kg)) updateCalories();
+        });
+      },
+    );
+    if (_units.isMetric) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: height),
+          Expanded(child: weight),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [height, weight],
+    );
+  }
+
   Widget _buildAboutYou() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -724,38 +757,35 @@ class _GetStartedPageState extends State<GetStartedPage> {
           subtitle: 'We use this to work out your daily budget',
         ),
         const SizedBox(height: 16),
-        // Age & gender
+        // Age & sex
         Container(
           padding: const EdgeInsets.all(16),
           decoration: AppDecor.card,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  MeasurementInputField(
-                    label: 'Age',
-                    controller: _ageController,
-                    focusNode: _ageFocusNode,
-                    hintText: 'E.g. 30',
-                    suffix: ' years',
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedAge = value;
-                        if (_selectedAge != null &&
-                            _selectedAge! >= 13 &&
-                            _selectedAge! <= 120) {
-                          updateCalories();
-                        }
-                      });
-                    },
-                  ),
-                ],
+              MeasurementInputField(
+                label: 'Age',
+                controller: _ageController,
+                focusNode: _ageFocusNode,
+                hintText: 'E.g. 30',
+                unit: 'years',
+                min: ProfileLimits.minAge.toDouble(),
+                max: ProfileLimits.maxAge.toDouble(),
+                rangeMessage: ProfileLimits.ageRangeMessage,
+                onChanged: (value) {
+                  setState(() {
+                    _selectedAge = value?.round();
+                    if (ProfileLimits.ageOk(_selectedAge)) {
+                      updateCalories();
+                    }
+                  });
+                },
               ),
               const Padding(
                 padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
                 child: Text(
-                  'Gender',
+                  'Sex (used to work out your calories)',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
@@ -787,46 +817,22 @@ class _GetStartedPageState extends State<GetStartedPage> {
           ),
         ),
         const SizedBox(height: 16),
-        // Height & weight
+        // Height & weight, in the units they think in
         Container(
           padding: const EdgeInsets.all(16),
           decoration: AppDecor.card,
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              MeasurementInputField(
-                label: 'Height',
-                controller: _heightController,
-                focusNode: _heightFocusNode,
-                hintText: 'E.g. 180cm',
-                suffix: 'cm',
-                onChanged: (value) {
-                  setState(() {
-                    _selectedHeight = value;
-                    if (_selectedHeight != null &&
-                        _selectedHeight! >= 100 &&
-                        _selectedHeight! <= 250) {
-                      updateCalories();
-                    }
-                  });
-                },
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: UnitsPicker(
+                  value: _units,
+                  onChanged: (u) => setState(() => _units = u),
+                ),
               ),
-              MeasurementInputField(
-                label: 'Weight',
-                controller: _weightController,
-                focusNode: _weightFocusNode,
-                hintText: 'E.g. 80kg',
-                suffix: 'kg',
-                onChanged: (value) {
-                  setState(() {
-                    _selectedWeight = value;
-                    if (_selectedWeight != null &&
-                        _selectedWeight! >= 30 &&
-                        _selectedWeight! <= 350) {
-                      updateCalories();
-                    }
-                  });
-                },
-              ),
+              const SizedBox(height: 4),
+              _bodyFields(),
             ],
           ),
         ),
@@ -1016,18 +1022,20 @@ class _GetStartedPageState extends State<GetStartedPage> {
     required String hintText,
     required void Function(int?) onValue,
   }) {
-    return MeasurementInputField(
-      label: label,
-      controller: controller,
-      focusNode: focusNode,
-      hintText: hintText,
-      suffix: 'g',
-      onChanged: (value) {
-        setState(() {
-          onValue(value);
-        });
-        _updateCaloriesFromMacros();
-      },
+    return Expanded(
+      child: MeasurementInputField(
+        label: label,
+        controller: controller,
+        focusNode: focusNode,
+        hintText: hintText,
+        unit: 'g',
+        onChanged: (value) {
+          setState(() {
+            onValue(value?.round());
+          });
+          _updateCaloriesFromMacros();
+        },
+      ),
     );
   }
 
@@ -1070,7 +1078,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                     icon: Icons.trending_down,
                     label: 'Lose',
                     detail: hasNumbers
-                        ? '${_thousands(calorieDeficit ?? 0)} kcal'
+                        ? '${formatCardKcal(calorieDeficit ?? 0)} kcal'
                         : '–',
                     onTap: () => _selectGoal(0),
                   ),
@@ -1082,7 +1090,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                     icon: Icons.horizontal_rule,
                     label: 'Maintain',
                     detail: hasNumbers
-                        ? '${_thousands(calorieMaintenance ?? 0)} kcal'
+                        ? '${formatCardKcal(calorieMaintenance ?? 0)} kcal'
                         : '–',
                     onTap: () => _selectGoal(1),
                   ),
@@ -1094,7 +1102,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                     icon: Icons.trending_up,
                     label: 'Gain',
                     detail: hasNumbers
-                        ? '${_thousands(calorieSurplus ?? 0)} kcal'
+                        ? '${formatCardKcal(calorieSurplus ?? 0)} kcal'
                         : '–',
                     onTap: () => _selectGoal(2),
                   ),
@@ -1145,6 +1153,10 @@ class _GetStartedPageState extends State<GetStartedPage> {
             TextField(
               controller: _manualCalorieController,
               keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(5),
+              ],
               decoration: InputDecoration(
                 labelText: 'kcal',
                 hintText: 'E.g. 2000',
@@ -1165,6 +1177,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
                 });
               },
             ),
+            LowCalorieNote(calories: _manualCalorieGoal),
             const SizedBox(height: 16),
             Text(
               'Daily macros',
@@ -1254,7 +1267,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
-              '${_thousands(calories)} kcal a day · '
+              '${formatCardKcal(calories)} kcal a day · '
               '${_proteinGoal ?? 0}g protein · '
               '${_carbsGoal ?? 0}g carbs · '
               '${_fatsGoal ?? 0}g fat',

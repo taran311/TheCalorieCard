@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
@@ -30,6 +31,11 @@ class MyApp extends StatelessWidget {
           title: 'The Calorie Card',
           debugShowCheckedModeBanner: false,
           theme: buildAppTheme(),
+          // Lets mouse and trackpad users drag sideways lists (inbox,
+          // suggestion chips, recents) on the web, not just touch.
+          scrollBehavior: const MaterialScrollBehavior().copyWith(
+            dragDevices: PointerDeviceKind.values.toSet(),
+          ),
           // Phones: full screen. Signed-out pages on big screens: framed
           // next to a brand panel. Signed in on big screens: the shell's
           // desktop layout takes over.

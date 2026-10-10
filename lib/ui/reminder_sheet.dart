@@ -9,7 +9,7 @@ Future<void> showReminderSheet(BuildContext context) {
     useRootNavigator: true,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (_) => const SafeArea(child: _ReminderSheet()),
+    builder: (_) => SafeArea(child: const _ReminderSheet()),
   );
 }
 
@@ -121,6 +121,32 @@ class _ReminderSheetState extends State<_ReminderSheet> {
             Text(
               "Reminders aren't available here yet.",
               style: TextStyle(color: AppColors.gray700),
+            )
+          else if (NotificationService.needsHomeScreen && !_enabled)
+            // iPhone/iPad in Safari: Apple only allows notifications from
+            // the Home Screen app, so explain that instead of a switch
+            // that would just say "blocked".
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.indigo50,
+                borderRadius: BorderRadius.circular(AppDecor.radius),
+                border: Border.all(color: AppColors.indigo100),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.add_to_home_screen,
+                      color: AppText.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      NotificationService.homeScreenMessage,
+                      style: TextStyle(color: AppColors.gray800, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
             )
           else ...[
             Material(

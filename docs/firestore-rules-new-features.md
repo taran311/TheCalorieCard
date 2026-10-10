@@ -34,6 +34,10 @@ service cloud.firestore {
     }
 
     // ---- Challenges ----
+    // Fields: type ('head_to_head' | 'group' | 'protein' | 'early_logger'),
+    // title, created_by, member_ids, names {uid: name}, start_key and
+    // end_key ('YYYY-MM-DD'; a challenge starts the day it's made and runs
+    // 7 days), target (finished days, or grams for 'protein').
     match /challenges/{id} {
       allow read: if signedIn() && me() in resource.data.member_ids;
       allow create: if signedIn() &&
@@ -47,6 +51,8 @@ service cloud.firestore {
     }
 
     // ---- Direct debits (private) ----
+    // `weekdays` (list of 1-7, Monday = 1; empty = every day) limits which
+    // days a debit comes up.
     match /direct_debits/{id} {
       allow read, update, delete: if signedIn() && resource.data.user_id == me();
       allow create: if signedIn() && request.resource.data.user_id == me();
@@ -56,6 +62,51 @@ service cloud.firestore {
 ```
 
 Also check these existing rules:
+
+- **friend_groups**: when you remove a friend, they're taken out of the
+  groups *you* made (`members` loses their id, and so does the group
+  chat's `participant_ids`). Groups someone else made are left alone, and
+  the app tells you which ones you still share. If your rules don't let a
+  group's creator edit `members`, the app says so instead. A rule that
+  allows this, and lets members leave:
+
+  ```
+  match /friend_groups/{id} {
+    allow read: if signedIn() && me() in resource.data.members;
+    allow create: if signedIn() &&
+      request.resource.data.creator_id == me() &&
+      me() in request.resource.data.members;
+    // The creator can change the group; anyone else can only leave.
+    allow update: if signedIn() && (
+      resource.data.creator_id == me() ||
+      (request.resource.data.diff(resource.data).affectedKeys()
+         .hasOnly(['members']) &&
+       request.resource.data.members.removeAll(resource.data.members)
+         .size() == 0 &&
+       resource.data.members.removeAll(request.resource.data.members)
+         .hasOnly([me()])));
+    allow delete: if signedIn() && resource.data.creator_id == me();
+  }
+  ```
+- **daily_logs**: the Friends page shows each friend's day live (today's
+  `{uid}_{date}` doc: `finished`, `totals`, `balances`, `goals`), and the
+  Statement reads your own history to judge finished days the same way
+  as Hiscores. Friends (and group members) need read access.
+- **user_data**: friends' and group members' calorie goal is read as a
+  fallback when their day's history has no budget in it (the same doc the
+  read-only friend card already reads).
+- **user_food**: the "Protein goal" and "Early logger" challenges add up
+  members' food since the challenge started, as the group page already
+  does for today. Members whose food you can't read show 0.
+- **conversations/{id}/messages**: messages may carry extra fields:
+  `type: 'game'` with `game_id` (Guess the Calories messages, shown as a
+  tappable card that opens the game), `type: 'nudge'` ("Nudge to log"),
+  and `type: 'card'` with `card` as before. If your message rules list
+  allowed keys, add `type`, `game_id` and `card`. Sharing "Your week" can
+  post into a group chat (`group_{groupId}`) with the same fields as the
+  Chat tab.
+- Nudges are limited to one per friend per day on your device (no new
+  Firestore fields).
 
 - **daily_logs**: challenge members need to read each other's
   `{uid}_{date}` docs to score challenges. If only friends can read them,
@@ -145,3 +196,44 @@ match /calorie_games/{id} {
 
 The game also posts into your one-to-one chat ("I've challenged you…",
 "Your turn", the result), using the same `conversations` rules as cheers.
+
+## Weight log
+
+Each weigh-in is `weigh_ins/{uid}_{yyyy-MM-dd}` (one per day) with
+`user_id`, `date_key`, `kg` and `created_at`. Only you can read or write
+yours:
+
+```
+match /weigh_ins/{id} {
+  allow read, delete: if signedIn() && resource.data.user_id == me();
+  allow create, update: if signedIn() &&
+    request.resource.data.user_id == me() &&
+    id == me() + '_' + request.resource.data.date_key &&
+    request.resource.data.kg is number &&
+    request.resource.data.kg > 0 && request.resource.data.kg < 400;
+}
+```
+
+## Profile additions
+
+- `user_data`: `units` ('metric' | 'imperial') and `weight_unit`
+  ('kg' | 'st' | 'lb'); `height` and `weight` can now have decimals. Your
+  existing owner-only rule covers these.
+- `users/{uid}.display_name`: the name friends see (up to 40 characters),
+  written by the owner. If your `users` rule limits which keys you can
+  write, add `display_name`.
+- `user_food`: new optional fields `food_source`, `food_estimate`,
+  `food_edited`, `food_base`, `food_portion_base` and `food_multiplier`, and
+  entries can now be **updated** by their owner (editing a portion, fixing
+  calories, moving meal). Make sure your rule allows update when
+  `resource.data.user_id == me()` and the `user_id` doesn't change:
+
+```
+allow update: if signedIn() && resource.data.user_id == me() &&
+  request.resource.data.user_id == me();
+```
+
+## Account deletion
+
+Deleting an account goes through the server (`POST /account/delete`),
+which uses the Admin SDK, so no client rules are needed for it.

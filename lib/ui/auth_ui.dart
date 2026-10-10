@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 export 'package:namer_app/ui/calorie_card.dart' show cardholderFromEmail;
 
@@ -591,6 +593,195 @@ class AuthDivider extends StatelessWidget {
   }
 }
 
+/// Full-width "Continue with Google", shown above the email form.
+class GoogleButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final bool loading;
+
+  const GoogleButton({super.key, required this.onPressed, this.loading = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: OutlinedButton(
+        onPressed: loading ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AuthColors.text,
+          side: BorderSide(color: AuthColors.border, width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        child: loading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: AuthColors.action,
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const _GoogleMark(),
+                  const SizedBox(width: 10),
+                  const Flexible(
+                    child: Text(
+                      'Continue with Google',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// A simple "G" in Google's blue, so the button is recognisable without
+/// shipping an image.
+class _GoogleMark extends StatelessWidget {
+  const _GoogleMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFFDADCE0)),
+      ),
+      child: const Text(
+        'G',
+        style: TextStyle(
+          fontSize: 14,
+          height: 1,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF4285F4),
+        ),
+      ),
+    );
+  }
+}
+
+/// Opens one of the site's own pages (such as '/privacy.html') in a new
+/// tab. Returns false if it couldn't.
+Future<bool> openSitePage(String path) async {
+  try {
+    final uri = kIsWeb
+        ? Uri.base.resolve(path)
+        : Uri.parse('https://thecaloriecard.com$path');
+    return await launchUrl(uri, webOnlyWindowName: '_blank');
+  } catch (_) {
+    return false;
+  }
+}
+
+/// "By creating a card you agree to our Terms and Privacy Policy."
+class LegalAgreement extends StatelessWidget {
+  const LegalAgreement({super.key});
+
+  Widget _link(String label, String path) {
+    return TextButton(
+      onPressed: () => openSitePage(path),
+      style: TextButton.styleFrom(
+        foregroundColor: AppText.primaryDark,
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        minimumSize: const Size(44, 44),
+        tapTargetSize: MaterialTapTargetSize.padded,
+        textStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          decoration: TextDecoration.underline,
+        ),
+      ),
+      child: Text(label),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(fontSize: 13, color: AuthColors.muted);
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('By creating a card you agree to our', style: style),
+        _link('Terms', '/terms.html'),
+        Text('and', style: style),
+        _link('Privacy Policy', '/privacy.html'),
+      ],
+    );
+  }
+}
+
+/// Shown while we find out whether someone is signed in: the brand, not a
+/// sign-in form that might flash past.
+class AuthSplash extends StatelessWidget {
+  const AuthSplash({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.brandGradient),
+      alignment: Alignment.center,
+      child: Semantics(
+        liveRegion: true,
+        label: 'Loading your card',
+        child: ExcludeSemantics(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: const Icon(
+                  Icons.credit_card_rounded,
+                  color: Colors.white,
+                  size: 44,
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Loading your card…',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 18),
+              if (!reduceMotion)
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Numbered steps: only for things that really are done in order.
 class AuthSteps extends StatelessWidget {
   final List<String> steps;
@@ -709,7 +900,7 @@ AuthProblem authProblemFor(Object error, {required String flow}) {
         action: 'signin',
       );
     case 'weak-password':
-      return const AuthProblem(
+      return AuthProblem(
           'Use at least $minPasswordLength characters, mixing letters and numbers',
           field: 'password');
     case 'user-disabled':
@@ -728,6 +919,22 @@ AuthProblem authProblemFor(Object error, {required String flow}) {
           "You're offline or the connection dropped. Check your internet and try again.");
     case 'channel-error':
       return const AuthProblem('Enter your email and password.');
+    case 'popup-blocked':
+      return const AuthProblem(
+          'Your browser blocked the Google window. Allow pop-ups for this '
+          'site and try again.');
+    case 'account-exists-with-different-credential':
+      return const AuthProblem(
+          'This email already has a Calorie Card account. Sign in with your '
+          'email and password instead.');
+    case 'operation-not-allowed':
+      return const AuthProblem(
+          "That way of signing in isn't switched on yet. Use your email "
+          'and password for now.');
+    case 'unauthorized-domain':
+      return const AuthProblem(
+          "Google sign-in isn't available on this address yet. Use your "
+          'email and password for now.');
     default:
       return AuthProblem(switch (flow) {
         'signup' => "Your account wasn't created. Try again in a moment.",

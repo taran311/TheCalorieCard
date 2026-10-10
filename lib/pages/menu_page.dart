@@ -1,12 +1,15 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/pages/account_page.dart';
 import 'package:namer_app/pages/premium_page.dart';
+import 'package:namer_app/pages/weight_page.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/appearance_sheet.dart';
 import 'package:namer_app/ui/reminder_sheet.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
+import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
@@ -18,7 +21,6 @@ import 'package:namer_app/pages/direct_debits_page.dart';
 import 'package:namer_app/pages/pots_page.dart';
 import 'package:namer_app/pages/wrapped_page.dart';
 import 'package:namer_app/services/balance_service.dart';
-import 'package:namer_app/services/food_log.dart';
 
 /// The Profile tab: your card's extras, progress and account.
 class MenuPage extends StatefulWidget {
@@ -39,6 +41,9 @@ class MenuPage extends StatefulWidget {
 class _MenuPageState extends State<MenuPage> {
   Stream<QuerySnapshot<Map<String, dynamic>>>? _profile;
 
+  /// `users/{uid}`, for the display name chosen in Account.
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _user;
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +54,8 @@ class _MenuPageState extends State<MenuPage> {
           .where('user_id', isEqualTo: uid)
           .limit(1)
           .snapshots();
+      _user =
+          FirebaseFirestore.instance.collection('users').doc(uid).snapshots();
     }
   }
 
@@ -110,97 +117,9 @@ class _MenuPageState extends State<MenuPage> {
     );
   }
 
-  /// Asks for a new weight, offers a new suggested goal worked out the same
-  /// way Goals and profile does, and saves through the same path.
-  Future<void> _updateWeight() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    final messenger = ScaffoldMessenger.of(context);
-
-    DocumentSnapshot<Map<String, dynamic>>? doc;
-    try {
-      doc = await BalanceService.userDataDoc(uid);
-    } catch (_) {
-      messenger.showSnackBar(const SnackBar(
-          content: Text(
-              "Couldn't load your details. Check your connection and try again.")));
-      return;
-    }
-    final data = doc?.data();
-    final currentGoals = data == null ? null : BalanceService.goalsFrom(data);
-    if (data == null || currentGoals == null) {
-      messenger.showSnackBar(const SnackBar(
-          content: Text('Set your goals in Goals and profile first.')));
-      return;
-    }
-    if (!mounted) return;
-
-    final initialKg = asInt(data['weight']);
-    final weight = await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      builder: (context) => _UpdateWeightSheet(initialKg: initialKg),
-    );
-    if (weight == null || !mounted) return;
-
-    final mode = data['calorie_mode'];
-    final base = maintenanceCalories(
-      age: asInt(data['age']),
-      heightCm: asInt(data['height']),
-      weightKg: weight,
-      male: data['gender'] == 'male',
-      exerciseLevel: asDouble(data['exercise_level']) ?? 0,
-    );
-
-    Macros? newGoals;
-    if (base != null && base.isFinite && base > 0) {
-      final suggested = suggestedCalorieGoal(base, mode is String ? mode : null);
-      final was = currentGoals.calories;
-      final use = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('New suggested goal'),
-          content: Text(
-              'Your suggested goal is now ${formatCardKcal(suggested)} kcal '
-              '(was ${formatCardKcal(was)}). Use it?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Keep my goal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Use it'),
-            ),
-          ],
-        ),
-      );
-      if (use == null || !mounted) return;
-      if (use && suggested >= 500 && suggested <= 10000) {
-        newGoals = defaultMacrosFor(suggested);
-      }
-    }
-
-    try {
-      await BalanceService.applyGoals(
-        uid,
-        goals: newGoals ?? currentGoals,
-        extra: {
-          'weight': weight,
-          if (newGoals != null) 'goal_source': 'calculated',
-        },
-      );
-      FoodLog.notifyChanged();
-      messenger.showSnackBar(SnackBar(
-          content: Text(newGoals != null
-              ? 'Weight and goal saved. Your card is up to date.'
-              : 'Weight saved.')));
-    } catch (_) {
-      messenger.showSnackBar(const SnackBar(
-          content: Text("Couldn't save your weight. Please try again.")));
-    }
-  }
+  /// The weight log: today's weigh-in (which also updates your profile
+  /// and offers a new suggested goal), your trend and a check-in.
+  void _updateWeight() => _open(const WeightPage());
 
   Widget _sectionHeader(String title) {
     return Padding(
@@ -307,6 +226,11 @@ class _MenuPageState extends State<MenuPage> {
       final d = e.trialDaysLeft;
       title = 'Premium trial: $d day${d == 1 ? '' : 's'} left';
       subtitle = 'Choose a plan any time to keep it';
+    } else if (!e.loaded) {
+      // Still checking: no prices yet, so someone who has already paid
+      // never sees an upsell flash past.
+      title = 'Premium';
+      subtitle = 'Unlimited Coach, photo logging and more';
     } else {
       title = 'Go Premium';
       subtitle = 'Unlimited Coach, photo logging and more, from '
@@ -410,13 +334,69 @@ class _MenuPageState extends State<MenuPage> {
     );
   }
 
+  /// Avatar initial, name and email at the top of the page.
+  Widget _profileHeader(String name, String email) {
+    return Row(
+      children: [
+        Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.5),
+              width: 2,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              name.initial.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (email.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  email,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
     final topPadding = MediaQuery.of(context).padding.top;
     final email = currentUser?.email ?? '';
-    final holder = cardholderFromEmail(email);
-    final name = holder.isEmpty ? 'You' : holder;
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
@@ -438,59 +418,19 @@ class _MenuPageState extends State<MenuPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            width: 2,
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            name.initial.toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (email.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                email,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
+                  StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    stream: _user,
+                    builder: (context, snap) {
+                      // The name they chose in Account, else one made from
+                      // their email.
+                      final chosen =
+                          '${snap.data?.data()?['display_name'] ?? ''}'.trim();
+                      final holder = cardholderFromEmail(email);
+                      final name = chosen.isNotEmpty
+                          ? chosen
+                          : (holder.isEmpty ? 'You' : holder);
+                      return _profileHeader(name, email);
+                    },
                   ),
                   _goalChip(),
                 ],
@@ -584,7 +524,7 @@ class _MenuPageState extends State<MenuPage> {
                       icon: Icons.monitor_weight_outlined,
                       iconColor: AppText.emerald600,
                       title: 'Update my weight',
-                      subtitle: 'Keep your suggested goal up to date',
+                      subtitle: 'Log a weigh-in and see your trend',
                       onTap: _updateWeight,
                     ),
                     _menuRow(
@@ -602,6 +542,22 @@ class _MenuPageState extends State<MenuPage> {
                       onTap: () => showAppearanceSheet(context),
                     ),
                   ]),
+                  _group('Account', [
+                    _menuRow(
+                      icon: Icons.manage_accounts_outlined,
+                      iconColor: AppText.sky,
+                      title: 'Account and privacy',
+                      subtitle: 'Your name, password, data and account',
+                      onTap: () => _open(const AccountPage()),
+                    ),
+                    _menuRow(
+                      icon: Icons.school_outlined,
+                      iconColor: AppText.primary,
+                      title: 'Tutorials',
+                      subtitle: 'Short walk-throughs of each feature',
+                      onTap: () => showTutorialsSheet(context),
+                    ),
+                  ]),
                   const SizedBox(height: 24),
                   Center(
                     child: TextButton.icon(
@@ -614,91 +570,6 @@ class _MenuPageState extends State<MenuPage> {
                     ),
                   ),
                 ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A bottom sheet with one field: your weight in kg.
-class _UpdateWeightSheet extends StatefulWidget {
-  final int? initialKg;
-
-  const _UpdateWeightSheet({this.initialKg});
-
-  @override
-  State<_UpdateWeightSheet> createState() => _UpdateWeightSheetState();
-}
-
-class _UpdateWeightSheetState extends State<_UpdateWeightSheet> {
-  late final TextEditingController _controller;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller =
-        TextEditingController(text: widget.initialKg?.toString() ?? '');
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final kg = double.tryParse(_controller.text.trim().replaceAll('kg', ''));
-    // Same range Goals and profile accepts.
-    if (kg == null || !kg.isFinite || kg < 30 || kg > 300) {
-      setState(() => _error = 'Enter a weight between 30 and 300 kg.');
-      return;
-    }
-    Navigator.pop(context, kg.round());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-          20, 20, 20, MediaQuery.viewInsetsOf(context).bottom + 24),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Update my weight',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.ink,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _controller,
-              autofocus: true,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Weight',
-                suffixText: 'kg',
-                errorText: _error,
-                border: const OutlineInputBorder(),
-              ),
-              onSubmitted: (_) => _submit(),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 52,
-              child: FilledButton(
-                onPressed: _submit,
-                child: const Text('Next'),
               ),
             ),
           ],

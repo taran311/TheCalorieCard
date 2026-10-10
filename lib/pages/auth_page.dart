@@ -5,8 +5,13 @@ import 'package:namer_app/pages/email_verification_page.dart';
 import 'package:namer_app/pages/get_started_page.dart';
 import 'package:namer_app/pages/main_shell.dart';
 import 'package:namer_app/pages/login_or_register_page.dart';
+import 'package:namer_app/ui/auth_ui.dart';
 import 'package:namer_app/ui/responsive.dart';
 
+/// Decides the first screen from the sign-in state, and is the only place
+/// that does: signed out → sign in / create; email not verified → verify;
+/// no card yet → Get started; otherwise the app. The sign-in and sign-up
+/// pages just sign in and let this page move on.
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
 
@@ -15,6 +20,9 @@ class AuthPage extends StatefulWidget {
 }
 
 class _AuthPageState extends State<AuthPage> {
+  /// Created once, so rebuilds don't resubscribe (and flash the splash).
+  final Stream<User?> _authState = FirebaseAuth.instance.authStateChanges();
+
   /// The profile check for [_checkedUid], kept so rebuilds don't run the
   /// query again.
   Future<bool>? _userExists;
@@ -52,12 +60,19 @@ class _AuthPageState extends State<AuthPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
+        stream: _authState,
         builder: (context, snapshot) {
+          // Firebase is still restoring the session: show the brand, not a
+          // sign-in form that would flash past for signed-in people.
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const AuthSplash();
+          }
           final user = snapshot.data;
           if (user == null) {
             return const LoginOrRegisterPage();
           }
+          // Next time this device opens on "Sign in", not "Create".
+          LoginOrRegisterPage.rememberSignedIn();
 
           // currentUser is refreshed by reload(), so prefer it: the stream
           // may still hold the copy from before the email was verified.
@@ -77,7 +92,7 @@ class _AuthPageState extends State<AuthPage> {
             builder: (context, AsyncSnapshot<bool> userExistsSnapshot) {
               if (userExistsSnapshot.connectionState ==
                   ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+                return const AuthSplash();
               }
 
               if (userExistsSnapshot.hasError) {

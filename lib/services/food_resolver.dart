@@ -39,12 +39,60 @@ class FoodResolver {
   FoodResolver._();
 
   /// Splits free text into separate foods: commas, new lines and
-  /// semicolons all separate items.
-  static List<String> splitItems(String text) => text
-      .split(RegExp(r'[,\n;]+'))
-      .map((s) => s.trim())
-      .where((s) => s.isNotEmpty)
-      .toList();
+  /// semicolons all separate items. A comma between two digits is a
+  /// decimal comma ("1,5 kg rice"), so it stays part of the food.
+  static List<String> splitItems(String text) {
+    final parts = <String>[];
+    var start = 0;
+    for (final i in [..._separators(text), text.length]) {
+      final s = text.substring(start, i).trim();
+      if (s.isNotEmpty) parts.add(s);
+      start = i + 1;
+    }
+    return parts;
+  }
+
+  /// While someone is typing: the foods they've finished (followed by a
+  /// separator) and the text they're still typing, untouched.
+  ///
+  /// A comma straight after a digit at the very end ("1,") might be the
+  /// start of "1,5 kg", so it waits for the next character.
+  static ({List<String> done, String rest}) takeFinished(String text) {
+    final seps = _separators(text, waitOnTrailingDigitComma: true);
+    if (seps.isEmpty) return (done: const <String>[], rest: text);
+    final last = seps.last;
+    return (
+      done: splitItems(text.substring(0, last)),
+      rest: text.substring(last + 1).trimLeft(),
+    );
+  }
+
+  static bool _digit(int c) => c >= 0x30 && c <= 0x39;
+
+  /// Positions of the characters that separate foods. Written by hand
+  /// rather than with a look-behind regex, which older Safari can't run.
+  static List<int> _separators(String text,
+      {bool waitOnTrailingDigitComma = false}) {
+    final out = <int>[];
+    for (var i = 0; i < text.length; i++) {
+      final c = text.codeUnitAt(i);
+      if (c == 0x0A || c == 0x3B) {
+        // New line or semicolon.
+        out.add(i);
+        continue;
+      }
+      if (c != 0x2C) continue; // not a comma
+      final digitBefore = i > 0 && _digit(text.codeUnitAt(i - 1));
+      if (!digitBefore) {
+        out.add(i);
+      } else if (i + 1 < text.length) {
+        if (!_digit(text.codeUnitAt(i + 1))) out.add(i);
+      } else if (!waitOnTrailingDigitComma) {
+        out.add(i);
+      }
+    }
+    return out;
+  }
 
   static double _n(dynamic v) {
     if (v is num) return v.toDouble();
