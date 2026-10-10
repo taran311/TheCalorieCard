@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -23,7 +24,10 @@ class _StatementPageState extends State<StatementPage> {
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
-      appBar: AppBar(title: const Text('Statement')),
+      appBar: AppBar(
+        leading: ShellBack.button(context),
+        title: const Text('Statement'),
+      ),
       body: uid == null
           ? const Center(child: Text('Please sign in'))
           : LiveStatement(

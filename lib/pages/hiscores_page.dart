@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/pages/challenges_page.dart';
 import 'package:namer_app/pages/friends_page.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
@@ -115,6 +116,7 @@ class _HiscoresPageState extends State<HiscoresPage> {
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
+        leading: ShellBack.button(context),
         title: const Text('Hiscores'),
         actions: [
           IconButton(

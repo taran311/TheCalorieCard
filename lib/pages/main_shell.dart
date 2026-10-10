@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/pages/premium_page.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/services/notification_service.dart';
@@ -111,6 +112,12 @@ class _MainShellState extends State<MainShell> {
   // This shell's own keys for the first-time tour.
   final _tourKeys = ShellTourKeys();
   final Set<ShellTab> _visited = {};
+
+  /// Screens you came from, newest last, for the back arrow.
+  final List<ShellTab> _history = [];
+
+  /// Laid out as a phone (bottom bar) rather than with the sidebar.
+  bool _phone = true;
   final Map<ShellTab, GlobalKey<NavigatorState>> _navKeys = {
     for (final t in ShellTab.values) t: GlobalKey<NavigatorState>(),
   };
@@ -187,10 +194,42 @@ class _MainShellState extends State<MainShell> {
       return;
     }
     setState(() {
+      _history
+        ..remove(tab)
+        ..add(_current);
+      if (_history.length > 12) _history.removeAt(0);
       _current = tab;
       _visited.add(tab);
     });
     _tourKeys.cardTabShowing = tab == ShellTab.card;
+  }
+
+  /// Coach is somewhere you dip into, so it always gets a back arrow. On
+  /// phones, Hiscores, Statement and Chat have no button of their own in
+  /// the bottom bar, so they get one too.
+  bool _showsBack(ShellTab tab) =>
+      tab == ShellTab.coach ||
+      (_phone &&
+          (tab == ShellTab.hiscores ||
+              tab == ShellTab.statement ||
+              tab == ShellTab.chat));
+
+  /// Back to the screen you came from (the Card if there isn't one).
+  void _goBack() {
+    var target = ShellTab.card;
+    while (_history.isNotEmpty) {
+      final t = _history.removeLast();
+      if (t != _current) {
+        target = t;
+        break;
+      }
+    }
+    if (target == _current) return;
+    setState(() {
+      _current = target;
+      _visited.add(target);
+    });
+    _tourKeys.cardTabShowing = target == ShellTab.card;
   }
 
   Widget _rootPageFor(ShellTab tab) {
@@ -225,12 +264,15 @@ class _MainShellState extends State<MainShell> {
 
   Widget _buildTabNavigator(ShellTab tab) {
     if (!_visited.contains(tab)) return const SizedBox.shrink();
-    return HeroControllerScope.none(
-      child: Navigator(
-        key: _navKeys[tab],
-        onGenerateRoute: (settings) => MaterialPageRoute(
-          settings: settings,
-          builder: (_) => _rootPageFor(tab),
+    return ShellBack(
+      onBack: _showsBack(tab) ? _goBack : null,
+      child: HeroControllerScope.none(
+        child: Navigator(
+          key: _navKeys[tab],
+          onGenerateRoute: (settings) => MaterialPageRoute(
+            settings: settings,
+            builder: (_) => _rootPageFor(tab),
+          ),
         ),
       ),
     );
@@ -239,7 +281,13 @@ class _MainShellState extends State<MainShell> {
   Widget _buildPages() {
     final children = [for (final t in ShellTab.values) _buildTabNavigator(t)];
     return NavigatorPopHandler(
-      onPopWithResult: (_) => _navKeys[_current]?.currentState?.maybePop(),
+      onPopWithResult: (_) async {
+        // The system back gesture: close a page on top first, otherwise
+        // go back to the screen you came from.
+        final popped =
+            await _navKeys[_current]?.currentState?.maybePop() ?? false;
+        if (!popped && mounted && _showsBack(_current)) _goBack();
+      },
       child: IndexedStack(
         index: ShellTab.values.indexOf(_current),
         children: children,
@@ -268,7 +316,8 @@ class _MainShellState extends State<MainShell> {
               _ => 0,
             };
 
-        if (width < Breakpoints.tablet) {
+        _phone = width < Breakpoints.tablet;
+        if (_phone) {
           return _PhoneLayout(
             current: _current,
             badgeFor: badgeFor,

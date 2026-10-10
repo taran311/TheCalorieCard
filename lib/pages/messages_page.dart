@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
@@ -83,6 +84,7 @@ class MessagesPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
+        leading: ShellBack.button(context),
         title: const Text('Messages'),
       ),
       body: StreamBuilder<QuerySnapshot>(

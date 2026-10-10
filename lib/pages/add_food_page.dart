@@ -324,6 +324,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         if (source == 'ai')
                           badge('AI estimate', AppColors.primary,
                               Icons.auto_awesome),
+                        if (source == 'web')
+                          badge('Label found online', AppColors.green,
+                              Icons.public),
                         if (source == 'recent')
                           badge('From your history', AppColors.sky,
                               Icons.history),

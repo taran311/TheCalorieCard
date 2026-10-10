@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/services/coach_actions.dart';
 import 'package:namer_app/services/coach_service.dart';
 import 'package:namer_app/services/premium_service.dart';
@@ -327,6 +328,7 @@ class _CoachPageState extends State<CoachPage> {
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
+        leading: ShellBack.button(context),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
