@@ -22,6 +22,7 @@ import 'package:namer_app/pages/statement_page.dart';
 import 'package:namer_app/services/coach_service.dart';
 import 'package:namer_app/ui/coach_glyph.dart';
 import 'package:namer_app/ui/coach_orb.dart';
+import 'package:namer_app/ui/gift_claim.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/spotlight_tour.dart';
 import 'package:namer_app/ui/today_panel.dart';
@@ -139,6 +140,7 @@ class _MainShellState extends State<MainShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handlePremiumReturn();
       _handleLinks();
+      offerPendingGift(context);
     });
     _current = switch (widget.initialIndex) {
       0 => ShellTab.profile,

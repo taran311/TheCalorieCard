@@ -6,6 +6,7 @@ import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/email_action_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/ui/adaptive_frame.dart';
+import 'package:namer_app/ui/gift_claim.dart';
 import 'package:namer_app/ui/theme_controller.dart';
 import 'firebase_options.dart';
 
@@ -13,6 +14,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await ThemeController.instance.load();
+  // A gift link (?gift=…): remembered until they're signed in to claim it.
+  await PendingGift.captureFromUrl();
   runApp(const MyApp());
 }
 

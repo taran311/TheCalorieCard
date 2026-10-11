@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/services/web_platform.dart' as web;
+import 'package:namer_app/ui/gift_claim.dart';
 import 'package:namer_app/ui/responsive.dart';
 
 /// Lifetime Premium gift codes: make one, send it, see who used it.
@@ -73,8 +74,8 @@ class _GiftCodesPageState extends State<GiftCodesPage> {
               ),
               const SizedBox(height: 10),
               const Text(
-                'Works once. Your friend enters it under Premium → '
-                '"Have a code?".',
+                'Works once. Send it and your friend just taps the link. '
+                'They can also type the code under Premium → "Have a code?".',
                 textAlign: TextAlign.center,
               ),
             ],
@@ -90,7 +91,7 @@ class _GiftCodesPageState extends State<GiftCodesPage> {
                 _share(code);
               },
               icon: const Icon(Icons.ios_share),
-              label: const Text('Send'),
+              label: const Text('Send link'),
             ),
           ],
         ),
@@ -109,18 +110,19 @@ class _GiftCodesPageState extends State<GiftCodesPage> {
 
   Future<void> _share(String code) async {
     final messenger = ScaffoldMessenger.of(context);
-    final text = "Here's lifetime Premium on The Calorie Card, on me 💜 "
-        'Open the app, go to Premium → "Have a code?" and enter $code';
+    final link = PendingGift.linkFor(code);
+    const text = "Here's lifetime Premium on The Calorie Card, on me 💜 "
+        'Tap the link to claim it:';
     var shared = false;
     try {
       shared = await web.shareText(
-          'Lifetime Premium on The Calorie Card', text,
-          'https://thecaloriecard.com/');
+          'Lifetime Premium on The Calorie Card', text, link);
     } catch (_) {}
     if (shared) return;
     try {
-      await Clipboard.setData(ClipboardData(text: code));
-      messenger.showSnackBar(SnackBar(content: Text('$code copied')));
+      await Clipboard.setData(ClipboardData(text: '$text $link'));
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Gift link copied. Paste it into WhatsApp.')));
     } catch (_) {}
   }
 
@@ -262,7 +264,8 @@ class _GiftCodesPageState extends State<GiftCodesPage> {
                                     },
                                     itemBuilder: (_) => const [
                                       PopupMenuItem(
-                                          value: 'send', child: Text('Send')),
+                                          value: 'send',
+                                          child: Text('Send link')),
                                       PopupMenuItem(
                                           value: 'cancel',
                                           child: Text('Cancel code')),
