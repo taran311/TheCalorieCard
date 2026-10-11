@@ -170,7 +170,8 @@ class _MainShellState extends State<MainShell> {
         messenger?.showSnackBar(const SnackBar(
           duration: Duration(seconds: 6),
           content: Text("Welcome to Premium! 💜 Thanks for supporting "
-              'The Calorie Card. It can take a few seconds to show.'),
+              'The Calorie Card. Your Aurora card is unlocked and appears '
+              'in a few seconds (change it any time in Card design).'),
         ));
       case 'cancelled':
         messenger?.showSnackBar(const SnackBar(
