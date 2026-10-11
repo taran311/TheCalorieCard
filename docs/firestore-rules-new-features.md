@@ -111,9 +111,10 @@ Also check these existing rules:
 - **daily_logs**: challenge members need to read each other's
   `{uid}_{date}` docs to score challenges. If only friends can read them,
   a member who isn't your friend shows 0 rather than breaking the page.
-- **users/{uid}**: you write `card_design`, `best_streak`, `card_unlocks` and
-  `calorie_sense` on your own doc, and friends need to read them to see your
-  card design and Calorie Sense on the hiscores.
+- **users/{uid}**: you write `card_design`, `best_streak`, `card_unlocks`,
+  `calorie_sense` and `games` (Games XP, level and Daily challenge) on your
+  own doc, and friends need to read them to see your card design, Calorie
+  Sense and Games XP on the hiscores (and friends' Daily scores).
 - **user_data/{doc}**: pots add the fields `pots_enabled`, `pot`, `pot_week`,
   `pot_spent` and `pot_spent_date` to your own profile.
 
@@ -276,6 +277,15 @@ match /calorie_games/{id} {
             incoming().winner == 'draw')
         ))
     );
+  // Games XP: once a game has finished, each player adds themselves to
+  // `xp_claimed` once, so its XP is only given once (see GamesService).
+  allow update: if signedIn() &&
+    me() in game().player_ids &&
+    game().status == 'finished' &&
+    incoming().diff(game()).affectedKeys().hasOnly(['xp_claimed']) &&
+    !(me() in game().get('xp_claimed', [])) &&
+    incoming().xp_claimed.size() == game().get('xp_claimed', []).size() + 1 &&
+    incoming().xp_claimed.hasAll(game().get('xp_claimed', []).concat([me()]));
   allow delete: if signedIn() &&
     me() in game().player_ids &&
     game().status == 'active';

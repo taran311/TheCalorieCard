@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
+import 'package:namer_app/pages/games_hub_page.dart';
 import 'package:namer_app/services/calorie_game.dart';
 import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/friend_activity.dart';
@@ -834,7 +835,7 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
-  /// Hiscores, Challenges and Guess the Calories as one row of small
+  /// Hiscores, Challenges and Games as one row of small
   /// tiles, so your friends come first on the page.
   Widget _shortcutTiles() {
     return Padding(
@@ -877,7 +878,7 @@ class _FriendsPageState extends State<FriendsPage> {
                       : 0;
                   const target = Text('🎯', style: TextStyle(fontSize: 22));
                   return _ShortcutTile(
-                    label: 'Guess the Calories',
+                    label: 'Games',
                     note: waiting == 0
                         ? null
                         : waiting == 1
@@ -891,8 +892,7 @@ class _FriendsPageState extends State<FriendsPage> {
                             child: target,
                           ),
                     onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const CalorieGamesPage()),
+                      MaterialPageRoute(builder: (_) => const GamesHubPage()),
                     ),
                   );
                 },

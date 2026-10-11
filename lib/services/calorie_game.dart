@@ -145,6 +145,9 @@ class CalorieGame {
   final DateTime? updatedAt;
   final DateTime? expiresAt;
 
+  /// Players who've had their Games XP for this game (see GamesService).
+  final List<String> xpClaimed;
+
   const CalorieGame({
     required this.id,
     required this.playerIds,
@@ -160,6 +163,7 @@ class CalorieGame {
     this.createdAt,
     required this.updatedAt,
     this.expiresAt,
+    this.xpClaimed = const [],
   });
 
   /// The same game with some fields changed (after a move is saved).
@@ -185,6 +189,7 @@ class CalorieGame {
         createdAt: createdAt,
         updatedAt: updatedAt,
         expiresAt: expiresAt,
+        xpClaimed: xpClaimed,
       );
 
   bool get isFinished => status == GameStatus.finished;
@@ -312,6 +317,10 @@ class CalorieGame {
       createdAt: created is Timestamp ? created.toDate() : null,
       updatedAt: updated is Timestamp ? updated.toDate() : null,
       expiresAt: expires is Timestamp ? expires.toDate() : null,
+      xpClaimed: [
+        for (final p in (d['xp_claimed'] is List ? d['xp_claimed'] as List : const []))
+          '$p'
+      ],
     );
   }
 }

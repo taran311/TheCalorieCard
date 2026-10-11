@@ -538,7 +538,9 @@ final List<Tutorial> tutorials = [
       const TStep(
         title: 'Rematch?',
         body: 'Go again in one tap. All your games, and your record against '
-            'each friend, are under Friends → Guess the Calories.',
+            'each friend, are under Friends → Games, along with the Daily '
+            'challenge and Guess the Meal. Every game earns XP towards your '
+            'level.',
         target: 'gameRematch',
       ),
       _finished,

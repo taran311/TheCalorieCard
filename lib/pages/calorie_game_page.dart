@@ -5,8 +5,10 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_game.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/services/games_service.dart';
 import 'package:namer_app/services/notification_service.dart';
 import 'package:namer_app/ui/game_food_picker.dart';
+import 'package:namer_app/ui/game_level.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -2011,6 +2013,20 @@ class _ResultState extends State<_Result> {
   bool _starting = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Your Games XP for this game, once (nothing happens if it's had).
+    if (!widget.game.xpClaimed.contains(widget.uid)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          final r = await GamesService.claimFriendGame(widget.game, widget.uid);
+          if (r != null && mounted) await celebrateLevelUp(context, r);
+        } catch (_) {}
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final game = widget.game;
     final uid = widget.uid;
@@ -2115,6 +2131,8 @@ class _ResultState extends State<_Result> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              XpPill(Xp.forFriendGame(game, uid)),
               StreamBuilder<List<CalorieGame>>(
                 stream: _all,
                 builder: (context, snap) {

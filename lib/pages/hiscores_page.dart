@@ -64,6 +64,13 @@ final _boards = <_Board>[
     // Until then there's no score (not 0 %, which reads as "terrible").
     value: (p) => p.senseGuesses >= 5 ? p.calorieSense.round() : null,
   ),
+  _Board(
+    label: 'Games',
+    emoji: '🎮',
+    description: 'Games XP earned this month',
+    unit: 'XP',
+    value: (p) => p.gamesXp > 0 ? p.gamesXp : null,
+  ),
 ];
 
 class HiscoresPage extends StatefulWidget {

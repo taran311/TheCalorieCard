@@ -21,6 +21,7 @@ import 'package:namer_app/pages/card_design_page.dart';
 import 'package:namer_app/pages/direct_debits_page.dart';
 import 'package:namer_app/pages/pots_page.dart';
 import 'package:namer_app/pages/wrapped_page.dart';
+import 'package:namer_app/pages/games_hub_page.dart';
 import 'package:namer_app/services/balance_service.dart';
 
 /// The Profile tab: your card's extras, progress and account.
@@ -491,6 +492,13 @@ class _MenuPageState extends State<MenuPage> {
                     ),
                   ]),
                   _group('Progress', [
+                    _menuRow(
+                      icon: Icons.sports_esports_outlined,
+                      iconColor: AppText.primary,
+                      title: 'Games',
+                      subtitle: 'Daily challenge, Guess the Meal and your level',
+                      onTap: () => _open(const GamesHubPage()),
+                    ),
                     _menuRow(
                       icon: Icons.emoji_events,
                       iconColor: AppText.amber600,

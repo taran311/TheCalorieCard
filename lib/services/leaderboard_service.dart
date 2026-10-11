@@ -4,6 +4,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/card_design_service.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/services/games_service.dart';
 import 'package:namer_app/services/rest_days.dart';
 import 'package:namer_app/services/streak.dart';
 
@@ -33,6 +34,9 @@ class PlayerStats {
   final double calorieSense;
   final int senseGuesses;
 
+  /// Games XP earned this calendar month.
+  final int gamesXp;
+
   const PlayerStats({
     required this.userId,
     required this.name,
@@ -44,6 +48,7 @@ class PlayerStats {
     required this.proteinThisWeek,
     this.calorieSense = 0,
     this.senseGuesses = 0,
+    this.gamesXp = 0,
   });
 }
 
@@ -189,6 +194,7 @@ class LeaderboardService {
       proteinThisWeek: protein,
       calorieSense: sense.average,
       senseGuesses: sense.count,
+      gamesXp: GamesProgress.fromUser(userDoc.data()).monthXp,
     );
   }
 }
