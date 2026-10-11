@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/voice_button.dart';
+import 'package:namer_app/services/voice_text.dart';
 import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
@@ -1146,10 +1148,24 @@ class _AddRecipePageState extends State<AddRecipePage> {
             helperText:
                 'Separate with commas or press Enter. Pasting a list works too.',
             helperMaxLines: 2,
-            suffixIcon: IconButton(
-              tooltip: 'Add to list',
-              icon: const Icon(Icons.add_circle_outline),
-              onPressed: () => _takeFreeText(all: true),
+            suffixIcon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                VoiceButton(
+                  controller: _freeTextController,
+                  tidy: VoiceText.foodsFromSpeech,
+                  joiner: ', ',
+                  tooltip: 'Say your ingredients',
+                  onDone: () {
+                    if (mounted) setState(() {});
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Add to list',
+                  icon: const Icon(Icons.add_circle_outline),
+                  onPressed: () => _takeFreeText(all: true),
+                ),
+              ],
             ),
           ),
           onChanged: (_) => _takeFreeText(),

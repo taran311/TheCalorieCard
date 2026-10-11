@@ -16,3 +16,22 @@ void clearUrlQuery() {}
 /// No browser share sheet here: returns false so the caller copies the
 /// link instead.
 Future<bool> shareText(String title, String text, String url) async => false;
+
+/// A voice-to-text session in progress (see [startSpeech]).
+class SpeechSession {
+  SpeechSession._();
+
+  /// Stops listening; the final words still arrive.
+  void stop() {}
+}
+
+/// No speech recognition outside a browser.
+bool get speechSupported => false;
+
+/// Not available here: always null.
+SpeechSession? startSpeech({
+  required void Function(String text, bool done) onText,
+  required void Function(String? error) onEnd,
+  String lang = 'en-GB',
+}) =>
+    null;

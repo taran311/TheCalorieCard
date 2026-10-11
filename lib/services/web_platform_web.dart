@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 // Just the few browser APIs we need, declared by hand so the app doesn't
 // need another package.
@@ -154,5 +155,121 @@ Future<bool> shareText(String title, String text, String url) async {
     return true;
   } catch (e) {
     return e.toString().contains('AbortError');
+  }
+}
+
+// ---------------------------------------------------------------- voice
+// The browser's own speech recognition (Chrome, Edge, Safari; not
+// Firefox). Audio is handled by the browser's speech service.
+
+extension type _SpeechRec._(JSObject _) implements JSObject {
+  external set lang(String value);
+  external set interimResults(bool value);
+  external set continuous(bool value);
+  external set maxAlternatives(int value);
+  external set onresult(JSFunction? value);
+  external set onerror(JSFunction? value);
+  external set onend(JSFunction? value);
+  external void start();
+  external void stop();
+}
+
+extension type _SpeechEvent._(JSObject _) implements JSObject {
+  external _SpeechResults get results;
+}
+
+extension type _SpeechResults._(JSObject _) implements JSObject {
+  external int get length;
+  external _SpeechResult item(int index);
+}
+
+extension type _SpeechResult._(JSObject _) implements JSObject {
+  external bool get isFinal;
+  external int get length;
+  external _SpeechAlternative item(int index);
+}
+
+extension type _SpeechAlternative._(JSObject _) implements JSObject {
+  external String get transcript;
+}
+
+extension type _SpeechError._(JSObject _) implements JSObject {
+  external String get error;
+}
+
+JSFunction? _speechConstructor() {
+  try {
+    for (final name in const ['SpeechRecognition', 'webkitSpeechRecognition']) {
+      final value = globalContext.getProperty<JSAny?>(name.toJS);
+      if (value != null && value.typeofEquals('function')) {
+        return value as JSFunction;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+/// A voice-to-text session in progress (see [startSpeech]).
+class SpeechSession {
+  final _SpeechRec _rec;
+
+  SpeechSession._(this._rec);
+
+  /// Stops listening; the final words still arrive.
+  void stop() {
+    try {
+      _rec.stop();
+    } catch (_) {}
+  }
+}
+
+bool? _speechSupported;
+
+/// True when this browser can turn speech into text.
+bool get speechSupported => _speechSupported ??= _speechConstructor() != null;
+
+/// Starts listening (British English). [onText] gets everything heard so
+/// far, again each time it changes, with done = true once it's final.
+/// [onEnd] is called once when listening stops, with the browser's error
+/// code if something went wrong ('not-allowed', 'no-speech', …). Returns
+/// null if speech isn't available. Must be called from a tap.
+SpeechSession? startSpeech({
+  required void Function(String text, bool done) onText,
+  required void Function(String? error) onEnd,
+  String lang = 'en-GB',
+}) {
+  final ctor = _speechConstructor();
+  if (ctor == null) return null;
+  try {
+    final rec = ctor.callAsConstructor<_SpeechRec>();
+    rec.lang = lang;
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+    String? error;
+    var ended = false;
+    rec.onresult = ((_SpeechEvent event) {
+      final results = event.results;
+      final text = StringBuffer();
+      var done = true;
+      for (var i = 0; i < results.length; i++) {
+        final result = results.item(i);
+        if (!result.isFinal) done = false;
+        if (result.length > 0) text.write(result.item(0).transcript);
+      }
+      onText(text.toString().trim(), done);
+    }).toJS;
+    rec.onerror = ((_SpeechError event) {
+      error = event.error;
+    }).toJS;
+    rec.onend = ((JSAny? _) {
+      if (ended) return;
+      ended = true;
+      onEnd(error);
+    }).toJS;
+    rec.start();
+    return SpeechSession._(rec);
+  } catch (_) {
+    return null;
   }
 }

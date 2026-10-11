@@ -11,6 +11,7 @@ import 'package:namer_app/pages/premium_page.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/coach_glyph.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/voice_button.dart';
 
 /// Calorie Coach: a friendly chat about your day, with ready-made
 /// questions that change with how the day's going. Coach can also propose
@@ -1464,7 +1465,12 @@ class _InputBar extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            VoiceButton(
+              controller: controller,
+              enabled: enabled,
+              tooltip: 'Ask out loud',
+            ),
+            const SizedBox(width: 4),
             IconButton.filled(
               onPressed: canSend ? onSend : null,
               style: IconButton.styleFrom(

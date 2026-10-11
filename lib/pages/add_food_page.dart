@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/voice_button.dart';
+import 'package:namer_app/services/voice_text.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:namer_app/pages/barcode_scan_page.dart';
@@ -1473,10 +1475,26 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       helperText:
                           'Separate foods with commas, or press Enter after each',
                       helperMaxLines: 2,
-                      suffixIcon: IconButton(
-                        tooltip: 'Add to list',
-                        icon: const Icon(Icons.add_circle_outline),
-                        onPressed: () => _takeItemsFromInput(all: true),
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Say it: "two eggs and toast" lands in the box
+                          // as "two eggs, toast" to check before adding.
+                          VoiceButton(
+                            controller: _controller,
+                            tidy: VoiceText.foodsFromSpeech,
+                            joiner: ', ',
+                            tooltip: 'Say what you ate',
+                            onDone: () {
+                              if (mounted) setState(() {});
+                            },
+                          ),
+                          IconButton(
+                            tooltip: 'Add to list',
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: () => _takeItemsFromInput(all: true),
+                          ),
+                        ],
                       ),
                     ),
                     onChanged: (_) => _takeItemsFromInput(),
