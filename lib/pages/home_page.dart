@@ -1597,6 +1597,14 @@ class _HomePageState extends State<HomePage>
         Breakpoints.tablet;
   }
 
+  /// True when the desktop Today panel (with its macro bars) is beside
+  /// the page; same rule as the shell (real window width).
+  bool get _todayPanelShowing {
+    final view = View.of(context);
+    return view.physicalSize.width / view.devicePixelRatio >=
+        Breakpoints.wide;
+  }
+
   /// Makes [meal] the one Add food / recipes log to.
   void _useMeal(String meal) {
     Provider.of<CategoryService>(context, listen: false)
@@ -1920,8 +1928,6 @@ class _HomePageState extends State<HomePage>
       String meal, List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
     final totals = BalanceService.totalOf(docs.map((d) => d.data()));
     final kcal = totals.calories.round();
-    final macros = '${_roundMacro(totals.protein)}g protein · '
-        '${_roundMacro(totals.carbs)}g carbs · ${_roundMacro(totals.fat)}g fat';
     // Small "+" and recipe buttons; the big Add food button is under the
     // card, so these stay light and never truncate on a 320 px phone.
     final canAdd = _canEditSelectedDay;
@@ -1932,9 +1938,7 @@ class _HomePageState extends State<HomePage>
 
     return Material(
       color: AppColors.gray50,
-      child: InkWell(
-        onTap: docs.isEmpty ? null : _toggleMacros,
-        child: Padding(
+      child: Padding(
           padding: EdgeInsets.fromLTRB(16, canAdd ? 2 : 12, canAdd ? 4 : 12,
               canAdd ? 2 : 12),
           child: Row(
@@ -1943,43 +1947,43 @@ class _HomePageState extends State<HomePage>
                 Icon(_mealIcon(meal), size: 20, color: AppText.primary),
                 const SizedBox(width: 8),
               ],
-              Text(
-                meal,
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                ),
+              // The meal, with its protein · carbs · fat underneath (always
+              // shown, so you never have to know to tap for them).
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    meal,
+                    style: TextStyle(
+                      color: AppColors.ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                  if (docs.isNotEmpty)
+                    MacroText(
+                      protein: totals.protein,
+                      carbs: totals.carbs,
+                      fat: totals.fat,
+                    ),
+                ],
               ),
               const SizedBox(width: 8),
               Flexible(
                 fit: FlexFit.tight,
                 child: Text(
-                  docs.isEmpty
-                      ? ''
-                      : _showMacrosTotal
-                          ? macros
-                          : '$kcal kcal',
+                  docs.isEmpty ? '' : '$kcal kcal',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.end,
                   style: TextStyle(
                     color: AppColors.gray700,
                     fontWeight: FontWeight.w600,
-                    fontSize: _showMacrosTotal ? 12 : 14,
+                    fontSize: 14,
                   ),
                 ),
               ),
-              if (docs.isNotEmpty && !(canAdd && narrow)) ...[
-                const SizedBox(width: 8),
-                Icon(
-                  _showMacrosTotal
-                      ? Icons.local_fire_department_outlined
-                      : Icons.show_chart,
-                  color: AppColors.muted,
-                  size: 18,
-                ),
-              ],
               if (canAdd) ...[
                 const SizedBox(width: 4),
                 if (narrow)
@@ -2015,7 +2019,6 @@ class _HomePageState extends State<HomePage>
             ],
           ),
         ),
-      ),
     );
   }
 
@@ -2165,7 +2168,6 @@ class _HomePageState extends State<HomePage>
     final data = doc.data();
     final name = (data['food_description'] ?? 'Food').toString();
     final portion = (data['food_portion'] ?? '').toString();
-    final showMacros = _foodMacrosVisibility[doc.id] ?? _showMacrosTotal;
     final reactions = _foodReactions[doc.id];
     final estimate = data['food_estimate'] == true;
     // Only you see that there's a note (tap the food to read it).
@@ -2222,6 +2224,13 @@ class _HomePageState extends State<HomePage>
                               fontSize: 12,
                             ),
                           ),
+                        // Its protein · carbs · fat, always visible.
+                        MacroText(
+                          protein:
+                              BalanceService.number(data['food_protein']) ?? 0,
+                          carbs: BalanceService.number(data['food_carbs']) ?? 0,
+                          fat: BalanceService.number(data['food_fat']) ?? 0,
+                        ),
                       ],
                     ),
                   ),
@@ -2251,23 +2260,14 @@ class _HomePageState extends State<HomePage>
                       color: AppColors.indigo50,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: showMacros
-                        ? MacroText(
-                            protein:
-                                BalanceService.number(data['food_protein']) ??
-                                    0,
-                            carbs:
-                                BalanceService.number(data['food_carbs']) ?? 0,
-                            fat: BalanceService.number(data['food_fat']) ?? 0,
-                          )
-                        : Text(
-                            '${_roundMacro(data['food_calories'])} kcal',
-                            style: TextStyle(
-                              color: AppText.primaryDark,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                            ),
-                          ),
+                    child: Text(
+                      '${_roundMacro(data['food_calories'])} kcal',
+                      style: TextStyle(
+                        color: AppText.primaryDark,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -2658,6 +2658,18 @@ class _HomePageState extends State<HomePage>
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                         child: spentLine,
+                      ),
+                    // What you've eaten of each macro (the card shows what's
+                    // left). Wide screens have the Today panel instead.
+                    if (spentLine != null &&
+                        _goalsForSelectedDay.protein > 0 &&
+                        !_todayPanelShowing)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        child: DayMacros(
+                          eaten: _dayTotals,
+                          goals: _goalsForSelectedDay,
+                        ),
                       ),
                     if (pacing != null)
                       Padding(

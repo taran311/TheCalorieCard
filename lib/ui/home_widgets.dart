@@ -188,3 +188,85 @@ class EstimateMark extends StatelessWidget {
     );
   }
 }
+
+/// Protein, carbs and fat eaten so far against the day's goals, as three
+/// slim bars: "84 / 150g". On phones this is the only place you see what
+/// you've eaten of each (the card shows what's left); wide screens have
+/// the Today panel instead.
+class DayMacros extends StatelessWidget {
+  final Macros eaten;
+  final Macros goals;
+
+  const DayMacros({super.key, required this.eaten, required this.goals});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget one(String label, double ate, double goal, Color bar, Color text) {
+      final over = goal > 0 && ate > goal + 0.5;
+      final g = ate.isFinite ? ate.round() : 0;
+      final target = goal.isFinite ? goal.round() : 0;
+      return Expanded(
+        child: Semantics(
+          label: '$label: $g of $target grams eaten'
+              '${over ? ', over your goal' : ''}',
+          child: ExcludeSemantics(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: text,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text.rich(
+                  TextSpan(children: [
+                    TextSpan(
+                      text: '$g',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: over ? AppText.red600 : AppColors.ink,
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' / ${target}g',
+                      style: TextStyle(color: AppColors.muted),
+                    ),
+                  ]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 5),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: goal <= 0 ? 0 : (ate / goal).clamp(0.0, 1.0),
+                    minHeight: 5,
+                    color: over ? AppColors.red : bar,
+                    backgroundColor: AppColors.gray100,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        one('Protein', eaten.protein, goals.protein, AppColors.protein,
+            AppColors.proteinText),
+        const SizedBox(width: 14),
+        one('Carbs', eaten.carbs, goals.carbs, AppColors.carbs,
+            AppColors.carbsText),
+        const SizedBox(width: 14),
+        one('Fat', eaten.fat, goals.fat, AppColors.fat, AppColors.fatText),
+      ],
+    );
+  }
+}
