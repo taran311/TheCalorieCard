@@ -293,7 +293,8 @@ class _MenuPageState extends State<MenuPage> {
     );
   }
 
-  /// "2,050 kcal a day · 150P 200C 70F", from the saved goals.
+  /// "2,050 kcal a day" over "150g protein · 200g carbs · 70g fat", from
+  /// the saved goals.
   Widget _goalChip() {
     final stream = _profile;
     if (stream == null) return const SizedBox.shrink();
@@ -305,34 +306,51 @@ class _MenuPageState extends State<MenuPage> {
             ? null
             : BalanceService.goalsFrom(docs.first.data());
         if (goals == null) return const SizedBox.shrink();
-        final text = '${formatCardKcal(goals.calories)} kcal a day · '
-            '${goals.protein.round()}P ${goals.carbs.round()}C '
-            '${goals.fat.round()}F';
+        final kcal = '${formatCardKcal(goals.calories)} kcal a day';
+        final macros = '${goals.protein.round()}g protein · '
+            '${goals.carbs.round()}g carbs · ${goals.fat.round()}g fat';
         return Padding(
           padding: const EdgeInsets.only(top: 16),
           child: Material(
             color: Colors.white.withValues(alpha: 0.18),
-            shape: const StadiumBorder(),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18)),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: _openSettings,
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.tune, size: 16, color: Colors.white),
                     const SizedBox(width: 8),
                     Flexible(
-                      child: Text(
-                        text,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            kcal,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            macros,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.9),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
