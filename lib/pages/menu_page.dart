@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/pages/account_page.dart';
+import 'package:namer_app/pages/budgets_page.dart';
 import 'package:namer_app/pages/premium_page.dart';
 import 'package:namer_app/pages/weight_page.dart';
 import 'package:namer_app/services/premium_service.dart';
@@ -466,6 +467,13 @@ class _MenuPageState extends State<MenuPage> {
                       title: 'Pots',
                       subtitle: 'Save a little each day for a treat',
                       onTap: () => _open(const PotsPage()),
+                    ),
+                    _menuRow(
+                      icon: Icons.pie_chart_outline,
+                      iconColor: AppText.amber700,
+                      title: 'Budgets',
+                      subtitle: 'Limits for a meal or a type of food',
+                      onTap: () => _open(const BudgetsPage()),
                     ),
                     _menuRow(
                       icon: Icons.autorenew,

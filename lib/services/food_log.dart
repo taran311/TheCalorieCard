@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/achievement_service.dart';
@@ -234,6 +235,25 @@ class FoodLog {
 
     await BalanceService.updateEntry(uid, entryId,
         macros: macros, fields: fields);
+    notifyChanged();
+  }
+
+  /// Longest note kept on a food (like a bank transaction note).
+  static const maxNoteLength = 200;
+
+  /// The note on a logged food ("at Nando's with Sam"), or '' if none.
+  static String noteOf(Map<String, dynamic> entry) =>
+      (entry['food_note'] ?? '').toString().trim();
+
+  /// Saves (or, if blank, removes) the note on a logged food. Only
+  /// `food_note` is written: the calories and the card are left alone.
+  static Future<void> setNote(String entryId, String note,
+      {String? userId}) async {
+    var text = note.trim();
+    if (text.length > maxNoteLength) text = text.substring(0, maxNoteLength);
+    await BalanceService.updateEntry(_uid(userId), entryId, fields: {
+      'food_note': text.isEmpty ? FieldValue.delete() : text,
+    });
     notifyChanged();
   }
 

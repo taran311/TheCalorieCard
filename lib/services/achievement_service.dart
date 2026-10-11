@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/achievements.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/rest_days.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/challenge_service.dart';
 
@@ -75,6 +76,12 @@ class AchievementService {
           .where('user_id', isEqualTo: uid)
           .limit(1)
           .get()),
+      // Rest days don't break streaks.
+      _safe(() => db
+          .collection('daily_logs')
+          .where('user_id', isEqualTo: uid)
+          .where('rest_day', isEqualTo: true)
+          .get()),
     ]);
 
     final achData =
@@ -89,6 +96,7 @@ class AchievementService {
             const <String, dynamic>{};
     final debits = results[4] as QuerySnapshot<Map<String, dynamic>>?;
     final recipes = results[5] as QuerySnapshot<Map<String, dynamic>>?;
+    final rests = results[6] as QuerySnapshot<Map<String, dynamic>>?;
 
     final already = <String>{
       for (final a in Achievements.all)
@@ -127,6 +135,8 @@ class AchievementService {
       wonChallenge: challenge.won,
       teamGoalHit: challenge.teamGoal,
       recipesSaved: recipes?.docs.length ?? 0,
+      restDays: RestDays.keysFrom(
+          rests?.docs.map((d) => d.data()) ?? const <Map<String, dynamic>>[]),
     ));
 
     final newly = AchievementEngine.unlocked(progress).difference(already);

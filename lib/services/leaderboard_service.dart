@@ -4,6 +4,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/card_design_service.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/services/rest_days.dart';
 import 'package:namer_app/services/streak.dart';
 
 /// Everything the hiscores need for one person.
@@ -93,7 +94,10 @@ class LeaderboardService {
         if (doc.data()?['finished'] == true)
           (doc.data()?['date_key'] ?? '').toString(),
     };
-    return Streaks.compute(finished, from: days.last, today: today);
+    // Rest days pause the streak rather than break it.
+    final rest = RestDays.keysFrom(logs.map((doc) => doc.data()));
+    return Streaks.compute(finished,
+        from: days.last, today: today, restDays: rest);
   }
 
   static Future<PlayerStats> _loadOne(String userId, bool isMe) async {
@@ -150,8 +154,11 @@ class LeaderboardService {
 
     // Streak (with Streak Freezes): today counts if finished; if not, the
     // streak can still be alive from yesterday (today isn't over yet).
+    // Rest days are skipped: paused, not broken.
     final streakResult = Streaks.compute(finished.keys.toSet(),
-        from: days.last, today: today);
+        from: days.last,
+        today: today,
+        restDays: RestDays.keysFrom(logs.map((doc) => doc.data())));
     final streak = streakResult.current;
 
     double protein = 0;

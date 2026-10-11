@@ -20,6 +20,7 @@ import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/services/pacing.dart';
+import 'package:namer_app/services/rest_days.dart';
 import 'package:namer_app/services/usuals.dart';
 import 'package:namer_app/ui/coach_nudge.dart';
 import 'package:namer_app/ui/entry_sheet.dart';
@@ -324,9 +325,17 @@ class _HomePageState extends State<HomePage>
   bool get _isOwnCard => !widget.readOnly && widget.userIdOverride == null;
 
   /// Food can be added or removed only on today's card, and only until the
-  /// day is finished. Past days are a statement: read-only.
+  /// day is finished. Past days are a statement: read-only. A rest day
+  /// ("frozen" card) is read-only too, until it's unfrozen.
   bool get _canEditSelectedDay =>
-      _isOwnCard && _isSelectedDateToday && !_isDayFinished;
+      _isOwnCard && _isSelectedDateToday && !_isDayFinished && !_isRestDay;
+
+  /// The selected day is a rest day (`daily_logs.rest_day`): the card is
+  /// "frozen", nothing is tracked and the streak is paused.
+  bool get _isRestDay => RestDays.isRest(_selectedDailyLog);
+
+  /// Starting or ending a rest day is in progress.
+  bool _restBusy = false;
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _foodDocs = [];
 
@@ -917,6 +926,8 @@ class _HomePageState extends State<HomePage>
 
   /// The card was swiped: close today, or reopen it if it's closed.
   Future<void> _handleCardSwipe() async {
+    // A frozen (rest day) card can't be closed; Unfreeze is under it.
+    if (_isRestDay) return;
     if (_isDayFinished) {
       await _reopenDay();
     } else {
@@ -947,6 +958,7 @@ class _HomePageState extends State<HomePage>
   Future<void> _closeDay() async {
     if (_isUpdatingDailyLog) return;
     if (!_isSelectedDateToday || !_isOwnCard || _isDayFinished) return;
+    if (_isRestDay) return;
 
     // An empty day is usually a mistake, so say so first.
     final nothingLogged = _foodDocs.isEmpty;
@@ -1000,6 +1012,190 @@ class _HomePageState extends State<HomePage>
     try {
       await LeaderboardService.refreshMine(_activeUserId);
     } catch (_) {}
+  }
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// "🏖️ Rest day" (like freezing a bank card): explains it, then marks
+  /// today as a rest day. Two a week (Monday–Sunday); once they're used up
+  /// the sheet says so instead.
+  Future<void> _startRestDay() async {
+    if (_restBusy || !_isOwnCard || !_isSelectedDateToday) return;
+    if (_isDayFinished || _isRestDay) return;
+    setState(() => _restBusy = true);
+    int? left;
+    try {
+      left = await RestDays.leftThisWeek(_activeUserId);
+    } catch (_) {
+      left = null;
+    }
+    if (!mounted) return;
+    if (left == null) {
+      setState(() => _restBusy = false);
+      _snack("Couldn't check your rest days. Please try again.");
+      return;
+    }
+    setState(() => _restBusy = false);
+    final yes = await _showRestDaySheet(left);
+    if (yes != true || !mounted) return;
+
+    setState(() => _restBusy = true);
+    try {
+      await RestDays.start(_activeUserId);
+      if (!mounted) return;
+      // Freeze straight away; the reload below confirms it.
+      setState(() {
+        _selectedDailyLog = <String, dynamic>{
+          ...?_selectedDailyLog,
+          'rest_day': true,
+        };
+      });
+      await _fetchDailyLogForDate(_selectedLogDate);
+      MyStreak.load(_activeUserId, force: true);
+      _snack('Rest day on. Your streak is paused, not broken.');
+    } on RestDayLimitReached {
+      _snack("You've used both rest days this week. "
+          'They come back on Monday.');
+    } catch (_) {
+      _snack("Couldn't start your rest day. Please try again.");
+    } finally {
+      if (mounted) setState(() => _restBusy = false);
+    }
+  }
+
+  /// "Unfreeze": today is a normal day again (only today can be undone).
+  Future<void> _endRestDay() async {
+    if (_restBusy || !_isOwnCard || !_isSelectedDateToday || !_isRestDay) {
+      return;
+    }
+    setState(() => _restBusy = true);
+    try {
+      await RestDays.end(_activeUserId);
+      if (!mounted) return;
+      setState(() {
+        _selectedDailyLog = <String, dynamic>{
+          ...?_selectedDailyLog,
+          'rest_day': false,
+        };
+      });
+      await _fetchDailyLogForDate(_selectedLogDate);
+      MyStreak.load(_activeUserId, force: true);
+      _snack('Rest day ended. Add food as normal.');
+    } catch (_) {
+      _snack("Couldn't end your rest day. Please try again.");
+    } finally {
+      if (mounted) setState(() => _restBusy = false);
+    }
+  }
+
+  /// Explains a rest day before starting one ([left] this week). Returns
+  /// true to go ahead.
+  Future<bool?> _showRestDaySheet(int left) {
+    final usedUp = left <= 0;
+    return showModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                usedUp
+                    ? '🏖️ No rest days left this week'
+                    : '🏖️ Take a rest day?',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                usedUp
+                    ? "You've taken both of this week's rest days (Monday to "
+                        'Sunday). They come back on Monday. Until then, '
+                        'track today as normal.'
+                    : "Rest days are for holidays and celebrations. You won't "
+                        'track today, and your streak is paused, not broken. '
+                        'You can take ${RestDays.maxPerWeek} a week.',
+                style: TextStyle(
+                    fontSize: 15, color: AppColors.gray700, height: 1.4),
+              ),
+              if (!usedUp) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.sky50,
+                    borderRadius: BorderRadius.circular(AppDecor.radius),
+                    border: Border.all(color: AppColors.sky100),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$left of ${RestDays.maxPerWeek} left this week '
+                        '(Monday to Sunday)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.sky700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Food you've already logged today stays in your "
+                        "diary. Changed your mind? Tap End rest day any time "
+                        'today.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.gray700,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              if (usedUp)
+                FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext, false),
+                  style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 52)),
+                  child: const Text('OK'),
+                )
+              else ...[
+                FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext, true),
+                  style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 52)),
+                  child: const Text(
+                    'Start rest day',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.pop(sheetContext, false),
+                  style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 48)),
+                  child: const Text('Not now'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// Loads the selected day's food (every meal, oldest first) and the
@@ -1661,7 +1857,10 @@ class _HomePageState extends State<HomePage>
             customSemanticsActions: !_isOwnCard || !_isSelectedDateToday
                 ? null
                 : {
-                    if (_isDayFinished)
+                    if (_isRestDay)
+                      CustomSemanticsAction(label: 'End rest day'):
+                          _endRestDay
+                    else if (_isDayFinished)
                       CustomSemanticsAction(label: 'Reopen day'):
                           _reopenDay
                     else
@@ -1679,6 +1878,7 @@ class _HomePageState extends State<HomePage>
                         design: _cardDesign,
                         validThruDate: validThru,
                         onToggleMacros: _onCardFlipped,
+                        restDay: _isRestDay,
                         onBalance: (calories) {
                           if (mounted && calories != _liveBalance) {
                             setState(() => _liveBalance = calories);
@@ -1698,6 +1898,7 @@ class _HomePageState extends State<HomePage>
                         design: _cardDesign,
                         validThruDate: validThru,
                         onToggleMacros: _onCardFlipped,
+                        restDay: _isRestDay,
                       ),
               ],
             ),
@@ -1832,29 +2033,41 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  /// One line above the meals: what's been eaten and what's left.
-  Widget? _buildDaySummary() {
-    final left = _liveBalance;
-    if (!_isOwnCard || !_isSelectedDateToday || left == null) return null;
+  /// One small line directly under the card, like a bank app's "£X spent
+  /// today" under the balance: "420 kcal spent today · 1,580 left". The
+  /// card itself has no caption, so this is also what says what its big
+  /// number is. Past days: "1,850 kcal spent · 150 left".
+  Widget? _buildSpentLine() {
+    if (_foodLoadFailed) return null;
+    final today = _isSelectedDateToday;
+    final spent = _dayTotals.calories.round();
+    final int? left =
+        today ? _liveBalance : _selectedDayBalance.calories.round();
     final goal = _goalsForSelectedDay.calories;
-    final Color leftColor = left < 0
+    final Color leftColor = left == null || left < 0
         ? AppText.red600
         : (goal > 0 && left <= goal * 0.1)
             ? AppText.amber700
             : AppText.emerald700;
-    final eaten = _dayTotals.calories.round();
     return Text.rich(
       TextSpan(
         children: [
-          TextSpan(text: 'Eaten today: ${formatCardKcal(eaten)} kcal · '),
           TextSpan(
-            text: left < 0
-                ? '${formatCardKcal(-left)} kcal over'
-                : '${formatCardKcal(left)} kcal left',
-            style: TextStyle(color: leftColor, fontWeight: FontWeight.w700),
+            text: '${formatCardKcal(spent)} kcal spent'
+                '${today ? ' today' : ''}',
           ),
+          if (left != null) ...[
+            const TextSpan(text: ' · '),
+            TextSpan(
+              text: left < 0
+                  ? '${formatCardKcal(-left)} over'
+                  : '${formatCardKcal(left)} left',
+              style: TextStyle(color: leftColor, fontWeight: FontWeight.w700),
+            ),
+          ],
         ],
       ),
+      textAlign: TextAlign.center,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(fontSize: 13, color: AppColors.muted),
@@ -1955,6 +2168,8 @@ class _HomePageState extends State<HomePage>
     final showMacros = _foodMacrosVisibility[doc.id] ?? _showMacrosTotal;
     final reactions = _foodReactions[doc.id];
     final estimate = data['food_estimate'] == true;
+    // Only you see that there's a note (tap the food to read it).
+    final hasNote = _isOwnCard && FoodLog.noteOf(data).isNotEmpty;
 
     final row = Material(
       color: AppColors.surface,
@@ -2013,6 +2228,18 @@ class _HomePageState extends State<HomePage>
                   if (estimate) ...[
                     const SizedBox(width: 6),
                     const EstimateMark(),
+                  ],
+                  if (hasNote) ...[
+                    const SizedBox(width: 6),
+                    Tooltip(
+                      message: 'Has a note',
+                      child: Semantics(
+                        label: 'Has a note',
+                        child: const ExcludeSemantics(
+                          child: Text('📝', style: TextStyle(fontSize: 14)),
+                        ),
+                      ),
+                    ),
                   ],
                   const SizedBox(width: 8),
                   Container(
@@ -2300,6 +2527,50 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  /// The bottom of today: "Close today" (once there's food) and, beside
+  /// it, the quieter "🏖️ Rest day" (freeze the card for today).
+  Widget _buildDayActions(bool hasFood) {
+    final rest = Tooltip(
+      message: "A day off: no tracking, and your streak's paused",
+      child: OutlinedButton(
+        onPressed: _restBusy ? null : _startRestDay,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+        ),
+        child: Text(
+          hasFood ? '🏖️ Rest day' : '🏖️ Take a rest day',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+    if (!hasFood) return rest;
+    return Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: OutlinedButton.icon(
+            key: _tourClose,
+            onPressed: _isUpdatingDailyLog ? null : _closeDay,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+            icon: const Icon(Icons.task_alt_rounded),
+            label: const Text(
+              'Close today',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(flex: 2, child: rest),
+      ],
+    );
+  }
+
   Widget _buildFoodPanel(String meal) {
     final visible = _visibleIn(meal);
     final canEdit = _canEditSelectedDay;
@@ -2355,7 +2626,7 @@ class _HomePageState extends State<HomePage>
       );
     }
 
-    final summary = _buildDaySummary();
+    final spentLine = _buildSpentLine();
 
     final ownHome = _isOwnCard && !widget.showBanner;
     final overBy = _liveBalance == null ? 0 : -_liveBalance!;
@@ -2383,6 +2654,11 @@ class _HomePageState extends State<HomePage>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildCard(),
+                    if (spentLine != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        child: spentLine,
+                      ),
                     if (pacing != null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2399,8 +2675,18 @@ class _HomePageState extends State<HomePage>
                         padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                         child: usuals,
                       ),
+                    // Rest day: food is paused until it's unfrozen.
+                    if (_isOwnCard && _isSelectedDateToday && _isRestDay)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: _RestDayStrip(
+                          onUnfreeze: _restBusy ? null : _endRestDay,
+                        ),
+                      )
                     // Closed: one quiet row instead of any add buttons.
-                    if (_isOwnCard && _isSelectedDateToday && _isDayFinished)
+                    else if (_isOwnCard &&
+                        _isSelectedDateToday &&
+                        _isDayFinished)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                         child: _ClosedDayStrip(onReopen: _reopenDay),
@@ -2409,6 +2695,7 @@ class _HomePageState extends State<HomePage>
                     if (_isOwnCard &&
                         _isSelectedDateToday &&
                         !_isDayFinished &&
+                        !_isRestDay &&
                         overBy > 0)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2460,18 +2747,14 @@ class _HomePageState extends State<HomePage>
                         padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                         child: HomeInbox(
                           userId: _activeUserId,
-                          isDayFinished: _isDayFinished,
+                          // Nothing to finish on a rest day.
+                          isDayFinished: _isDayFinished || _isRestDay,
                           hasFoodToday: _dayTotals.calories > 0,
                           onFinishDay: _closeDay,
                           onBalanceChanged: _refreshAfterChange,
                         ),
                       ),
                     const SizedBox(height: 16),
-                    if (summary != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                        child: summary,
-                      ),
                     if (_isOwnCard && !_isSelectedDateToday)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -2497,18 +2780,11 @@ class _HomePageState extends State<HomePage>
                           child: _buildFoodPanel(meal),
                         ),
                     // Done for the day? Close it here (or swipe the card).
-                    if (canAdd && visibleFood)
+                    // Or freeze it: a rest day.
+                    if (canAdd)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                        child: OutlinedButton.icon(
-                          key: _tourClose,
-                          onPressed: _isUpdatingDailyLog ? null : _closeDay,
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(0, 48),
-                          ),
-                          icon: const Icon(Icons.task_alt_rounded),
-                          label: const Text('Close today'),
-                        ),
+                        child: _buildDayActions(visibleFood),
                       ),
                   ],
                 ),
@@ -2565,6 +2841,49 @@ class _ClosedDayStrip extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Under the card on a rest day (in place of Add food): the card is
+/// frozen, with one clear way to unfreeze it.
+class _RestDayStrip extends StatelessWidget {
+  final VoidCallback? onUnfreeze;
+
+  const _RestDayStrip({required this.onUnfreeze});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
+      decoration: BoxDecoration(
+        color: AppColors.sky50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.sky100),
+      ),
+      child: Row(
+        children: [
+          const ExcludeSemantics(
+            child: Text('🏖️', style: TextStyle(fontSize: 18)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Rest day · End it to add food',
+              style: TextStyle(
+                color: AppColors.gray700,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onUnfreeze,
+            style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
+            child: const Text('End rest day'),
+          ),
+        ],
       ),
     );
   }

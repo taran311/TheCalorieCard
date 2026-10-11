@@ -129,6 +129,77 @@ void main() {
       expect(d.toShareText(), contains('2 days on budget'));
       expect(d.isEmpty, isFalse);
     });
+
+    test('search: name contains, any case, grouped by day newest first',
+        () async {
+      await w.addEntry(
+          at: DateTime(2026, 9, 3, 13), calories: 508, description: 'Big Mac');
+      await w.addEntry(
+          at: DateTime(2026, 10, 8, 19),
+          calories: 600,
+          meal: 'Dinner',
+          description: 'big mac meal');
+      await w.addEntry(
+          at: DateTime(2026, 10, 8, 12), calories: 300, description: 'Salad');
+      // Older than a year: not searched.
+      await w.addEntry(
+          at: DateTime(2025, 10, 1, 12), calories: 500, description: 'Big Mac');
+
+      final s = await StatementService.load(uid, days: 365, withLogs: false);
+      final found = s.search('  BIG mac ');
+
+      expect(found.map((d) => BalanceService.dateKey(d.day)),
+          ['2026-10-08', '2026-09-03']);
+      expect(found.first.transactions.single.description, 'big mac meal');
+      expect(found.last.transactions.single.calories, 508);
+      expect(found.last.transactions.single.category, 'Lunch');
+      expect(s.search('pizza'), isEmpty);
+      expect(s.search('   '), isEmpty);
+    });
+
+    test('a month range: rest days, over-by and recipes', () async {
+      await w.addEntry(at: DateTime(2026, 10, 2, 12), calories: 2320);
+      await w.addEntry(at: DateTime(2026, 10, 3, 12), calories: 1500);
+      await w.db.collection('daily_logs').doc('${uid}_2026-10-04').set({
+        'rest_day': true,
+      });
+      // Finished over: judged by the card's close (-150), not the food.
+      await w.addEntry(at: DateTime(2026, 10, 5, 12), calories: 2100);
+      await w.db.collection('daily_logs').doc('${uid}_2026-10-05').set({
+        'finished': true,
+        'balances': {'calories': -150},
+      });
+      await w.db.collection('user_food').add({
+        'user_id': uid,
+        'food_description': 'Recipe: Chocolate cake',
+        'food_calories': 300,
+        'foodCategory': 'Snacks',
+        'is_recipe': true,
+        'time_added': DateTime(2026, 10, 3, 15),
+      });
+
+      final s = await StatementService.loadRange(
+          uid, DateTime(2026, 10, 1), DateTime(2026, 10, 10));
+      DaySummary day(int n) => s.days[n - 1];
+
+      expect(s.days, hasLength(9));
+      expect(BalanceService.dateKey(s.days.first.day), '2026-10-01');
+      expect(BalanceService.dateKey(s.days.last.day), '2026-10-09');
+      expect(day(2).overBy(s.dailyBudget), closeTo(320, 0.001));
+      expect(day(3).overBy(s.dailyBudget), isNull);
+      expect(day(3).onBudget(s.dailyBudget), isTrue);
+      expect(day(4).restDay, isTrue);
+      expect(day(3).restDay, isFalse);
+      expect(day(5).overBy(s.dailyBudget), closeTo(150, 0.001));
+      expect(day(1).overBy(s.dailyBudget), isNull);
+      final cake = day(3).transactions.firstWhere((t) => t.isRecipe);
+      expect(cake.spendCategory.name, 'homeCooked');
+
+      // An empty range is just empty.
+      final none = await StatementService.loadRange(
+          uid, DateTime(2026, 10, 5), DateTime(2026, 10, 5));
+      expect(none.days, isEmpty);
+    });
   });
 
   group('Portions', () {

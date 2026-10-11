@@ -9,3 +9,10 @@ bool downloadTextFile(
 
 /// Only meaningful in a browser.
 bool get iosNeedsHomeScreen => false;
+
+/// Nothing to tidy outside a browser.
+void clearUrlQuery() {}
+
+/// No browser share sheet here: returns false so the caller copies the
+/// link instead.
+Future<bool> shareText(String title, String text, String url) async => false;

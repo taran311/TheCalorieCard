@@ -479,9 +479,10 @@ final List<Tutorial> tutorials = [
         focus: 'gameConfirm',
       ),
       TStep(
-        title: "Let's play",
-        body: "Marcus gets a message saying it's his turn. He can play "
-            'whenever suits him.',
+        title: 'Pick a game',
+        body: 'Mystery foods: you both guess the same 5 foods. Or Guess what '
+            "I ate: you each pick 5 foods you've eaten. Tap Start, and "
+            "Marcus hears it's his turn.",
         target: 'gameConfirm',
         act: TAct.tap,
         apply: (s) {

@@ -35,6 +35,9 @@ class CreditCard extends StatefulWidget {
   /// passed in with [skipFetch]).
   final ValueChanged<int>? onBalance;
 
+  /// A rest day: the card shows as frozen (frosted, "🏖️ Rest day").
+  final bool restDay;
+
   const CreditCard({
     super.key,
     this.initialCalories,
@@ -50,6 +53,7 @@ class CreditCard extends StatefulWidget {
     this.design = CardDesign.midnight,
     this.tourKeys,
     this.onBalance,
+    this.restDay = false,
   });
 
   @override
@@ -247,6 +251,13 @@ class _CreditCardWidgetState extends State<CreditCard>
 
         Widget sized(Widget child) =>
             SizedBox(width: width, height: height, child: child);
+        // Rest day: frosted over, front and back (like a frozen bank card).
+        Widget face(Widget child) => sized(widget.restDay
+            ? Stack(children: [
+                Positioned.fill(child: child),
+                const Positioned.fill(child: RestDayFrost()),
+              ])
+            : child);
 
         if (_loading) return sized(CalorieCardSkeleton(design: widget.design));
         if (_failed) {
@@ -346,7 +357,8 @@ class _CreditCardWidgetState extends State<CreditCard>
 
         return Semantics(
           button: true,
-          label: 'Calorie card. $label: ${formatCardKcal(calories)} kcal. '
+          label: '${widget.restDay ? 'Rest day. ' : ''}'
+              'Calorie card. $label: ${formatCardKcal(calories)} kcal. '
               'Tap to see macros.',
           child: GestureDetector(
             onTap: _toggle,
@@ -366,9 +378,9 @@ class _CreditCardWidgetState extends State<CreditCard>
                           // Un-mirror the back face.
                           alignment: Alignment.center,
                           transform: Matrix4.identity()..rotateY(math.pi),
-                          child: sized(back),
+                          child: face(back),
                         )
-                      : sized(front),
+                      : face(front),
                 );
               },
             ),

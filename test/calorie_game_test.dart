@@ -1,21 +1,35 @@
 // Guess the Calories: dealing foods, hidden guesses, finishing and the
-// head-to-head record.
+// head-to-head record; "Guess what I ate" (swap) games; ending games
+// nobody moves in; and the "your turn" requests to the server.
 
 import 'dart:math';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/services/calorie_game.dart';
+import 'package:namer_app/services/statement_service.dart';
 
 import 'test_helpers.dart';
 
 const me = TestWorld.uid;
 const friend = TestWorld.otherUid;
 
+/// The 5 foods each player picks in a swap game.
+final myPicks = kGameFoods.sublist(0, 5);
+final theirPicks = kGameFoods.sublist(5, 10);
+
 void main() {
   late TestWorld w;
 
+  /// Requests that would have gone to the server, as {path, ...body}.
+  final sent = <Map<String, dynamic>>[];
+
   setUp(() {
     w = TestWorld()..install();
+    sent.clear();
+    CalorieGameService.notifier = (path, body) async {
+      sent.add({'path': path, ...body});
+    };
   });
 
   tearDown(TestWorld.uninstall);
@@ -32,15 +46,38 @@ void main() {
   Future<CalorieGame> load(String id) async =>
       CalorieGame.fromDoc(await w.db.collection('calorie_games').doc(id).get());
 
-  /// Guesses each food's real calories plus [offset].
+  /// Guesses each food's real calories plus [offset] (the foods [uid] has
+  /// to guess, in either kind of game).
   Future<CalorieGame> playAll(String id, String uid, {int offset = 0}) async {
     var g = await load(id);
-    for (final f in g.foods) {
+    for (final f in g.foodsFor(uid)) {
       g = await CalorieGameService.guess(
           gameId: id, uid: uid, kcal: f.kcal + offset, notify: false);
     }
     return g;
   }
+
+  Future<String> newSwap({bool notify = false}) => CalorieGameService.create(
+        uid: me,
+        myName: 'me',
+        friendId: friend,
+        friendName: 'sam',
+        mode: GameMode.swap,
+        picks: myPicks,
+        notify: notify,
+      );
+
+  /// A swap game where both have picked.
+  Future<String> readySwap() async {
+    final id = await newSwap();
+    await CalorieGameService.pick(id, friend, theirPicks, notify: false);
+    return id;
+  }
+
+  List<String> names(List<GameFood> foods) => [for (final f in foods) f.name];
+
+  Future<Map<String, dynamic>> raw(String id) async =>
+      (await w.db.collection('calorie_games').doc(id).get()).data()!;
 
   test('the food bank has sensible, distinct foods', () {
     expect(kGameFoods.length, greaterThanOrEqualTo(40));
@@ -183,5 +220,410 @@ void main() {
       expect(d['type'], 'game');
       expect(d['game_id'], id);
     }
+  });
+
+  test('a new game says what kind it is and when it ends', () async {
+    final g = await load(await newGame());
+    expect(g.mode, GameMode.classic);
+    expect(g.isSwap, isFalse);
+    expect(g.expiresAt, w.now.add(const Duration(days: 7)));
+    expect(g.picks, isEmpty);
+    expect(g.ready, isTrue);
+    expect(g.isTurnOf(me), isTrue);
+    expect(g.isTurnOf(friend), isTrue);
+  });
+
+  test('classic games saved without a mode still work', () async {
+    final ref = await w.db.collection('calorie_games').add({
+      'player_ids': [me, friend],
+      'names': {me: 'me', friend: 'sam'},
+      'created_by': me,
+      'foods': [for (final f in kGameFoods.take(5)) f.toMap()],
+      'guesses': {me: <int>[], friend: <int>[]},
+      'status': 'active',
+      'winner': null,
+      'updated_at': Timestamp.fromDate(w.now),
+    });
+    var g = await load(ref.id);
+    expect(g.mode, GameMode.classic);
+    expect(names(g.foodsFor(me)), names(kGameFoods.take(5).toList()));
+    expect(names(g.foodsFor(friend)), names(g.foods));
+    expect(g.nextFoodFor(me), 0);
+    expect(g.maxScore, 500);
+    // No expires_at: a week after the last move.
+    expect(g.endsAt, w.now.add(const Duration(days: 7)));
+
+    await playAll(ref.id, me);
+    g = await playAll(ref.id, friend, offset: 30);
+    expect(g.isFinished, isTrue);
+    expect(g.winner, me);
+    expect((await load(ref.id)).scoreOf(me), 500);
+  });
+
+  group('Guess what I ate', () {
+    test('starting saves your picks and waits for your friend to pick',
+        () async {
+      final id = await newSwap();
+      final g = await load(id);
+      expect(g.mode, GameMode.swap);
+      expect(g.foods, isEmpty);
+      expect(names(g.picksOf(me)), names(myPicks));
+      expect(g.hasPicked(me), isTrue);
+      expect(g.needsPickFrom(friend), isTrue);
+      expect(g.needsPickFrom(me), isFalse);
+      expect(g.ready, isFalse);
+      // Your friend guesses your foods; yours come once they've picked.
+      expect(names(g.foodsFor(friend)), names(myPicks));
+      expect(g.foodsFor(me), isEmpty);
+      expect(g.nextFoodFor(me), isNull);
+      expect(g.nextFoodFor(friend), isNull);
+      expect(g.doneBy(me), isFalse);
+      expect(g.totalFor(me), CalorieGameService.rounds);
+      expect(g.isTurnOf(friend), isTrue);
+      expect(g.isTurnOf(me), isFalse);
+      expect(g.maxScore, 500);
+
+      final data = await raw(id);
+      expect(data['mode'], 'swap');
+      expect((data['picks'] as Map).containsKey(friend), isTrue);
+      expect((data['picks'] as Map)[friend], isNull);
+      expect((data['picks'] as Map)[me], hasLength(5));
+    });
+
+    test('needs exactly 5 foods to start or to pick', () async {
+      expect(
+        () => CalorieGameService.create(
+            uid: me,
+            myName: 'me',
+            friendId: friend,
+            friendName: 'sam',
+            mode: GameMode.swap,
+            picks: myPicks.take(4).toList(),
+            notify: false),
+        throwsArgumentError,
+      );
+      expect(
+        () => CalorieGameService.create(
+            uid: me,
+            myName: 'me',
+            friendId: friend,
+            friendName: 'sam',
+            mode: GameMode.swap,
+            notify: false),
+        throwsArgumentError,
+      );
+      final id = await newSwap();
+      expect(
+        () => CalorieGameService.pick(id, friend, theirPicks.take(4).toList(),
+            notify: false),
+        throwsArgumentError,
+      );
+      expect(
+        () => CalorieGameService.pick(
+            id, friend, [...theirPicks, kGameFoods[20]],
+            notify: false),
+        throwsArgumentError,
+      );
+      expect((await load(id)).needsPickFrom(friend), isTrue);
+    });
+
+    test("nobody can guess until both have picked, and picking is once",
+        () async {
+      final id = await newSwap();
+      await expectLater(
+        CalorieGameService.guess(
+            gameId: id, uid: friend, kcal: 100, notify: false),
+        throwsStateError,
+      );
+      await expectLater(
+        CalorieGameService.guess(gameId: id, uid: me, kcal: 100, notify: false),
+        throwsStateError,
+      );
+      expect((await load(id)).guessesOf(me), isEmpty);
+
+      final g = await CalorieGameService.pick(id, friend, theirPicks,
+          notify: false);
+      expect(g.ready, isTrue);
+      expect(names((await load(id)).picksOf(friend)), names(theirPicks));
+
+      // A second pick changes nothing.
+      await CalorieGameService.pick(id, friend, myPicks, notify: false);
+      expect(names((await load(id)).picksOf(friend)), names(theirPicks));
+      // And classic games have nothing to pick.
+      final classic = await newGame();
+      await expectLater(
+        CalorieGameService.pick(classic, friend, theirPicks, notify: false),
+        throwsStateError,
+      );
+    });
+
+    test("each guesses the other's foods, scored against those foods",
+        () async {
+      final id = await readySwap();
+      var g = await load(id);
+      expect(names(g.foodsFor(me)), names(theirPicks));
+      expect(names(g.foodsFor(friend)), names(myPicks));
+      expect(g.nextFoodFor(me), 0);
+      expect(g.nextFoodFor(friend), 0);
+
+      // Spot on for their foods: 100 a food.
+      g = await playAll(id, me);
+      expect(g.doneBy(me), isTrue);
+      expect(g.nextFoodFor(me), isNull);
+      expect(g.scoreOf(me), 500);
+      expect(g.isFinished, isFalse);
+      expect(g.isTurnOf(me), isFalse);
+      expect(g.isTurnOf(friend), isTrue);
+
+      // Guessing my foods' calories against THEIR foods would score
+      // differently: check it's my foods that count.
+      final friendGuess = myPicks[0].kcal;
+      g = await CalorieGameService.guess(
+          gameId: id, uid: friend, kcal: friendGuess, notify: false);
+      expect(g.roundScoresOf(friend), [100]);
+      expect(g.progressOf(friend), 1);
+    });
+
+    test('finishes with a winner once both have guessed 5', () async {
+      final id = await readySwap();
+      await playAll(id, me, offset: 60);
+      final g = await playAll(id, friend);
+      expect(g.isFinished, isTrue);
+      final saved = await load(id);
+      expect(saved.isFinished, isTrue);
+      expect(saved.winner, friend);
+      expect(saved.scoreOf(friend), 500);
+      expect(saved.scoreOf(me), lessThan(500));
+      // One more guess is ignored.
+      await CalorieGameService.guess(gameId: id, uid: me, kcal: 1, notify: false);
+      expect((await load(id)).guessesOf(me).length, CalorieGameService.rounds);
+    });
+
+    test('sorting and the waiting count include picking', () async {
+      final needsFriendPick = await newSwap();
+      final games = await CalorieGameService.forUser(me).first;
+      expect(games.single.id, needsFriendPick);
+      expect(CalorieGameService.waitingOn(me, games), 0);
+      expect(CalorieGameService.waitingOn(friend, games), 1);
+    });
+  });
+
+  group('your foods to pick from', () {
+    CardTransaction tx(String name, double kcal,
+            {String portion = '1 portion',
+            String meal = 'Lunch',
+            int hour = 12}) =>
+        CardTransaction(
+          id: '$name$hour',
+          description: name,
+          portion: portion,
+          category: meal,
+          time: DateTime(2026, 10, 9, hour),
+          calories: kcal,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+        );
+
+    test('each food once, newest first, with a meal emoji', () {
+      final foods = CalorieGameService.pickableFoods([
+        tx('Toast', 180, meal: 'Breakfast', hour: 8),
+        tx('Soup', 220, hour: 13),
+        tx('Toast', 180, meal: 'Breakfast', hour: 9),
+        tx('Toast', 360, portion: '2 slices', meal: 'Breakfast', hour: 7),
+        tx('Water', 0, hour: 10),
+        tx('Recipe: Chilli', 540, portion: '1 serving', meal: 'Dinner',
+            hour: 19),
+        tx('Crisps', 130, meal: 'Snacks', hour: 16),
+        tx('Pasta', 600, meal: 'Dinner', hour: 18),
+      ]);
+      expect(names(foods), ['Chilli', 'Pasta', 'Crisps', 'Soup', 'Toast', 'Toast']);
+      expect([for (final f in foods) f.emoji],
+          ['📖', '🍝', '🍪', '🥪', '🍳', '🍳']);
+      expect(foods.first.portion, '1 serving');
+      expect(foods.first.kcal, 540);
+      // Zero-calorie foods are left out.
+      expect(names(foods), isNot(contains('Water')));
+    });
+
+    test('loads the last 30 days of your log', () async {
+      await w.addEntry(
+          at: w.now.subtract(const Duration(days: 2)),
+          description: 'Porridge',
+          calories: 250,
+          meal: 'Breakfast');
+      await w.addEntry(
+          at: w.now.subtract(const Duration(days: 45)),
+          description: 'Old food',
+          calories: 300);
+      final foods = await CalorieGameService.loadPickable(me);
+      expect(names(foods), ['Porridge']);
+      expect(foods.single.emoji, '🍳');
+    });
+  });
+
+  group('ending games nobody moves in', () {
+    test('a guess or a pick pushes the end back a week', () async {
+      final id = await readySwap();
+      w.now = w.now.add(const Duration(days: 3));
+      await CalorieGameService.guess(
+          gameId: id, uid: me, kcal: 100, notify: false);
+      expect((await load(id)).expiresAt, w.now.add(const Duration(days: 7)));
+
+      final classic = await newGame();
+      w.now = w.now.add(const Duration(days: 2));
+      await CalorieGameService.guess(
+          gameId: classic, uid: friend, kcal: 100, notify: false);
+      expect(
+          (await load(classic)).expiresAt, w.now.add(const Duration(days: 7)));
+
+      final swap = await newSwap();
+      w.now = w.now.add(const Duration(days: 1));
+      await CalorieGameService.pick(swap, friend, theirPicks, notify: false);
+      expect((await load(swap)).expiresAt, w.now.add(const Duration(days: 7)));
+    });
+
+    test('a game that is not stale is left alone', () async {
+      final id = await newGame();
+      await playAll(id, me);
+      w.now = w.now.add(const Duration(days: 6));
+      final g = await CalorieGameService.expireIfStale(await load(id), me);
+      expect(g.isFinished, isFalse);
+      final saved = await load(id);
+      expect(saved.isFinished, isFalse);
+      expect(saved.expired, isFalse);
+    });
+
+    test('the only player who finished wins', () async {
+      final id = await newGame();
+      await playAll(id, me);
+      await CalorieGameService.guess(
+          gameId: id, uid: friend, kcal: 100, notify: false);
+      w.now = w.now.add(const Duration(days: 7, minutes: 1));
+
+      var g = await load(id);
+      expect(g.isStaleAt(w.now), isTrue);
+      // Too late for more guesses.
+      await expectLater(
+        CalorieGameService.guess(
+            gameId: id, uid: friend, kcal: 100, notify: false),
+        throwsStateError,
+      );
+
+      g = await CalorieGameService.expireIfStale(g, friend);
+      expect(g.isFinished, isTrue);
+      final saved = await load(id);
+      expect(saved.isFinished, isTrue);
+      expect(saved.expired, isTrue);
+      expect(saved.winner, me);
+
+      // It counts in the record.
+      final games = await CalorieGameService.forUser(me).first;
+      final r = CalorieGameService.recordAgainst(me, friend, games);
+      expect((r.wins, r.losses, r.draws), (1, 0, 0));
+      final theirs = CalorieGameService.recordAgainst(friend, me, games);
+      expect((theirs.wins, theirs.losses, theirs.draws), (0, 1, 0));
+    });
+
+    test("nobody finished: a draw that doesn't count", () async {
+      final id = await newSwap(); // your friend never picks
+      w.now = w.now.add(const Duration(days: 8));
+      await CalorieGameService.expireIfStale(await load(id), me);
+      final saved = await load(id);
+      expect(saved.isFinished, isTrue);
+      expect(saved.expired, isTrue);
+      expect(saved.winner, CalorieGameService.draw);
+      // Ending it twice changes nothing.
+      await CalorieGameService.expireIfStale(saved, friend);
+      expect((await load(id)).winner, CalorieGameService.draw);
+
+      final games = await CalorieGameService.forUser(me).first;
+      final r = CalorieGameService.recordAgainst(me, friend, games);
+      expect(r.played, 0);
+    });
+
+    test('stale games sort with the finished ones and need nothing from you',
+        () async {
+      final stale = await newGame();
+      w.now = w.now.add(const Duration(days: 8));
+      final fresh = await newGame();
+      final games = await CalorieGameService.forUser(me).first;
+      expect(games.map((g) => g.id).toList(), [fresh, stale]);
+      expect(CalorieGameService.waitingOn(me, games), 1);
+    });
+  });
+
+  group('your turn notifications', () {
+    test('sent on start, on picking, and when a player finishes their 5',
+        () async {
+      final id = await newSwap(notify: true);
+      expect(sent, [
+        {'path': '/notify/game', 'gameId': id, 'event': 'update'}
+      ]);
+
+      sent.clear();
+      await CalorieGameService.pick(id, friend, theirPicks);
+      expect(sent, [
+        {'path': '/notify/game', 'gameId': id, 'event': 'update'}
+      ]);
+
+      sent.clear();
+      final g = await load(id);
+      for (final f in g.foodsFor(me).take(4)) {
+        await CalorieGameService.guess(gameId: id, uid: me, kcal: f.kcal);
+      }
+      expect(sent, isEmpty);
+      await CalorieGameService.guess(
+          gameId: id, uid: me, kcal: g.foodsFor(me)[4].kcal);
+      expect(sent, hasLength(1));
+
+      sent.clear();
+      for (final f in g.foodsFor(friend)) {
+        await CalorieGameService.guess(gameId: id, uid: friend, kcal: f.kcal);
+      }
+      // Only the finishing guess.
+      expect(sent, [
+        {'path': '/notify/game', 'gameId': id, 'event': 'update'}
+      ]);
+      expect((await load(id)).isFinished, isTrue);
+    });
+
+    test('a nudge asks for a nudge push too', () async {
+      final id = await newGame();
+      await CalorieGameService.nudge(await load(id), me);
+      expect(sent, [
+        {'path': '/notify/game', 'gameId': id, 'event': 'nudge'}
+      ]);
+    });
+
+    test('nothing is sent with notify off, and failures are ignored',
+        () async {
+      await newGame();
+      await readySwap();
+      expect(sent, isEmpty);
+
+      CalorieGameService.notifier = (path, body) async {
+        throw Exception('offline');
+      };
+      await CalorieGameService.notifyOpponent('x'); // doesn't throw
+    });
+
+    test('the request body', () {
+      expect(CalorieGameService.notifyBody('g1'),
+          {'gameId': 'g1', 'event': 'update'});
+      expect(CalorieGameService.notifyBody('g1', nudge: true),
+          {'gameId': 'g1', 'event': 'nudge'});
+    });
+  });
+
+  test('chat messages name the kind of game', () async {
+    await newSwap(notify: true);
+    final convo = await w.db
+        .collection('conversations')
+        .doc(me.compareTo(friend) < 0 ? '${me}_$friend' : '${friend}_$me')
+        .collection('messages')
+        .get();
+    final texts = convo.docs.map((d) => d['message'] as String).toList();
+    expect(texts.single, contains('Guess what I ate'));
   });
 }

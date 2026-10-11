@@ -3,6 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/pages/premium_page.dart';
+import 'package:namer_app/pages/add_food_page.dart';
+import 'package:namer_app/pages/calorie_game_page.dart';
+import 'package:namer_app/services/web_platform.dart';
+import 'package:namer_app/ui/add_friend_link.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/services/notification_service.dart';
 import 'package:namer_app/services/proxy_client.dart';
@@ -132,7 +136,10 @@ class _MainShellState extends State<MainShell> {
     // Premium: start the free trial if needed and follow billing changes.
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) Premium.start(uid);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _handlePremiumReturn());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _handlePremiumReturn();
+      _handleLinks();
+    });
     _current = switch (widget.initialIndex) {
       0 => ShellTab.profile,
       2 => ShellTab.recipes,
@@ -173,6 +180,50 @@ class _MainShellState extends State<MainShell> {
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const PremiumPage()),
         );
+    }
+  }
+
+  /// Links into the app, handled once per page load:
+  ///  ?game=<id>       a Guess the Calories notification: opens the game
+  ///  ?add=<username>  someone's invite link: asks before sending a request
+  ///  ?action=add_food | coach | statement   home-screen shortcuts
+  static bool _linksHandled = false;
+
+  void _handleLinks() {
+    if (_linksHandled || !mounted) return;
+    _linksHandled = true;
+    final q = Uri.base.queryParameters;
+    final game = q['game']?.trim() ?? '';
+    final add = q['add']?.trim() ?? '';
+    final action = q['action']?.trim() ?? '';
+    if (game.isEmpty && add.isEmpty && action.isEmpty) return;
+    // Tidy the address bar so a refresh doesn't open it all again.
+    clearUrlQuery();
+
+    if (game.isNotEmpty) {
+      _select(ShellTab.friends);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _navKeys[ShellTab.friends]?.currentState?.push(MaterialPageRoute(
+          builder: (_) => CalorieGamePage(gameId: game),
+        ));
+      });
+      return;
+    }
+    if (add.isNotEmpty) {
+      handleAddFriendLink(context, add);
+      return;
+    }
+    switch (action) {
+      case 'add_food':
+        _select(ShellTab.card);
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AddFoodPage()),
+        );
+      case 'coach':
+        _select(ShellTab.coach);
+      case 'statement':
+        _select(ShellTab.statement);
     }
   }
 

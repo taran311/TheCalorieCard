@@ -136,57 +136,145 @@ of which your rules already let you read.
 ## Guess the Calories
 
 Games are saved in `calorie_games/{id}`. Both players can read a game; you
-can only start one with a friend, and only add your own guesses. Either
-player can cancel a game that hasn't finished; finished games stay, so
-nobody can quietly delete a loss. Add this inside `match /databases/...`:
+can only start one with a friend, and only add your own guesses (and, in a
+"Guess what I ate" game, your own 5 foods, once). Either player can cancel
+a game that hasn't finished; finished games stay, so nobody can quietly
+delete a loss.
+
+Fields:
+
+- `mode`: `'classic'` (Mystery foods: both guess the same 5 dealt `foods`)
+  or `'swap'` (Guess what I ate). Games saved before this have no `mode`
+  and are classic.
+- `foods`: the 5 dealt foods (`{emoji, name, portion, kcal}`); empty in a
+  swap game.
+- `picks` (swap only): `{uid: [5 foods] | null}`. The challenger's 5 are
+  saved when the game is created; the friend's are null until they pick.
+  In a swap game, `guesses[uid]` are for the *other* player's picks.
+- `expires_at`: 7 days after the last move (set on create, and pushed back
+  by every pick and guess, from the device clock). Games saved before this
+  count as 7 days after `updated_at`.
+- `expired: true`: the game ran out of time. Either player's app ends a
+  stale game: `status: 'finished'`, and `winner` is the only player who had
+  guessed all their foods, or `'draw'` (which doesn't count in the record).
+- `push_sent`: written by the server only (Admin SDK) when it sends a
+  "your turn" push, to avoid sending the same one twice. Clients never
+  write it, which the `hasOnly` lists below enforce.
+
+Add this inside `match /databases/...`:
 
 ```
 match /calorie_games/{id} {
   function game() { return resource.data; }
   function incoming() { return request.resource.data; }
+  function isSwap(d) { return d.get('mode', 'classic') == 'swap'; }
+  function other(d) { return d.player_ids.removeAll([me()])[0]; }
+  // Foods each player guesses: 5 in a swap game, the dealt foods otherwise.
+  function total(d) { return isSwap(d) ? 5 : d.foods.size(); }
+  function done(d, uid) { return d.guesses[uid].size() == total(d); }
+  function allGuessed(d) {
+    return done(d, d.player_ids[0]) && done(d, d.player_ids[1]);
+  }
+  function bothPicked(d) {
+    return !isSwap(d) ||
+      (d.picks[d.player_ids[0]] != null && d.picks[d.player_ids[1]] != null);
+  }
+  // Older games have no expires_at: a week after the last move.
+  function endsAt(d) {
+    return 'expires_at' in d ? d.expires_at
+      : d.updated_at + duration.value(7, 'd');
+  }
+  function stale() { return request.time > endsAt(game()); }
+  // Set from the device clock: allow a day either side for a wrong clock.
+  function freshExpiry() {
+    return incoming().expires_at is timestamp &&
+      incoming().expires_at > request.time + duration.value(6, 'd') &&
+      incoming().expires_at < request.time + duration.value(8, 'd');
+  }
   function mineBefore() { return game().guesses[me()]; }
   function mineAfter() { return incoming().guesses[me()]; }
-  function allGuessed(d) {
-    return d.guesses[d.player_ids[0]].size() == d.foods.size() &&
-      d.guesses[d.player_ids[1]].size() == d.foods.size();
-  }
 
   // A stale link to a cancelled game reads as "missing", not "denied".
   allow read: if signedIn() && (resource == null || me() in game().player_ids);
   allow create: if signedIn() &&
-    incoming().keys().hasOnly(['player_ids', 'names', 'created_by', 'foods',
-      'guesses', 'status', 'winner', 'created_at', 'updated_at']) &&
+    incoming().keys().hasOnly(['mode', 'player_ids', 'names', 'created_by',
+      'foods', 'picks', 'guesses', 'status', 'winner', 'created_at',
+      'updated_at', 'expires_at']) &&
     incoming().created_by == me() &&
     incoming().player_ids.size() == 2 &&
     incoming().player_ids[0] != incoming().player_ids[1] &&
     me() in incoming().player_ids &&
     incoming().player_ids.removeAll([me()]).hasOnly(friendsOf(me())) &&
-    incoming().foods.size() == 5 &&
+    (
+      (!isSwap(incoming()) && incoming().get('mode', 'classic') == 'classic' &&
+        incoming().foods.size() == 5 && !('picks' in incoming())) ||
+      (isSwap(incoming()) && incoming().foods.size() == 0 &&
+        incoming().picks.keys().hasOnly(incoming().player_ids) &&
+        incoming().picks[me()].size() == 5 &&
+        incoming().picks[other(incoming())] == null)
+    ) &&
     incoming().guesses.keys().hasOnly(incoming().player_ids) &&
     incoming().guesses[incoming().player_ids[0]].size() == 0 &&
     incoming().guesses[incoming().player_ids[1]].size() == 0 &&
     incoming().status == 'active' &&
     incoming().winner == null &&
     incoming().created_at == request.time &&
-    incoming().updated_at == request.time;
-  // One more guess of your own each time; earlier guesses can't change.
-  // The last guess of the game also sets status, winner and finished_at.
+    incoming().updated_at == request.time &&
+    freshExpiry();
+
   allow update: if signedIn() &&
     me() in game().player_ids &&
     game().status == 'active' &&
-    incoming().diff(game()).affectedKeys()
-      .hasOnly(['guesses', 'updated_at', 'status', 'winner', 'finished_at']) &&
-    incoming().guesses.diff(game().guesses).affectedKeys().hasOnly([me()]) &&
-    mineAfter().size() == mineBefore().size() + 1 &&
-    mineAfter().size() <= game().foods.size() &&
-    mineAfter()[0:mineBefore().size()] == mineBefore() &&
-    incoming().updated_at == request.time &&
     (
-      (incoming().status == 'active' && incoming().winner == null &&
-        !allGuessed(incoming())) ||
-      (incoming().status == 'finished' && allGuessed(incoming()) &&
-        (incoming().winner == 'draw' || incoming().winner in game().player_ids) &&
-        incoming().finished_at == request.time)
+      // Your 5 foods in a swap game, once, while the game is open.
+      (isSwap(game()) && !stale() &&
+        incoming().diff(game()).affectedKeys()
+          .hasOnly(['picks', 'updated_at', 'expires_at']) &&
+        incoming().picks.diff(game().picks).affectedKeys().hasOnly([me()]) &&
+        game().picks[me()] == null &&
+        incoming().picks[me()].size() == 5 &&
+        incoming().updated_at == request.time &&
+        freshExpiry()) ||
+
+      // One more guess of your own each time; earlier guesses can't
+      // change. In a swap game, only once both have picked. The last guess
+      // of the game also sets status, winner and finished_at.
+      (!stale() && bothPicked(game()) &&
+        incoming().diff(game()).affectedKeys().hasOnly(['guesses',
+          'updated_at', 'expires_at', 'status', 'winner', 'finished_at']) &&
+        incoming().guesses.diff(game().guesses).affectedKeys()
+          .hasOnly([me()]) &&
+        mineAfter().size() == mineBefore().size() + 1 &&
+        mineAfter().size() <= total(game()) &&
+        mineAfter()[0:mineBefore().size()] == mineBefore() &&
+        incoming().updated_at == request.time &&
+        freshExpiry() &&
+        (
+          (incoming().status == 'active' && incoming().winner == null &&
+            !allGuessed(incoming())) ||
+          (incoming().status == 'finished' && allGuessed(incoming()) &&
+            (incoming().winner == 'draw' ||
+              incoming().winner in game().player_ids) &&
+            incoming().finished_at == request.time)
+        )) ||
+
+      // Ending a game nobody has moved in for 7 days. The winner is the
+      // only player who guessed all their foods, else a draw.
+      (stale() &&
+        incoming().diff(game()).affectedKeys().hasOnly(['status', 'winner',
+          'expired', 'finished_at', 'updated_at']) &&
+        incoming().status == 'finished' &&
+        incoming().expired == true &&
+        incoming().finished_at == request.time &&
+        incoming().updated_at == request.time &&
+        (
+          (done(game(), game().player_ids[0]) !=
+              done(game(), game().player_ids[1]) &&
+            done(game(), incoming().winner)) ||
+          (done(game(), game().player_ids[0]) ==
+              done(game(), game().player_ids[1]) &&
+            incoming().winner == 'draw')
+        ))
     );
   allow delete: if signedIn() &&
     me() in game().player_ids &&
@@ -196,6 +284,20 @@ match /calorie_games/{id} {
 
 The game also posts into your one-to-one chat ("I've challenged you…",
 "Your turn", the result), using the same `conversations` rules as cheers.
+
+**"Your turn" notifications.** The app calls the server's
+`POST /notify/game` with `{"gameId": "<id>", "event": "update"}` after
+creating a game, picking foods, and the guess that completes a player's 5
+(including the finishing guess), and with `"event": "nudge"` for Nudge. The
+server reads the game, works out who's up and sends at most one push to the
+other player (it records that in `push_sent`). The push opens
+`https://thecaloriecard.com/?game=<id>`.
+
+`users/{uid}` gets `game_notifications` (bool; turn alerts are on unless
+it's `false`, as long as the user has a token in `fcm_tokens`), written by
+the owner alongside the existing `fcm_tokens` and `tz_offset_minutes`. If
+your `users` rule limits which keys you can write, add
+`game_notifications`.
 
 ## Weight log
 
@@ -237,3 +339,28 @@ allow update: if signedIn() && resource.data.user_id == me() &&
 
 Deleting an account goes through the server (`POST /account/delete`),
 which uses the Admin SDK, so no client rules are needed for it.
+
+## Usernames, budgets, rest days and notes (October 2026)
+
+Your live rules currently let any signed-in user read and write everything
+except `billing` and `meta`, so these all work already. When you tighten
+the rules, include:
+
+- `usernames/{handle}` = `{uid, created_at}`: the lock that keeps each
+  @username unique.
+
+```
+match /usernames/{handle} {
+  allow read: if signedIn();
+  allow create: if signedIn() && request.resource.data.uid == me() &&
+    handle.matches('^[a-z0-9_]{3,20}$');
+  allow delete: if signedIn() && resource.data.uid == me();
+  allow update: if false;
+}
+```
+
+- `users/{uid}.username`, `users/{uid}.game_notifications` (owner writes).
+- `user_data.budgets` (owner writes).
+- `daily_logs/{uid}_{date}.rest_day` (owner writes).
+- `user_food/{id}.food_note` (owner updates).
+- `calorie_games/{id}.push_sent` is written only by the server.

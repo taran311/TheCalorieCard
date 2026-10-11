@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/spend_category.dart';
 
 /// One logged food item, presented like a card transaction.
 class CardTransaction {
@@ -14,6 +15,9 @@ class CardTransaction {
   final double carbs;
   final double fat;
 
+  /// Logged as a whole recipe (counts as home cooked).
+  final bool isRecipe;
+
   const CardTransaction({
     required this.id,
     required this.description,
@@ -24,7 +28,13 @@ class CardTransaction {
     required this.protein,
     required this.carbs,
     required this.fat,
+    this.isRecipe = false,
   });
+
+  /// Its "where it went" category (see [SpendCategory]).
+  SpendCategory get spendCategory => isRecipe
+      ? SpendCategory.homeCooked
+      : SpendCategory.fromDescription(description);
 }
 
 /// Totals for one calendar day.
@@ -39,8 +49,14 @@ class DaySummary {
   final double? closingBalance;
   final double? dayGoal;
 
+  /// A planned rest day (`daily_logs.rest_day`), shown as 🏖️ on the calendar.
+  final bool restDay;
+
   DaySummary(this.day, this.transactions,
-      {this.finished = false, this.closingBalance, this.dayGoal});
+      {this.finished = false,
+      this.closingBalance,
+      this.dayGoal,
+      this.restDay = false});
 
   double get calories => transactions.fold(0, (s, t) => s + t.calories);
   double get protein => transactions.fold(0, (s, t) => s + t.protein);
@@ -61,6 +77,17 @@ class DaySummary {
     final b = budget(fallback);
     if (b == null) return null;
     return calories <= b;
+  }
+
+  /// How far over budget the day went (a positive number), or null when it
+  /// wasn't over. Uses the same rule as [onBudget]: a finished day by what
+  /// the card closed on, otherwise spending against the day's budget.
+  double? overBy(double? fallback) {
+    if (onBudget(fallback) != false) return null;
+    final closing = closingBalance;
+    if (finished && closing != null) return -closing;
+    final b = budget(fallback);
+    return b == null ? null : calories - b;
   }
 }
 
@@ -93,6 +120,30 @@ class Statement {
     if (logged.isEmpty) return 0;
     return logged.fold<double>(0, (s, d) => s + d.calories) / logged.length;
   }
+
+  /// Foods whose name contains [query] (ignoring case), like a bank's
+  /// transaction search. Days with a match, newest first, each holding only
+  /// its matching foods (newest first). Empty for a blank query.
+  List<DaySummary> search(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    return [
+      for (final d in days.reversed)
+        if (d.transactions
+            .any((t) => t.description.toLowerCase().contains(q)))
+          DaySummary(
+            d.day,
+            [
+              for (final t in d.transactions)
+                if (t.description.toLowerCase().contains(q)) t
+            ],
+            finished: d.finished,
+            closingBalance: d.closingBalance,
+            dayGoal: d.dayGoal,
+            restDay: d.restDay,
+          ),
+    ];
+  }
 }
 
 class StatementService {
@@ -109,17 +160,32 @@ class StatementService {
   /// Each day's `daily_logs` snapshot is read too (unless [withLogs] is
   /// false), so finished days are judged the way Hiscores judge them.
   static Future<Statement> load(String userId,
-      {int days = 7, bool withLogs = true}) async {
+      {int days = 7, bool withLogs = true}) {
     final today = BalanceService.startOfDay(BalanceService.now());
-    final start = BalanceService.addDays(today, -(days - 1));
-    final end = BalanceService.addDays(today, 1);
-    final dayList = [
-      for (var i = 0; i < days; i++) BalanceService.addDays(start, i)
-    ];
+    return loadRange(userId, BalanceService.addDays(today, -(days - 1)),
+        BalanceService.addDays(today, 1),
+        withLogs: withLogs);
+  }
+
+  /// Builds a statement for the calendar days from [first] up to (not
+  /// including) [end], e.g. one month for the calendar view. Both are
+  /// treated as dates (the time of day is ignored).
+  static Future<Statement> loadRange(String userId, DateTime first,
+      DateTime end,
+      {bool withLogs = true}) async {
+    final start = BalanceService.startOfDay(first);
+    final stop = BalanceService.startOfDay(end);
+    final dayList = <DateTime>[];
+    for (var d = start; d.isBefore(stop); d = BalanceService.addDays(d, 1)) {
+      dayList.add(d);
+    }
+    // An empty range just gives an empty statement.
+    final rangeEnd =
+        dayList.isEmpty ? start : BalanceService.addDays(dayList.last, 1);
 
     // Only the days on the statement are fetched, not the whole history.
     final results = await Future.wait<Object?>([
-      BalanceService.entriesBetween(userId, start, end),
+      BalanceService.entriesBetween(userId, start, rangeEnd),
       BalanceService.userDataDoc(userId),
       withLogs ? _dailyLogs(userId, dayList) : Future.value(null),
     ]);
@@ -147,6 +213,7 @@ class StatementService {
               protein: _num(data['food_protein']) ?? 0,
               carbs: _num(data['food_carbs']) ?? 0,
               fat: _num(data['food_fat']) ?? 0,
+              isRecipe: data['is_recipe'] == true,
             ),
           );
     }
@@ -167,6 +234,7 @@ class StatementService {
         closingBalance:
             balances is Map ? _num(balances['calories']) : null,
         dayGoal: goal != null && goal > 0 ? goal : null,
+        restDay: log?['rest_day'] == true,
       ));
     }
 

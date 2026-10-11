@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/rest_days.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/streak.dart';
@@ -143,9 +144,15 @@ class WrappedService {
         if (left != null && left >= 0) onBudget++;
       }
     }
+    // Rest days are skipped, as on the streak pill and hiscores.
+    final restKeys = <String>{
+      for (var i = 0; i < logs.length; i++)
+        if (RestDays.isRest(logs[i].data())) BalanceService.dateKey(days[i])
+    };
     final best = days.isEmpty
         ? 0
-        : Streaks.compute(finishedKeys, from: days.first, today: days.last)
+        : Streaks.compute(finishedKeys,
+                from: days.first, today: days.last, restDays: restKeys)
             .longest;
 
     final top = counts.values.toList()

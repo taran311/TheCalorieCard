@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/home_widgets.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -29,15 +30,18 @@ class EntrySheetResult {
   const EntrySheetResult(this.action, {this.logged});
 }
 
-/// Opens one of your logged foods: see it, change the portion, fix the
-/// calories, move it to another meal, delete it, log it again or make it a
-/// direct debit. [canEdit] is false on past or closed days (view only).
+/// Opens one of your logged foods like a bank-app transaction receipt:
+/// what it was, when, how much, where it came from and a note, with the
+/// actions underneath (change it, log it again, make it a direct debit,
+/// delete). [canEdit] is false on past, closed or rest days (view only);
+/// a note can still be added unless [canNote] is false.
 Future<EntrySheetResult?> showEntrySheet(
   BuildContext context, {
   required String entryId,
   required Map<String, dynamic> entry,
   required bool canEdit,
   bool canDirectDebit = true,
+  bool canNote = true,
   List<Map<String, dynamic>> reactions = const [],
   String? logAgainMeal,
 }) {
@@ -53,10 +57,82 @@ Future<EntrySheetResult?> showEntrySheet(
       entry: entry,
       canEdit: canEdit,
       canDirectDebit: canDirectDebit,
+      canNote: canNote,
       reactions: reactions,
       logAgainMeal: logAgainMeal,
     ),
   );
+}
+
+/// The big emoji at the top of the receipt: a recipe, or the meal.
+String entryEmoji(Map<String, dynamic> entry, {String? meal}) {
+  if (entry['is_recipe'] == true) return '🍲';
+  switch (meal ?? FoodLog.mealOf(entry['foodCategory'])) {
+    case 'Breakfast':
+      return '🥣';
+    case 'Lunch':
+      return '🥪';
+    case 'Dinner':
+      return '🍝';
+    default:
+      return '🍎';
+  }
+}
+
+/// "Today, 12:41", "Yesterday, 08:05" or "Fri 9 Oct, 19:30".
+String entryTimeLabel(DateTime at) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  final now = BalanceService.now();
+  final time = '${at.hour.toString().padLeft(2, '0')}:'
+      '${at.minute.toString().padLeft(2, '0')}';
+  final String day;
+  if (BalanceService.sameDay(at, now)) {
+    day = 'Today';
+  } else if (BalanceService.sameDay(at, BalanceService.addDays(now, -1))) {
+    day = 'Yesterday';
+  } else {
+    final year = at.year == now.year ? '' : ' ${at.year}';
+    day = '${days[at.weekday - 1]} ${at.day} ${months[at.month - 1]}'
+        '$year';
+  }
+  return '$day, $time';
+}
+
+/// Where the numbers came from, in plain words ("✨ AI estimate"), or null
+/// if the entry doesn't say (older entries).
+String? entrySourceLabel(Map<String, dynamic> entry) {
+  final estimate = entry['food_estimate'] == true;
+  final edited = entry['food_edited'] == true;
+  String? label;
+  if (entry['is_recipe'] == true) {
+    label = '📖 Your recipe';
+  } else {
+    switch (entry['food_source']) {
+      case 'ai':
+        label = '✨ AI estimate';
+      case 'barcode':
+        label = '📷 Scanned barcode';
+      case 'fatsecret':
+        label = '🔎 Database match';
+      case 'web':
+        label = '🌐 Found online';
+      case 'recent':
+        label = '🔁 Logged again';
+      case 'manual':
+        label = '✍️ Typed in by you';
+    }
+  }
+  if (label == null && estimate) label = '✨ Estimate';
+  if (label == null) return edited ? '✍️ Calories fixed by you' : null;
+  if (estimate && !label.contains('estimate') && !label.contains('Estimate')) {
+    label = '$label · estimate';
+  }
+  if (edited) label = '$label · calories fixed by you';
+  return label;
 }
 
 class _EntrySheet extends StatefulWidget {
@@ -64,6 +140,7 @@ class _EntrySheet extends StatefulWidget {
   final Map<String, dynamic> entry;
   final bool canEdit;
   final bool canDirectDebit;
+  final bool canNote;
   final List<Map<String, dynamic>> reactions;
   final String? logAgainMeal;
 
@@ -72,6 +149,7 @@ class _EntrySheet extends StatefulWidget {
     required this.entry,
     required this.canEdit,
     required this.canDirectDebit,
+    required this.canNote,
     required this.reactions,
     required this.logAgainMeal,
   });
@@ -91,13 +169,31 @@ class _EntrySheetState extends State<_EntrySheet> {
   late String _meal = _startMeal;
   final _customController = TextEditingController();
   final _caloriesController = TextEditingController();
+  late final _noteController =
+      TextEditingController(text: FoodLog.noteOf(widget.entry));
+
+  /// The note as last saved (so we know when there's something to save).
+  late String _savedNote = FoodLog.noteOf(widget.entry);
+  bool _savingNote = false;
+  bool _noteJustSaved = false;
+
+  /// The portion / calories / meal controls are tucked away until asked
+  /// for, so the receipt reads first.
+  bool _editing = false;
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
+    // Closing the sheet never loses a typed note (like a bank app's
+    // transaction notes, it just saves).
+    if (_noteDirty) {
+      FoodLog.setNote(widget.entryId, _noteController.text)
+          .catchError((Object _) {});
+    }
     _customController.dispose();
     _caloriesController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
@@ -105,6 +201,9 @@ class _EntrySheetState extends State<_EntrySheet> {
       (widget.entry['food_description'] ?? 'Food').toString();
 
   bool get _isEstimate => widget.entry['food_estimate'] == true;
+
+  bool get _noteDirty =>
+      widget.canNote && _noteController.text.trim() != _savedNote;
 
   /// The calories typed in "Fix calories" (null if empty or not valid).
   double? get _fixedCalories {
@@ -162,6 +261,30 @@ class _EntrySheetState extends State<_EntrySheet> {
     });
   }
 
+  Future<void> _saveNote() async {
+    if (_savingNote || !_noteDirty) return;
+    final text = _noteController.text.trim();
+    setState(() {
+      _savingNote = true;
+      _error = null;
+    });
+    try {
+      await FoodLog.setNote(widget.entryId, text);
+      if (!mounted) return;
+      setState(() {
+        _savedNote = text;
+        _savingNote = false;
+        _noteJustSaved = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _savingNote = false;
+        _error = "Couldn't save your note. Please try again.";
+      });
+    }
+  }
+
   Future<void> _save() async {
     if (_busy || !_changed || _caloriesInvalid || _customInvalid) return;
     setState(() {
@@ -169,6 +292,12 @@ class _EntrySheetState extends State<_EntrySheet> {
       _error = null;
     });
     try {
+      // A typed note goes with it (it's only the note field).
+      if (_noteDirty) {
+        final text = _noteController.text.trim();
+        await FoodLog.setNote(widget.entryId, text);
+        _savedNote = text;
+      }
       await FoodLog.updateEntry(
         widget.entryId,
         entry: widget.entry,
@@ -242,12 +371,236 @@ class _EntrySheetState extends State<_EntrySheet> {
         ),
       );
 
+  /// One "label ........ value" line of the receipt.
+  Widget _detailRow(String label, Widget value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 92,
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 14, color: AppColors.muted),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Align(alignment: Alignment.centerRight, child: value),
+            ),
+          ],
+        ),
+      );
+
+  Widget _detailText(String text) => Text(
+        text,
+        textAlign: TextAlign.end,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppColors.ink,
+        ),
+      );
+
+  /// A row in the actions list under the receipt.
+  Widget _actionTile({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+    Color? color,
+    Widget? trailing,
+  }) {
+    final c = color ?? AppColors.ink;
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            children: [
+              Icon(icon, size: 22, color: color ?? AppText.primary),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: onTap == null ? AppColors.muted : c,
+                  ),
+                ),
+              ),
+              if (trailing != null) trailing,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _editPanel(Macros preview) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _sectionLabel('Portion'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final m in _portions)
+                ChoiceChip(
+                  label: Text('×${FoodLog.formatAmount(m)}'),
+                  selected: _customController.text.trim().isEmpty &&
+                      _same(_multiplier, m),
+                  showCheckmark: false,
+                  onSelected: _busy ? null : (_) => _pickPortion(m),
+                ),
+              SizedBox(
+                width: 110,
+                child: TextField(
+                  controller: _customController,
+                  enabled: !_busy,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                  ],
+                  onChanged: _onCustomChanged,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: 'Other',
+                    prefixText: '×',
+                    errorText: _customInvalid ? 'Above 0' : null,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '×1 is the amount you first logged.',
+            style: TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+          const SizedBox(height: 18),
+          _sectionLabel('Fix calories'),
+          TextField(
+            controller: _caloriesController,
+            enabled: !_busy,
+            keyboardType: const TextInputType.numberWithOptions(),
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'e.g. ${preview.calories.round()}',
+              suffixText: 'kcal',
+              helperText: 'Only if you know the real number. '
+                  'Protein, carbs and fat stay as they are.',
+              helperMaxLines: 2,
+              errorText:
+                  _caloriesInvalid ? 'Enter a whole number of kcal' : null,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 18),
+          _sectionLabel('Meal'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final m in FoodLog.meals)
+                ChoiceChip(
+                  label: Text(m),
+                  selected: _meal == m,
+                  showCheckmark: false,
+                  onSelected: _busy ? null : (_) => setState(() => _meal = m),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 52,
+            child: FilledButton(
+              onPressed:
+                  _busy || !_changed || _caloriesInvalid || _customInvalid
+                      ? null
+                      : _save,
+              child: _busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text(
+                      'Save changes',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final portion = (widget.entry['food_portion'] ?? '').toString();
     final preview = _preview;
     final canEdit = widget.canEdit;
     final logMeal = widget.logAgainMeal ?? _meal;
+    final loggedAt = BalanceService.entryDate(widget.entry);
+    final source = entrySourceLabel(widget.entry);
+    final logged = Macros.fromEntry(widget.entry);
+    final kcalChanged = preview.calories.round() != logged.calories.round();
+
+    final actions = <Widget>[
+      if (canEdit)
+        _actionTile(
+          icon: Icons.tune_rounded,
+          label: 'Change portion, calories or meal',
+          onTap: _busy ? null : () => setState(() => _editing = !_editing),
+          trailing: Icon(
+            _editing ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+            color: AppColors.muted,
+          ),
+        ),
+      if (canEdit && _editing) _editPanel(preview),
+      if (canEdit)
+        _actionTile(
+          icon: Icons.replay_rounded,
+          label: 'Log again to $logMeal',
+          onTap: _busy ? null : _logAgain,
+        ),
+      if (widget.canDirectDebit)
+        _actionTile(
+          icon: Icons.autorenew,
+          label: 'Make it a direct debit',
+          onTap: _busy
+              ? null
+              : () => Navigator.pop(
+                    context,
+                    const EntrySheetResult(EntrySheetAction.directDebit),
+                  ),
+        ),
+      // Delete is always last, and red.
+      if (canEdit)
+        _actionTile(
+          icon: Icons.delete_outline,
+          label: 'Delete',
+          color: AppText.red600,
+          onTap: _busy
+              ? null
+              : () => Navigator.pop(
+                    context,
+                    const EntrySheetResult(EntrySheetAction.delete),
+                  ),
+        ),
+    ];
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -257,29 +610,73 @@ class _EntrySheetState extends State<_EntrySheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // The receipt header: what, how much, when.
+            Center(
+              child: Container(
+                width: 64,
+                height: 64,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.indigo50,
+                  shape: BoxShape.circle,
+                ),
+                child: ExcludeSemantics(
+                  child: Text(
+                    entryEmoji(widget.entry, meal: _meal),
+                    style: const TextStyle(fontSize: 32),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
             Text(
               _name,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
                 color: AppColors.ink,
               ),
             ),
-            if (portion.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Text(portion, style: TextStyle(color: AppColors.muted)),
-            ],
+            const SizedBox(height: 4),
+            Text(
+              '${formatCardKcal(preview.calories)} kcal',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            if (kcalChanged)
+              Text(
+                'was ${formatCardKcal(logged.calories)} '
+                'kcal · not saved yet',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: AppText.amber700),
+              ),
+            const SizedBox(height: 2),
+            Text(
+              [
+                if (loggedAt != null) entryTimeLabel(loggedAt),
+                _meal,
+              ].join(' · '),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: AppColors.muted),
+            ),
             if (_isEstimate) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.fromLTRB(10, 10, 6, 10),
                 decoration: BoxDecoration(
                   color: AppColors.amber50,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppColors.amber200),
                 ),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(Icons.auto_awesome_rounded,
                         size: 18, color: AppText.amber700),
@@ -287,138 +684,98 @@ class _EntrySheetState extends State<_EntrySheet> {
                     Expanded(
                       child: Text(
                         'Estimate: AI guessed these numbers. If you know '
-                        'the real calories, fix them below.',
+                        'the real calories, fix them.',
                         style: TextStyle(fontSize: 13, color: AppColors.ink),
                       ),
                     ),
+                    if (canEdit && !_editing)
+                      TextButton(
+                        onPressed: () => setState(() => _editing = true),
+                        style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 44)),
+                        child: const Text('Fix'),
+                      ),
                   ],
                 ),
               ),
             ],
-            const SizedBox(height: 14),
-            // What it costs (as it will be once saved).
+            const SizedBox(height: 16),
+            // The details, like a receipt.
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.indigo50,
-                borderRadius: BorderRadius.circular(14),
+                color: AppColors.gray50,
+                borderRadius: BorderRadius.circular(AppDecor.radius),
+                border: Border.all(color: AppColors.border),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              child: Column(
                 children: [
-                  Text(
-                    '${preview.calories.round()}',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: AppText.primaryDark,
-                      fontFeatures: const [FontFeature.tabularFigures()],
+                  // When and which meal are in the header above.
+                  if (portion.isNotEmpty)
+                    _detailRow('Portion', _detailText(portion)),
+                  _detailRow(
+                    'Macros',
+                    MacroText(
+                      protein: preview.protein,
+                      carbs: preview.carbs,
+                      fat: preview.fat,
+                      fontSize: 14,
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'kcal',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppText.primaryDark,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: MacroText(
-                        protein: preview.protein,
-                        carbs: preview.carbs,
-                        fat: preview.fat,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
+                  if (source != null)
+                    _detailRow('Source', _detailText(source)),
                 ],
               ),
             ),
-            if (canEdit) ...[
-              const SizedBox(height: 18),
-              _sectionLabel('Portion'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  for (final m in _portions)
-                    ChoiceChip(
-                      label: Text('×${FoodLog.formatAmount(m)}'),
-                      selected: _customController.text.trim().isEmpty &&
-                          _same(_multiplier, m),
-                      showCheckmark: false,
-                      onSelected: _busy ? null : (_) => _pickPortion(m),
-                    ),
-                  SizedBox(
-                    width: 110,
-                    child: TextField(
-                      controller: _customController,
-                      enabled: !_busy,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                      ],
-                      onChanged: _onCustomChanged,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        labelText: 'Other',
-                        prefixText: '×',
-                        errorText: _customInvalid ? 'Above 0' : null,
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '×1 is the amount you first logged.',
-                style: TextStyle(fontSize: 12, color: AppColors.muted),
-              ),
-              const SizedBox(height: 18),
-              _sectionLabel('Fix calories'),
+            if (widget.canNote) ...[
+              const SizedBox(height: 16),
               TextField(
-                controller: _caloriesController,
+                controller: _noteController,
                 enabled: !_busy,
-                keyboardType: const TextInputType.numberWithOptions(),
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: (_) => setState(() {}),
+                minLines: 1,
+                maxLines: 3,
+                maxLength: FoodLog.maxNoteLength,
+                textCapitalization: TextCapitalization.sentences,
+                onChanged: (_) => setState(() => _noteJustSaved = false),
+                onSubmitted: (_) => _saveNote(),
                 decoration: InputDecoration(
-                  isDense: true,
-                  hintText: 'e.g. ${preview.calories.round()}',
-                  suffixText: 'kcal',
-                  helperText: 'Only if you know the real number. '
-                      'Protein, carbs and fat stay as they are.',
-                  errorText:
-                      _caloriesInvalid ? 'Enter a whole number of kcal' : null,
+                  labelText: 'Note',
+                  hintText: "Add a note… e.g. at Nando's with Sam",
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  prefixIcon: const Icon(Icons.edit_note_rounded),
+                  // Counter only once it matters.
+                  counterText: _noteController.text.length >
+                          FoodLog.maxNoteLength - 40
+                      ? null
+                      : '',
                   border: const OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 18),
-              _sectionLabel('Meal'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final m in FoodLog.meals)
-                    ChoiceChip(
-                      label: Text(m),
-                      selected: _meal == m,
-                      showCheckmark: false,
-                      onSelected: _busy ? null : (_) => setState(() => _meal = m),
-                    ),
-                ],
-              ),
+              if (_noteDirty || _noteJustSaved || _savingNote)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _noteJustSaved && !_noteDirty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            'Note saved',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppText.emerald700,
+                            ),
+                          ),
+                        )
+                      : TextButton(
+                          onPressed: _savingNote ? null : _saveNote,
+                          style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 44)),
+                          child: Text(_savingNote ? 'Saving…' : 'Save note'),
+                        ),
+                ),
             ],
             if (widget.reactions.isNotEmpty) ...[
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
               _sectionLabel('Reactions'),
               for (final r in widget.reactions)
                 Padding(
@@ -448,76 +805,37 @@ class _EntrySheetState extends State<_EntrySheet> {
               const SizedBox(height: 12),
               Text(_error!, style: TextStyle(color: AppText.red600)),
             ],
-            if (canEdit) ...[
-              const SizedBox(height: 20),
-              SizedBox(
-                height: 52,
-                child: FilledButton(
-                  onPressed: _busy ||
-                          !_changed ||
-                          _caloriesInvalid ||
-                          _customInvalid
-                      ? null
-                      : _save,
-                  child: _busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text(
-                          'Save',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700),
-                        ),
+            // Actions under the details; Delete last.
+            if (actions.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                decoration: AppDecor.card,
+                clipBehavior: Clip.antiAlias,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < actions.length; i++) ...[
+                        if (i > 0)
+                          Divider(
+                              height: 1, thickness: 1, color: AppColors.border),
+                        actions[i],
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ],
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: [
-                if (canEdit)
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : _logAgain,
-                    style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 44)),
-                    icon: const Icon(Icons.replay_rounded),
-                    label: Text('Log again to $logMeal'),
-                  ),
-                if (widget.canDirectDebit)
-                  OutlinedButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => Navigator.pop(
-                              context,
-                              const EntrySheetResult(
-                                  EntrySheetAction.directDebit),
-                            ),
-                    style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 44)),
-                    icon: const Icon(Icons.autorenew),
-                    label: const Text('Make it a direct debit'),
-                  ),
-                if (canEdit)
-                  TextButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => Navigator.pop(
-                              context,
-                              const EntrySheetResult(EntrySheetAction.delete),
-                            ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppText.red600,
-                      minimumSize: const Size(0, 44),
-                    ),
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Delete'),
-                  ),
-              ],
-            ),
+            if (!canEdit && widget.canNote) ...[
+              const SizedBox(height: 10),
+              Text(
+                "Food on a past, closed or rest day can't be changed. "
+                'Notes still save.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: AppColors.muted),
+              ),
+            ],
           ],
         ),
       ),

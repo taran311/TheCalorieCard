@@ -39,6 +39,29 @@ extension type _Document._(JSObject _) implements JSObject {
   external _Element? get body;
 }
 
+extension type _Location._(JSObject _) implements JSObject {
+  external String get pathname;
+  external String get hash;
+}
+
+extension type _History._(JSObject _) implements JSObject {
+  external void replaceState(JSAny? data, String unused, String url);
+}
+
+@JS('location')
+external _Location get _location;
+
+@JS('history')
+external _History get _history;
+
+/// Removes `?game=…`, `?add=…` etc. from the address bar once handled, so
+/// a refresh doesn't open the same thing again. Keeps the page and hash.
+void clearUrlQuery() {
+  try {
+    _history.replaceState(null, '', '${_location.pathname}${_location.hash}');
+  } catch (_) {}
+}
+
 @JS('document')
 external _Document get _document;
 
@@ -46,6 +69,15 @@ extension type _Navigator._(JSObject _) implements JSObject {
   external String get userAgent;
   external JSBoolean? get standalone;
   external JSNumber? get maxTouchPoints;
+
+  /// navigator.share itself, to check it exists (null where it doesn't).
+  @JS('share')
+  external JSAny? get shareFunction;
+  external JSPromise<JSAny?> share(_ShareData data);
+}
+
+extension type _ShareData._(JSObject _) implements JSObject {
+  external factory _ShareData({String title, String text, String url});
 }
 
 @JS('navigator')
@@ -107,5 +139,20 @@ bool get iosNeedsHomeScreen {
     return !standalone;
   } catch (_) {
     return false;
+  }
+}
+
+/// Opens the phone's (or browser's) own share sheet with [url]. Returns
+/// false if there isn't one or it refused, so the caller can copy the link
+/// instead. Closing the sheet without sharing counts as handled (true):
+/// they saw it and chose not to.
+Future<bool> shareText(String title, String text, String url) async {
+  try {
+    if (_navigator.shareFunction == null) return false;
+    final data = _ShareData(title: title, text: text, url: url);
+    await _navigator.share(data).toDart;
+    return true;
+  } catch (e) {
+    return e.toString().contains('AbortError');
   }
 }

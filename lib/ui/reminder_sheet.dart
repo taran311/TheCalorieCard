@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/services/notification_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 
-/// Settings for the evening "log today's food" reminder.
+/// Settings for the evening "log today's food" reminder, and Guess the
+/// Calories "your turn" alerts.
 Future<void> showReminderSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
@@ -25,6 +26,8 @@ class _ReminderSheetState extends State<_ReminderSheet> {
   bool _busy = false;
   bool _enabled = false;
   int _hour = NotificationService.defaultHour;
+  bool _gameAlerts = false;
+  bool _gameBusy = false;
   String? _error;
 
   @override
@@ -40,6 +43,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
       setState(() {
         _enabled = s.enabled;
         _hour = s.hour;
+        _gameAlerts = s.gameAlerts;
       });
     } catch (_) {
       // Shown as off.
@@ -68,6 +72,29 @@ class _ReminderSheetState extends State<_ReminderSheet> {
       _busy = false;
       _error = error;
       if (error == null) _enabled = on;
+    });
+  }
+
+  Future<void> _toggleGameAlerts(bool on) async {
+    setState(() {
+      _gameBusy = true;
+      _error = null;
+    });
+    String? error;
+    try {
+      if (on) {
+        error = await NotificationService.enableGameAlerts();
+      } else {
+        await NotificationService.setGameAlerts(false);
+      }
+    } catch (_) {
+      error = "Couldn't save that. Please try again.";
+    }
+    if (!mounted) return;
+    setState(() {
+      _gameBusy = false;
+      _error = error;
+      if (error == null) _gameAlerts = on;
     });
   }
 
@@ -198,6 +225,35 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                     onSelected: _busy ? null : (_) => _pickHour(h),
                   ),
               ],
+            ),
+            const SizedBox(height: 20),
+            // Separate from the reminder: you can have either, or both.
+            Material(
+              color: AppColors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDecor.radius),
+                side: BorderSide(color: AppColors.border),
+              ),
+              child: SwitchListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppDecor.radius),
+                ),
+                value: _gameAlerts,
+                onChanged: _gameBusy ? null : _toggleGameAlerts,
+                secondary: Icon(Icons.videogame_asset_outlined,
+                    color: AppText.primary),
+                title: Text(
+                  'Guess the Calories turns',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+                subtitle: Text(
+                  "A notification when it's your turn in a game",
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ),
             ),
           ],
           if (_error != null) ...[

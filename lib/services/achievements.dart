@@ -602,6 +602,9 @@ class AchievementInputs {
   final bool teamGoalHit;
   final int recipesSaved;
 
+  /// Rest days (date keys): skipped by streaks, never a break.
+  final Set<String> restDays;
+
   const AchievementInputs({
     this.days = const [],
     this.counters = const {},
@@ -615,6 +618,7 @@ class AchievementInputs {
     this.wonChallenge = false,
     this.teamGoalHit = false,
     this.recipesSaved = 0,
+    this.restDays = const <String>{},
   });
 }
 
@@ -667,7 +671,9 @@ class AchievementEngine {
     final streak = days.isEmpty
         ? 0
         : Streaks.compute(byKey.keys.toSet(),
-                from: days.first.date, today: days.last.date)
+                from: days.first.date,
+                today: days.last.date,
+                restDays: input.restDays)
             .longest;
     final goodDays = _count(days, (d) => d.isGood);
     final bullseyes = _count(days, (d) => d.isBullseye);

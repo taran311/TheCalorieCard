@@ -1,10 +1,20 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/pages/budgets_page.dart';
+import 'package:namer_app/pages/day_statement_page.dart';
+import 'package:namer_app/pages/statement_search_page.dart';
+import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/budget_service.dart';
+import 'package:namer_app/ui/budget_widgets.dart';
 import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/share_to_chat_sheet.dart';
+import 'package:namer_app/ui/statement_calendar.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
 import 'package:namer_app/ui/today_panel.dart';
 
@@ -24,6 +34,84 @@ class _StatementPageState extends State<StatementPage> {
   late Future<WeekDigest>? _digest =
       _uid == null ? null : StatementService.weekDigest(_uid!);
 
+  /// Month calendar instead of the list.
+  bool _calendar = false;
+
+  /// The user's budgets, kept live (they can be changed from Profile too).
+  BudgetSettings _budgets = BudgetSettings.empty;
+
+  /// Until the profile has been read, so "Set up" doesn't flash for
+  /// people who already have budgets.
+  bool _budgetsLoaded = false;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _profileSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = _uid;
+    if (uid != null) {
+      _profileSub = BalanceService.db
+          .collection('user_data')
+          .where('user_id', isEqualTo: uid)
+          .limit(1)
+          .snapshots()
+          .listen((snap) {
+        if (!mounted) return;
+        setState(() {
+          _budgets = BudgetSettings.fromProfile(
+              snap.docs.isEmpty ? null : snap.docs.first.data());
+          _budgetsLoaded = true;
+        });
+      }, onError: (_) {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _profileSub?.cancel();
+    super.dispose();
+  }
+
+  void _openBudgets() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const BudgetsPage()));
+  }
+
+  void _openDay(String uid, DateTime day, DaySummary? summary,
+      double? fallbackBudget) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => DayStatementPage(
+        userId: uid,
+        day: day,
+        initial: summary,
+        fallbackBudget: fallbackBudget,
+      ),
+    ));
+  }
+
+  /// List / Calendar, like the views in a banking app's spending trends.
+  Widget _viewSwitch() {
+    return Center(
+      child: SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(
+            value: false,
+            label: Text('List'),
+            icon: Icon(Icons.view_list),
+          ),
+          ButtonSegment(
+            value: true,
+            label: Text('Calendar'),
+            icon: Icon(Icons.calendar_month),
+          ),
+        ],
+        selected: {_calendar},
+        showSelectedIcon: false,
+        onSelectionChanged: (s) => setState(() => _calendar = s.first),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = _uid;
@@ -33,101 +121,137 @@ class _StatementPageState extends State<StatementPage> {
       appBar: AppBar(
         leading: ShellBack.button(context),
         title: const Text('Statement'),
+        actions: [
+          if (uid != null)
+            IconButton(
+              tooltip: 'Search foods',
+              icon: const Icon(Icons.search),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => StatementSearchPage(userId: uid),
+              )),
+            ),
+          if (uid != null)
+            IconButton(
+              tooltip: 'Budgets',
+              icon: const Icon(Icons.pie_chart_outline),
+              onPressed: _openBudgets,
+            ),
+        ],
       ),
       body: uid == null
           ? const Center(child: Text('Please sign in'))
-          : LiveStatement(
-              key: ValueKey(_days),
-              userId: uid,
-              days: _days,
-              onError: (context, retry) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.cloud_off,
-                          size: 40, color: AppColors.muted),
-                      const SizedBox(height: 12),
-                      Text(
-                        "Couldn't load your statement.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: retry,
-                        child: const Text('Try again'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              builder: (context, statement) {
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
-                  children: [
-                    Center(
-                      child: SegmentedButton<int>(
-                        segments: const [
-                          ButtonSegment(value: 7, label: Text('7 days')),
-                          ButtonSegment(value: 14, label: Text('14 days')),
-                          ButtonSegment(value: 30, label: Text('30 days')),
+          : _calendar
+              ? StatementCalendar(
+                  userId: uid,
+                  header: _viewSwitch(),
+                  onOpenDay: (day, summary, fallback) =>
+                      _openDay(uid, day, summary, fallback),
+                )
+              : LiveStatement(
+                  key: ValueKey(_days),
+                  userId: uid,
+                  days: _days,
+                  onError: (context, retry) => Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.cloud_off,
+                              size: 40, color: AppColors.muted),
+                          const SizedBox(height: 12),
+                          Text(
+                            "Couldn't load your statement.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: retry,
+                            child: const Text('Try again'),
+                          ),
                         ],
-                        selected: {_days},
-                        showSelectedIcon: false,
-                        onSelectionChanged: (s) =>
-                            setState(() => _days = s.first),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    if (_digest != null)
-                      _WeekDigestCard(
-                        digest: _digest!,
-                        onRetry: () => setState(() {
-                          _digest = StatementService.weekDigest(uid);
-                        }),
-                      ),
-                    if (statement == null)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 80),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else ...[
-                      _SummaryRow(statement: statement),
-                      const SizedBox(height: 16),
-                      PanelCard(
-                        title: 'Spending',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            WeeklySpendChart(
-                              statement: statement,
-                              height: 150,
-                            ),
-                            if ((statement.dailyBudget ?? 0) > 0) ...[
-                              const SizedBox(height: 10),
-                              const BudgetLegend(),
+                  ),
+                  builder: (context, statement) {
+                    return ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
+                      children: [
+                        _viewSwitch(),
+                        const SizedBox(height: 12),
+                        Center(
+                          child: SegmentedButton<int>(
+                            segments: const [
+                              ButtonSegment(value: 7, label: Text('7 days')),
+                              ButtonSegment(value: 14, label: Text('14 days')),
+                              ButtonSegment(value: 30, label: Text('30 days')),
                             ],
-                          ],
+                            selected: {_days},
+                            showSelectedIcon: false,
+                            onSelectionChanged: (s) =>
+                                setState(() => _days = s.first),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      PanelCard(
-                        title: 'Where it went',
-                        child: _WhereItWent(statement: statement),
-                      ),
-                      const SizedBox(height: 16),
-                      ..._buildDays(statement),
-                    ],
-                  ],
-                );
-              },
-            ),
+                        const SizedBox(height: 16),
+                        if (_digest != null)
+                          _WeekDigestCard(
+                            digest: _digest!,
+                            onRetry: () => setState(() {
+                              _digest = StatementService.weekDigest(uid);
+                            }),
+                          ),
+                        if (statement == null)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 80),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        else ...[
+                          _SummaryRow(statement: statement),
+                          const SizedBox(height: 16),
+                          if (_budgetsLoaded) ...[
+                            _BudgetsPanel(
+                              settings: _budgets,
+                              // Every view covers this week (7 days always
+                              // reaches back to Monday), so this is exact.
+                              progress: BudgetService.progress(_budgets,
+                                  statement.recent, BalanceService.now()),
+                              onManage: _openBudgets,
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          PanelCard(
+                            title: 'Spending',
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                WeeklySpendChart(
+                                  statement: statement,
+                                  height: 150,
+                                ),
+                                if ((statement.dailyBudget ?? 0) > 0) ...[
+                                  const SizedBox(height: 10),
+                                  const BudgetLegend(),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          PanelCard(
+                            title: 'Where it went',
+                            child: _WhereItWent(statement: statement),
+                          ),
+                          const SizedBox(height: 16),
+                          ..._buildDays(statement),
+                        ],
+                      ],
+                    );
+                  },
+                ),
     );
   }
 
@@ -157,7 +281,7 @@ class _StatementPageState extends State<StatementPage> {
           padding: const EdgeInsets.only(bottom: 12),
           child: PanelCard(
             title: formatDayHeading(d.day),
-            trailing: _DayTotal(day: d, fallbackBudget: budget),
+            trailing: DayTotalChip(day: d, fallbackBudget: budget),
             child: Column(
               children: [
                 for (final tx in d.transactions) TransactionTile(tx: tx),
@@ -166,54 +290,6 @@ class _StatementPageState extends State<StatementPage> {
           ),
         ),
     ];
-  }
-}
-
-class _DayTotal extends StatelessWidget {
-  final DaySummary day;
-  final double? fallbackBudget;
-
-  const _DayTotal({required this.day, required this.fallbackBudget});
-
-  @override
-  Widget build(BuildContext context) {
-    final spent = day.calories;
-    final onBudget = day.onBudget(fallbackBudget);
-    final budget = day.budget(fallbackBudget);
-    // A finished day shows what was left on the card when it closed (pot
-    // top-ups included), the same figure Hiscores judge it by.
-    final closing = day.finished ? day.closingBalance : null;
-    final left = closing ?? (budget == null ? null : budget - spent);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '${formatKcal(spent)} kcal',
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-        ),
-        if (left != null && onBudget != null) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: (onBudget ? AppColors.green : AppColors.red)
-                  .withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              onBudget
-                  ? '${formatKcal(left.abs())} left'
-                  : '${formatKcal(left.abs())} over',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: onBudget ? AppText.emerald700 : AppText.red600,
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
   }
 }
 
@@ -315,6 +391,48 @@ class _Stat extends StatelessWidget {
   }
 }
 
+/// Meal and category budgets on the statement: "Snacks today: 240 of
+/// 300 kcal". With none set, a short pointer to the Budgets page.
+class _BudgetsPanel extends StatelessWidget {
+  final BudgetSettings settings;
+  final List<BudgetProgress> progress;
+  final VoidCallback onManage;
+
+  const _BudgetsPanel({
+    required this.settings,
+    required this.progress,
+    required this.onManage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (settings.isEmpty) {
+      return PanelCard(
+        title: 'Budgets',
+        trailing: TextButton(
+          onPressed: onManage,
+          child: const Text('Set up'),
+        ),
+        child: Text(
+          'Set an optional limit for a meal or a type of food, like '
+          'Snacks 300 kcal a day or Takeaway 1,500 kcal a week.',
+          style: TextStyle(fontSize: 13, color: AppColors.muted),
+        ),
+      );
+    }
+    return PanelCard(
+      title: 'Budgets',
+      trailing: TextButton(
+        onPressed: onManage,
+        child: const Text('Manage'),
+      ),
+      child: Column(
+        children: [for (final p in progress) BudgetProgressRow(progress: p)],
+      ),
+    );
+  }
+}
+
 /// Spending categories, like a banking app's "where your money went".
 class _WhereItWent extends StatelessWidget {
   final Statement statement;
@@ -325,7 +443,11 @@ class _WhereItWent extends StatelessWidget {
   Widget build(BuildContext context) {
     final rows = SpendInsights.breakdown([
       for (final tx in statement.recent)
-        (description: tx.description, isRecipe: false, calories: tx.calories)
+        (
+          description: tx.description,
+          isRecipe: tx.isRecipe,
+          calories: tx.calories
+        )
     ]);
     if (rows.isEmpty) {
       return Padding(

@@ -1362,27 +1362,69 @@ class MockApp extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Guess the Calories 🎯',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              // Mirrors the real "pick a game" sheet.
+              Text('Guess the Calories with Marcus',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ink)),
+              const SizedBox(height: 10),
+              _gameModeCard('🎲', 'Mystery foods',
+                  'You both guess the same 5 everyday foods.', true),
               const SizedBox(height: 8),
-              Text(
-                  'Challenge Marcus? You both guess the calories in the same '
-                  "5 foods, and we'll tell Marcus it's his turn.",
-                  style: TextStyle(color: AppColors.gray600)),
+              _gameModeCard('🍽️', 'Guess what I ate',
+                  "You each pick 5 things you've eaten. You guess theirs, "
+                      'they guess yours.',
+                  false),
               const SizedBox(height: 12),
-              Wrap(
-                alignment: WrapAlignment.end,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _fakeButton(icon: null, label: 'Not now', filled: false),
-                  _mark('gameConfirm',
-                      _fakeButton(icon: null, label: "Let's play", filled: true)),
-                ],
-              ),
+              _mark('gameConfirm',
+                  _fakeButton(
+                      icon: null, label: 'Start', filled: true, wide: true)),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  static Widget _gameModeCard(
+      String emoji, String title, String blurb, bool selected) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: selected ? AppColors.indigo50 : AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selected ? AppColors.primary : AppColors.border,
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 24)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink)),
+                Text(blurb,
+                    style: TextStyle(fontSize: 12, color: AppColors.gray600)),
+              ],
+            ),
+          ),
+          Icon(
+            selected
+                ? Icons.radio_button_checked
+                : Icons.radio_button_unchecked,
+            size: 20,
+            color: selected ? AppText.primary : AppColors.gray400,
+          ),
+        ],
       ),
     );
   }

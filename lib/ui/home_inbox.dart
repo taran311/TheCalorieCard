@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:namer_app/pages/budgets_page.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/budget_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/notification_service.dart';
 import 'package:namer_app/services/premium_service.dart';
@@ -90,6 +92,60 @@ class _HomeInboxState extends State<HomeInbox> {
     } catch (_) {}
   }
 
+  /// Meal and category budgets, for the 80% / 100% heads-ups.
+  List<BudgetProgress> _budgets = const [];
+
+  /// Budget alerts dismissed on this device ([BudgetProgress.alertId]s).
+  Set<String> _budgetSeen = {};
+  Timer? _budgetDebounce;
+  int _budgetToken = 0;
+
+  String get _budgetSeenKey => 'budget_alerts_seen_${widget.userId}';
+
+  Future<void> _loadBudgetSeen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seen = prefs.getStringList(_budgetSeenKey) ?? const <String>[];
+      if (mounted) setState(() => _budgetSeen = {..._budgetSeen, ...seen});
+    } catch (_) {}
+  }
+
+  /// Re-checks budgets shortly after the card changes (food logged or
+  /// removed, or budgets edited), batching quick changes into one read.
+  void _scheduleBudgetCheck() {
+    _budgetDebounce?.cancel();
+    _budgetDebounce = Timer(const Duration(milliseconds: 800), _checkBudgets);
+  }
+
+  Future<void> _checkBudgets() async {
+    final token = ++_budgetToken;
+    final settings = BudgetSettings.fromProfile(_profile);
+    try {
+      final progress =
+          await BudgetService.loadProgress(widget.userId, settings);
+      if (!mounted || token != _budgetToken) return;
+      setState(() => _budgets = progress);
+    } catch (_) {
+      // Budgets are a nice-to-have: keep the last figures.
+    }
+  }
+
+  /// Hides one budget alert for good (each shows once per day / week).
+  Future<void> _dismissBudget(String id) async {
+    setState(() => _budgetSeen = {..._budgetSeen, id});
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_budgetSeenKey,
+          BudgetService.pruneSeen(_budgetSeen, BalanceService.now()));
+    } catch (_) {}
+  }
+
+  void _openBudgets() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const BudgetsPage()),
+    );
+  }
+
   void _onPremiumChanged() {
     if (mounted) setState(() {});
   }
@@ -105,6 +161,7 @@ class _HomeInboxState extends State<HomeInbox> {
     super.initState();
     _checkReminderOffer();
     _loadTrialSeen();
+    _loadBudgetSeen();
     Premium.notifier.addListener(_onPremiumChanged);
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
@@ -123,8 +180,11 @@ class _HomeInboxState extends State<HomeInbox> {
         .limit(1)
         .snapshots()
         .listen(
-      (snap) => setState(
-          () => _profile = snap.docs.isEmpty ? null : snap.docs.first.data()),
+      (snap) {
+        setState(() =>
+            _profile = snap.docs.isEmpty ? null : snap.docs.first.data());
+        _scheduleBudgetCheck();
+      },
       onError: (_) {},
     );
   }
@@ -136,6 +196,7 @@ class _HomeInboxState extends State<HomeInbox> {
     _debitSub?.cancel();
     _profileSub?.cancel();
     _clock?.cancel();
+    _budgetDebounce?.cancel();
     _pages.dispose();
     super.dispose();
   }
@@ -242,6 +303,23 @@ class _HomeInboxState extends State<HomeInbox> {
           ],
         ));
       }
+    }
+
+    // Gentle budget heads-ups at 80% and 100%, once each per period.
+    for (final a in BudgetService.alerts(
+        _budgets, _budgetSeen, BalanceService.now())) {
+      final id = a.progress.alertId(a.level);
+      items.add(_InboxCard(
+        icon: Icons.pie_chart_outline,
+        color: a.level >= 100 ? AppColors.violet600 : AppColors.amber700,
+        title: '${a.progress.budget.name} budget',
+        subtitle: a.progress.alertMessage(a.level),
+        actions: [
+          _InboxAction('OK', () => _dismissBudget(id)),
+          _InboxAction('Budgets', _openBudgets, primary: true),
+        ],
+        stacked: narrow,
+      ));
     }
 
     final premium = Premium.current;

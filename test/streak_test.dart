@@ -61,4 +61,56 @@ void main() {
     final r = run(keys([0, 1]));
     expect(r.current, 2);
   });
+
+  // Rest days ("freeze card") are skipped: paused, not broken.
+  StreakResult runWithRest(Set<String> finished, Set<String> rest) =>
+      Streaks.compute(finished, from: ago(39), today: today, restDays: rest);
+
+  group('rest days', () {
+    test('a rest day in the middle does not break the streak', () {
+      final r = runWithRest(keys([4, 3, 1]), keys([2]));
+      expect(r.current, 3);
+      expect(r.frozen, isEmpty, reason: 'no freeze was needed');
+      expect(r.rested, keys([2]));
+    });
+
+    test('a rest day does not add to the streak', () {
+      final r = runWithRest(keys([3]), keys([2, 1]));
+      expect(r.current, 1);
+      expect(r.longest, 1);
+    });
+
+    test('a rest day does not use up a banked freeze', () {
+      // 7 finished days earn a freeze; the rest day mustn't spend it.
+      final r = runWithRest(keys([10, 9, 8, 7, 6, 5, 4, 2, 1]), keys([3]));
+      expect(r.current, 9);
+      expect(r.freezes, 1);
+      expect(r.frozen, isEmpty);
+    });
+
+    test('a rest day does not count towards earning a freeze', () {
+      final r = runWithRest(keys([7, 6, 5, 3, 2, 1]), keys([4]));
+      expect(r.current, 6);
+      expect(r.freezes, 0);
+      expect(r.toNextFreeze, 1);
+    });
+
+    test('a rest day today keeps yesterday\'s streak', () {
+      final r = runWithRest(keys([2, 1]), keys([0]));
+      expect(r.current, 2);
+    });
+
+    test('a rest day wins over finished for the same day', () {
+      final r = runWithRest(keys([2, 1, 0]), keys([1]));
+      expect(r.current, 2);
+    });
+
+    test('a rest day does not cover a missed day', () {
+      // Missed 2 days ago with no freeze: the streak ended there.
+      final r = runWithRest(keys([4, 3]), keys([1]));
+      expect(r.current, 0);
+      expect(r.longest, 2);
+      expect(r.rested, isEmpty);
+    });
+  });
 }

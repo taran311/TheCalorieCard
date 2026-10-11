@@ -18,12 +18,17 @@ class StreakResult {
   /// Finished days still needed to earn the next freeze (0 when full).
   final int toNextFreeze;
 
+  /// Rest days (date keys) taken during the current streak. They were
+  /// skipped: they paused the streak without using a freeze.
+  final Set<String> rested;
+
   const StreakResult({
     required this.current,
     required this.freezes,
     required this.frozen,
     required this.longest,
     required this.toNextFreeze,
+    this.rested = const <String>{},
   });
 
   static const empty = StreakResult(
@@ -41,6 +46,11 @@ class StreakResult {
 /// If you miss a day and have a freeze, it's used automatically and your
 /// streak carries on. Everything is worked out from your finished days, so
 /// there's nothing extra to save and it can never get out of sync.
+///
+/// Rest days (`daily_logs.rest_day`, see RestDays) are skipped entirely:
+/// they neither break a streak nor add to it, and don't use a freeze or
+/// count towards earning one. A rest day wins over "finished" for the same
+/// day, so a day can never both pause and extend a streak.
 class Streaks {
   Streaks._();
 
@@ -50,10 +60,12 @@ class Streaks {
   /// Walks every day from [from] to [today]. [finished] holds the date keys
   /// ([BalanceService.dateKey]) of finished days. Today only counts once
   /// it's finished; an unfinished today isn't a missed day yet.
+  /// [restDays] holds the date keys of rest days, which are skipped.
   static StreakResult compute(
     Set<String> finished, {
     required DateTime from,
     required DateTime today,
+    Set<String> restDays = const <String>{},
   }) {
     final todayKey = BalanceService.dateKey(today);
     var run = 0;
@@ -61,12 +73,16 @@ class Streaks {
     var freezes = 0;
     var sinceEarn = 0;
     var frozen = <String>{};
+    var rested = <String>{};
 
     var d = BalanceService.startOfDay(from);
     final end = BalanceService.startOfDay(today);
     while (!d.isAfter(end)) {
       final key = BalanceService.dateKey(d);
-      if (finished.contains(key)) {
+      if (restDays.contains(key)) {
+        // Paused, not broken: as if the day wasn't on the calendar.
+        if (run > 0) rested.add(key);
+      } else if (finished.contains(key)) {
         run++;
         sinceEarn++;
         if (sinceEarn >= earnEvery) {
@@ -84,6 +100,7 @@ class Streaks {
         sinceEarn = 0;
         freezes = 0;
         frozen = <String>{};
+        rested = <String>{};
       }
       d = BalanceService.addDays(d, 1);
     }
@@ -94,6 +111,7 @@ class Streaks {
       frozen: frozen,
       longest: longest,
       toNextFreeze: freezes >= maxFreezes ? 0 : earnEvery - sinceEarn,
+      rested: rested,
     );
   }
 }

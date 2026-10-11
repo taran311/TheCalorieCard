@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 /// The calorie card's look, shared by the sign-in preview and the live card
@@ -727,6 +729,65 @@ class CalorieCardSkeleton extends StatelessWidget {
           const SizedBox(height: 12),
           bar(130, 12),
         ],
+      ),
+    );
+  }
+}
+
+/// Laid over the card on a rest day, like a bank card that's been frozen:
+/// a light icy frost and one 🏖️ "Rest day" tag. It's a state, not a
+/// caption, so it's the one thing ever drawn over the card's face.
+/// Purely visual: taps still reach the card (screen readers hear "Rest
+/// day" from the card's own label).
+class RestDayFrost extends StatelessWidget {
+  const RestDayFrost({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: ExcludeSemantics(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 2.5, sigmaY: 2.5),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.55), width: 1.5),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFFE0F2FE).withValues(alpha: 0.45),
+                    const Color(0xFFBAE6FD).withValues(alpha: 0.25),
+                    const Color(0xFFF0F9FF).withValues(alpha: 0.40),
+                  ],
+                ),
+              ),
+              child: Center(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  // Fixed colours: the card looks the same in dark mode.
+                  child: const Text(
+                    '🏖️ Rest day',
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: Color(0xFF0C4A6E),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

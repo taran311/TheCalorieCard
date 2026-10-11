@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -7,9 +9,13 @@ import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/friend_activity.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
+import 'package:namer_app/services/username_service.dart';
+import 'package:namer_app/ui/add_friend_link.dart';
 import 'package:namer_app/ui/friend_today.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
+import 'package:namer_app/ui/username_sheet.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:namer_app/pages/challenges_page.dart';
 import 'package:namer_app/pages/home_page.dart';
 import 'package:namer_app/pages/friend_group_page.dart';
@@ -48,6 +54,20 @@ class _FriendsPageState extends State<FriendsPage> {
           .snapshots();
   late final Stream<DocumentSnapshot<Map<String, dynamic>>> _userDoc =
       FirebaseFirestore.instance.collection('users').doc(_uid).snapshots();
+
+  /// Your own doc again, for your username: one listener (not a
+  /// StreamBuilder) because both the page and the add-friend sheet need it.
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _meSub;
+
+  /// Your username (no @), once [_meKnown].
+  String? _myUsername;
+  bool _meKnown = false;
+
+  /// Whether "Pick a username" has been waved away on this device. Null
+  /// until read, so the prompt doesn't flash up and vanish.
+  bool? _usernamePromptDismissed;
+
+  String get _promptKey => 'username_prompt_dismissed_$_uid';
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _groups =
       FirebaseFirestore.instance
           .collection('friend_groups')
@@ -76,10 +96,96 @@ class _FriendsPageState extends State<FriendsPage> {
   void initState() {
     super.initState();
     _initializeUserDocument();
+    _loadPromptDismissed();
+    if (_uid.isNotEmpty) {
+      _meSub = FirebaseFirestore.instance
+          .collection('users')
+          .doc(_uid)
+          .snapshots()
+          .listen((doc) {
+        if (!mounted) return;
+        setState(() {
+          _myUsername = UsernameService.usernameFrom(doc.data());
+          _meKnown = true;
+        });
+      }, onError: (Object _) {
+        if (mounted) setState(() => _meKnown = true);
+      });
+    }
+  }
+
+  Future<void> _loadPromptDismissed() async {
+    var dismissed = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      dismissed = prefs.getBool(_promptKey) ?? false;
+    } catch (_) {}
+    if (mounted) setState(() => _usernamePromptDismissed = dismissed);
+  }
+
+  /// "Not now" on the username prompt: it's only offered once.
+  Future<void> _dismissUsernamePrompt() async {
+    setState(() => _usernamePromptDismissed = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_promptKey, true);
+    } catch (_) {}
+  }
+
+  /// Opens the username picker; true if they saved one.
+  Future<bool> _pickUsername() async {
+    final picked = await showUsernameSheet(context);
+    if (!mounted || picked == null || picked == usernameSkipped) return false;
+    _snack('Saved. Friends can add you as @$picked.');
+    return true;
+  }
+
+  /// [_shareMyLink] for buttons: uses the username already loaded (so the
+  /// share sheet opens straight from the tap), or reads it if it isn't yet.
+  Future<void> _onShareMyLink() async {
+    if (_meKnown) return _shareMyLink(_myUsername);
+    String? username;
+    try {
+      username = await UsernameService.usernameOf(_uid);
+    } catch (_) {}
+    if (!mounted) return;
+    await _shareMyLink(username);
+  }
+
+  /// Shares https://thecaloriecard.com/?add=<username>. With no username
+  /// yet, asks for one first (a plain link with your account id works
+  /// too, but reads badly).
+  Future<void> _shareMyLink(String? username) async {
+    if (username != null) {
+      await shareInviteLink(
+        context,
+        link: UsernameService.inviteLink(username),
+        username: username,
+      );
+      return;
+    }
+    final picked = await showUsernameSheet(
+      context,
+      intro: 'Pick a username first. Your link will read '
+          '${UsernameService.siteHost}/?add=yourname, and friends can find '
+          'you by it.',
+      skipLabel: 'Share a plain link instead',
+    );
+    if (!mounted || picked == null) return;
+    if (picked == usernameSkipped) {
+      await shareInviteLink(context, link: UsernameService.inviteLink(_uid));
+    } else {
+      await shareInviteLink(
+        context,
+        link: UsernameService.inviteLink(picked),
+        username: picked,
+      );
+    }
   }
 
   @override
   void dispose() {
+    _meSub?.cancel();
     _isSubmitting.dispose();
     _addError.dispose();
     _emailController.dispose();
@@ -126,10 +232,22 @@ class _FriendsPageState extends State<FriendsPage> {
 
   Future<void> _submitFriendRequest(VoidCallback closeSheet) async {
     if (_isSubmitting.value) return;
-    final email = _emailController.text.trim();
+    final input = _emailController.text.trim();
 
-    if (email.isEmpty) {
-      _fail("Enter your friend's email.");
+    if (input.isEmpty) {
+      _fail("Enter your friend's username or email.");
+      return;
+    }
+
+    // "sam@x.com" is an email; "@taz" or "taz" is a username.
+    final byEmail = UsernameService.looksLikeEmail(input);
+    final handle = UsernameService.normalise(input);
+    // (Reserved names pass here: they're looked up, and simply not found.)
+    if (!byEmail &&
+        UsernameService.validate(handle) != null &&
+        !UsernameService.reserved.contains(handle)) {
+      _fail("That doesn't look like a username or an email. Usernames are "
+          'letters, numbers and _, like @taz.');
       return;
     }
 
@@ -143,92 +261,85 @@ class _FriendsPageState extends State<FriendsPage> {
         return;
       }
 
-      // Find user by email (as typed, then lower-case: sign-up emails are
-      // usually stored lower-case, but people type "Sam@Gmail.com").
-      var userQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
-      if (userQuery.docs.isEmpty && email.toLowerCase() != email) {
-        userQuery = await FirebaseFirestore.instance
+      final String targetUserId;
+      final String toEmail;
+      if (byEmail) {
+        final email = input;
+        // Find user by email (as typed, then lower-case: sign-up emails are
+        // usually stored lower-case, but people type "Sam@Gmail.com").
+        var userQuery = await FirebaseFirestore.instance
             .collection('users')
-            .where('email', isEqualTo: email.toLowerCase())
+            .where('email', isEqualTo: email)
             .limit(1)
             .get();
+        if (userQuery.docs.isEmpty && email.toLowerCase() != email) {
+          userQuery = await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isEqualTo: email.toLowerCase())
+              .limit(1)
+              .get();
+        }
+
+        if (userQuery.docs.isEmpty) {
+          _fail("We couldn't find anyone with that email. Check it, or ask "
+              'them to sign up first.');
+          return;
+        }
+        targetUserId = userQuery.docs.first.id;
+        toEmail = email;
+      } else {
+        final uid = await UsernameService.lookup(handle);
+        if (uid == null) {
+          _fail("We couldn't find @$handle. Check the spelling, or try "
+              'their email.');
+          return;
+        }
+        targetUserId = uid;
+        // Same request doc as the email flow, so fill in their email.
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .get();
+        toEmail = '${doc.data()?['email'] ?? ''}';
       }
 
-      if (userQuery.docs.isEmpty) {
-        _fail("We couldn't find anyone with that email. Check it, or ask "
-            'them to sign up first.');
-        return;
+      final status = await FriendsService.sendRequest(
+        myUid: currentUser.uid,
+        myEmail: currentUser.email,
+        toUid: targetUserId,
+        toEmail: toEmail,
+      );
+
+      switch (status.relation) {
+        case FriendRelation.self:
+          _fail(byEmail
+              ? "That's your own email."
+              : "That's your own username.");
+          return;
+        case FriendRelation.friends:
+          _fail("You're already friends.");
+          return;
+        case FriendRelation.requestSent:
+          _fail("You've already sent them a request.");
+          return;
+        case FriendRelation.requestReceived:
+          // They already asked to be your friend? Accept that instead of
+          // sending a second request the other way.
+          _emailController.clear();
+          _isSubmitting.value = false;
+          closeSheet();
+          final requestId = status.requestId;
+          if (requestId != null) {
+            await _acceptFriendRequest(
+              requestId,
+              targetUserId,
+              status.requestFromEmail ?? toEmail,
+            );
+          }
+          return;
+        case FriendRelation.none:
+          break;
       }
-
-      final targetUserId = userQuery.docs.first.id;
-
-      // Prevent self-requests
-      if (targetUserId == currentUser.uid) {
-        _fail("That's your own email.");
-        return;
-      }
-
-      // Check if already friends
-      final currentUserDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
-
-      final friends =
-          (currentUserDoc.data()?['friends'] as List?)?.cast<String>() ?? [];
-      if (friends.contains(targetUserId)) {
-        _fail("You're already friends.");
-        return;
-      }
-
-      // Check if request already pending
-      final existingRequest = await FirebaseFirestore.instance
-          .collection('friend_requests')
-          .where('from_user_id', isEqualTo: currentUser.uid)
-          .where('to_user_id', isEqualTo: targetUserId)
-          .where('status', isEqualTo: 'pending')
-          .limit(1)
-          .get();
-
-      if (existingRequest.docs.isNotEmpty) {
-        _fail("You've already sent them a request.");
-        return;
-      }
-
-      // They already asked to be your friend? Accept that instead of
-      // sending a second request the other way.
-      final reverseRequest = await FirebaseFirestore.instance
-          .collection('friend_requests')
-          .where('from_user_id', isEqualTo: targetUserId)
-          .where('to_user_id', isEqualTo: currentUser.uid)
-          .where('status', isEqualTo: 'pending')
-          .limit(1)
-          .get();
-      if (reverseRequest.docs.isNotEmpty) {
-        _emailController.clear();
-        _isSubmitting.value = false;
-        closeSheet();
-        await _acceptFriendRequest(
-          reverseRequest.docs.first.id,
-          targetUserId,
-          (reverseRequest.docs.first.data()['from_email'] as String?) ?? email,
-        );
-        return;
-      }
-
-      // Create friend request
-      await FirebaseFirestore.instance.collection('friend_requests').add({
-        'from_user_id': currentUser.uid,
-        'from_email': currentUser.email ?? '',
-        'to_user_id': targetUserId,
-        'to_email': email,
-        'status': 'pending',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
 
       _emailController.clear();
       _isSubmitting.value = false;
@@ -275,7 +386,8 @@ class _FriendsPageState extends State<FriendsPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    "We'll send them a friend request.",
+                    "Add them by username or email. We'll send them a "
+                    'friend request.',
                     style: TextStyle(color: AppColors.muted),
                   ),
                   const SizedBox(height: 16),
@@ -285,6 +397,8 @@ class _FriendsPageState extends State<FriendsPage> {
                       controller: _emailController,
                       autofocus: true,
                       autocorrect: false,
+                      enableSuggestions: false,
+                      // The email keyboard has @ to hand for both.
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _submitFriendRequest(close),
@@ -292,8 +406,8 @@ class _FriendsPageState extends State<FriendsPage> {
                         if (_addError.value != null) _addError.value = null;
                       },
                       decoration: InputDecoration(
-                        labelText: "Friend's email",
-                        hintText: 'name@example.com',
+                        labelText: 'Username or email',
+                        hintText: '@taz or name@example.com',
                         errorText: error,
                         errorMaxLines: 3,
                         border: const OutlineInputBorder(),
@@ -318,6 +432,15 @@ class _FriendsPageState extends State<FriendsPage> {
                     ),
                   ),
                   const SizedBox(height: 4),
+                  // Easier than typing for a friend who's not signed up.
+                  TextButton.icon(
+                    onPressed: () {
+                      close();
+                      _onShareMyLink();
+                    },
+                    icon: const Icon(Icons.ios_share_rounded, size: 20),
+                    label: const Text('Or share your link'),
+                  ),
                   TextButton(
                     onPressed: close,
                     child: const Text('Cancel'),
@@ -349,31 +472,11 @@ class _FriendsPageState extends State<FriendsPage> {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) return;
 
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        // Update friend request status
-        transaction.update(
-          FirebaseFirestore.instance
-              .collection('friend_requests')
-              .doc(requestId),
-          {'status': 'accepted'},
-        );
-
-        // Add to current user's friends
-        transaction.update(
-          FirebaseFirestore.instance.collection('users').doc(currentUser.uid),
-          {
-            'friends': FieldValue.arrayUnion([fromUserId]),
-          },
-        );
-
-        // Add to other user's friends
-        transaction.update(
-          FirebaseFirestore.instance.collection('users').doc(fromUserId),
-          {
-            'friends': FieldValue.arrayUnion([currentUser.uid]),
-          },
-        );
-      });
+      await FriendsService.acceptRequest(
+        requestId: requestId,
+        myUid: currentUser.uid,
+        fromUid: fromUserId,
+      );
 
       _snack("You're now friends with ${FriendsService.displayName(fromEmail)}");
     } catch (_) {
@@ -897,24 +1000,43 @@ class _FriendsPageState extends State<FriendsPage> {
   }
 
   /// The name on a friend request: the name they chose if their profile
-  /// can be read, otherwise the start of their email.
+  /// can be read, otherwise the start of their email. Their @username
+  /// goes underneath when they have one.
   Widget _requestName(String? userId, String? email) {
     final fallback = FriendsService.displayName(email);
-    Widget text(String name) => Text(
-          name,
-          style: _nameStyle,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+    Widget text(String name, [String? username]) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              name,
+              style: _nameStyle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (username != null) _usernameLine(username),
+          ],
         );
     if (userId == null || userId.isEmpty) return text(fallback);
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       future: _friendDoc(userId),
       builder: (context, snap) {
         final data = snap.hasError ? null : snap.data?.data();
-        return text(data == null ? fallback : FriendsService.nameFromUser(data));
+        return text(
+          data == null ? fallback : FriendsService.nameFromUser(data),
+          UsernameService.usernameFrom(data),
+        );
       },
     );
   }
+
+  /// "@taz", small, under a name.
+  Widget _usernameLine(String username) => Text(
+        '@$username',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12, color: AppColors.muted),
+      );
 
   Widget _sentRequestsSection() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -981,7 +1103,8 @@ class _FriendsPageState extends State<FriendsPage> {
         ];
 
         if (friendIds.isEmpty) {
-          return _emptyNote('No friends yet. Tap + to add someone by email.');
+          return _emptyNote('No friends yet. Tap + to add someone by '
+              'username or email, or share your link.');
         }
 
         return Column(
@@ -997,8 +1120,12 @@ class _FriendsPageState extends State<FriendsPage> {
                   if (!friendSnapshot.hasData) {
                     return const SizedBox.shrink();
                   }
-                  return _friendRow(friendId,
-                      FriendsService.nameFromUser(friendSnapshot.data!.data()));
+                  final data = friendSnapshot.data!.data();
+                  return _friendRow(
+                    friendId,
+                    FriendsService.nameFromUser(data),
+                    username: UsernameService.usernameFrom(data),
+                  );
                 },
               ),
           ],
@@ -1068,7 +1195,7 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
-  Widget _friendRow(String friendId, String name) {
+  Widget _friendRow(String friendId, String name, {String? username}) {
     // On the narrowest phones the game button goes (it's in ⋮ too), so
     // the name and status keep enough room.
     final roomy = MediaQuery.sizeOf(context).width >= 360;
@@ -1090,6 +1217,7 @@ class _FriendsPageState extends State<FriendsPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (username != null) _usernameLine(username),
                   const SizedBox(height: 3),
                   FriendTodayStatus(friendId: friendId),
                 ],
@@ -1150,6 +1278,87 @@ class _FriendsPageState extends State<FriendsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// "Your friends" with Share my link, and, once, a friendly nudge to
+  /// pick a username if you haven't.
+  Widget _friendsHeader() {
+    final showPrompt = _meKnown &&
+        _myUsername == null &&
+        _usernamePromptDismissed == false;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text('Your friends', style: _sectionStyle)),
+            TextButton.icon(
+              onPressed: _onShareMyLink,
+              icon: const Icon(Icons.ios_share_rounded, size: 20),
+              label: const Text('Share my link'),
+            ),
+          ],
+        ),
+        if (showPrompt) ...[
+          const SizedBox(height: 8),
+          _usernamePrompt(),
+        ],
+      ],
+    );
+  }
+
+  Widget _usernamePrompt() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
+      decoration: BoxDecoration(
+        color: AppColors.indigo50,
+        borderRadius: BorderRadius.circular(AppDecor.radius),
+        border: Border.all(color: AppColors.indigo300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(
+              'Pick a username',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(
+              'Friends can add you as @yourname instead of typing your '
+              'email, and your invite link is easier to share.',
+              style: TextStyle(fontSize: 13.5, color: AppColors.gray700),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 4,
+              children: [
+                TextButton(
+                  onPressed: _dismissUsernamePrompt,
+                  child: const Text('Not now'),
+                ),
+                TextButton(
+                  onPressed: _pickUsername,
+                  child: const Text('Pick a username'),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1267,7 +1476,7 @@ class _FriendsPageState extends State<FriendsPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _incomingRequestsSection(),
-          Text('Your friends', style: _sectionStyle),
+          _friendsHeader(),
           const SizedBox(height: 12),
           _friendsSection(),
           _sentRequestsSection(),

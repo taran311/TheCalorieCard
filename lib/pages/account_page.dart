@@ -9,13 +9,15 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/data_export.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/services/proxy_client.dart';
+import 'package:namer_app/services/username_service.dart';
 import 'package:namer_app/services/weight_service.dart';
 import 'package:namer_app/services/web_platform.dart' as web;
 import 'package:namer_app/ui/auth_ui.dart' show openSitePage;
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/username_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Account and privacy: your display name, password, a copy of your data,
+/// Account and privacy: your display name and username, password, a copy of your data,
 /// deleting your account, and the legal pages.
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -38,6 +40,9 @@ class _AccountPageState extends State<AccountPage> {
   final User? _user = FirebaseAuth.instance.currentUser;
   final _name = TextEditingController();
   String _savedName = '';
+
+  /// Your @username (no @), or null if you haven't picked one.
+  String? _username;
   bool _loadingName = true;
   bool _savingName = false;
   bool _sendingReset = false;
@@ -75,6 +80,7 @@ class _AccountPageState extends State<AccountPage> {
       setState(() {
         _savedName = name;
         _name.text = name;
+        _username = UsernameService.usernameFrom(doc.data());
       });
     } catch (_) {
       // Left blank; they can still type one.
@@ -116,6 +122,22 @@ class _AccountPageState extends State<AccountPage> {
     } finally {
       if (mounted) setState(() => _savingName = false);
     }
+  }
+
+  Future<void> _changeUsername() async {
+    final old = _username;
+    final picked = await showUsernameSheet(
+      context,
+      current: old,
+      intro: old == null
+          ? null
+          : 'Friends can add you by your new username straight away. '
+              '@$old, and links using it, will stop working.',
+    );
+    if (!mounted || picked == null || picked == usernameSkipped) return;
+    if (picked == old) return;
+    setState(() => _username = picked);
+    _snack('Saved. Friends can add you as @$picked.');
   }
 
   Future<void> _sendPasswordReset() async {
@@ -379,6 +401,40 @@ class _AccountPageState extends State<AccountPage> {
                             ? _spinner()
                             : const Text('Save name'),
                       ),
+                    ),
+                  ]),
+                  _section('Your username', [
+                    _body('Friends can add you by your username, and it '
+                        'makes your invite link easy to read.'),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _loadingName
+                                ? 'Loading…'
+                                : _username == null
+                                    ? 'No username yet'
+                                    : '@$_username',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: _username == null
+                                  ? AppColors.muted
+                                  : AppColors.ink,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _loadingName ? null : _changeUsername,
+                          style: TextButton.styleFrom(
+                              minimumSize: const Size(48, 48)),
+                          child: Text(
+                              _username == null ? 'Pick one' : 'Change'),
+                        ),
+                      ],
                     ),
                   ]),
                   _section('Password', [

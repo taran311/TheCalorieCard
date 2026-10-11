@@ -114,6 +114,30 @@ void main() {
     expect((await w.card())['calories'], near(2000));
   });
 
+  test('a note is saved on its own and never touches the card', () async {
+    final id = (await logToast()).ids.single;
+    await FoodLog.setNote(id, "  at Nando's with Sam  ", userId: uid);
+    var e = await entry(id);
+    expect(e['food_note'], "at Nando's with Sam");
+    expect(FoodLog.noteOf(e), "at Nando's with Sam");
+    expect(e['food_calories'], near(100));
+    expect((await w.card())['calories'], near(1900));
+
+    // Clearing it removes the field.
+    await FoodLog.setNote(id, '   ', userId: uid);
+    e = await entry(id);
+    expect(e.containsKey('food_note'), isFalse);
+    expect(FoodLog.noteOf(e), '');
+    expect((await w.card())['calories'], near(1900));
+  });
+
+  test('a long note is trimmed to the limit', () async {
+    final id = (await logToast()).ids.single;
+    await FoodLog.setNote(id, 'x' * (FoodLog.maxNoteLength + 50),
+        userId: uid);
+    expect(FoodLog.noteOf(await entry(id)).length, FoodLog.maxNoteLength);
+  });
+
   test('a zero or negative portion is refused', () async {
     final id = (await logToast()).ids.single;
     expect(

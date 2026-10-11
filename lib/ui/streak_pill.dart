@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
+import 'package:namer_app/services/rest_days.dart';
 import 'package:namer_app/services/streak.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -98,6 +99,7 @@ class _StreakPillState extends State<StreakPill> {
 /// Explains your streak and Streak Freezes.
 Future<void> showStreakSheet(BuildContext context, StreakResult s) {
   final frozenDays = s.frozen.toList()..sort();
+  final restedDays = s.rested.toList()..sort();
   String pretty(String key) {
     final d = DateTime.tryParse(key);
     if (d == null) return key;
@@ -219,6 +221,31 @@ Future<void> showStreakSheet(BuildContext context, StreakResult s) {
               const SizedBox(height: 14),
               Text(
                 'Saved by a freeze: ${frozenDays.map(pretty).join(', ')}',
+                style: TextStyle(color: AppColors.gray700),
+              ),
+            ],
+            const SizedBox(height: 14),
+            // Rest days are a different thing from Streak Freezes: say so.
+            Text(
+              'Rest days',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Going on holiday or celebrating? Tap "🏖️ Rest day" under '
+              "your food on the Card screen. You won't track that day, and "
+              'your streak is paused, not broken. It doesn\'t use a Streak '
+              'Freeze. You can take ${RestDays.maxPerWeek} a week.',
+              style: TextStyle(color: AppColors.gray700, height: 1.35),
+            ),
+            if (restedDays.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Rest days in this streak: '
+                '${restedDays.map(pretty).join(', ')}',
                 style: TextStyle(color: AppColors.gray700),
               ),
             ],

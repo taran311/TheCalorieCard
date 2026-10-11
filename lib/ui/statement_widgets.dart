@@ -35,6 +35,18 @@ String formatDayHeading(DateTime day) {
   return '${_weekdayShort[d.weekday - 1]} ${d.day} ${_monthShort[d.month - 1]}';
 }
 
+/// "Tue 3 Sep", never "Today" (for search results and the calendar).
+String formatDayShort(DateTime d) =>
+    '${_weekdayShort[d.weekday - 1]} ${d.day} ${_monthShort[d.month - 1]}';
+
+const _monthLong = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+/// "October 2026".
+String formatMonth(DateTime d) => '${_monthLong[d.month - 1]} ${d.year}';
+
 String formatTime(DateTime t) =>
     '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
@@ -423,6 +435,57 @@ class BudgetLegend extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Text('Over budget', style: style),
+        ],
+      ],
+    );
+  }
+}
+
+/// A day's total, with what was left (green) or how far over (red) in
+/// words, for statement day headings.
+class DayTotalChip extends StatelessWidget {
+  final DaySummary day;
+  final double? fallbackBudget;
+
+  const DayTotalChip(
+      {super.key, required this.day, required this.fallbackBudget});
+
+  @override
+  Widget build(BuildContext context) {
+    final spent = day.calories;
+    final onBudget = day.onBudget(fallbackBudget);
+    final budget = day.budget(fallbackBudget);
+    // A finished day shows what was left on the card when it closed (pot
+    // top-ups included), the same figure Hiscores judge it by.
+    final closing = day.finished ? day.closingBalance : null;
+    final left = closing ?? (budget == null ? null : budget - spent);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '${formatKcal(spent)} kcal',
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+        if (left != null && onBudget != null) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: (onBudget ? AppColors.green : AppColors.red)
+                  .withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              onBudget
+                  ? '${formatKcal(left.abs())} left'
+                  : '${formatKcal(left.abs())} over',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: onBudget ? AppText.emerald700 : AppText.red600,
+              ),
+            ),
+          ),
         ],
       ],
     );

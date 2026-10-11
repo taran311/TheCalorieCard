@@ -1,10 +1,14 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_game.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/services/notification_service.dart';
+import 'package:namer_app/ui/game_food_picker.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Your name as friends see it: your display name if you set one.
 Future<String> _myName() {
@@ -15,60 +19,280 @@ Future<String> _myName() {
 /// A game being started, so a double tap doesn't start two.
 bool _startingGame = false;
 
-/// Starts a game with a friend and opens it. With [confirm], asks first
-/// (used by the one-tap button in the Friends list).
+/// One line on each kind of game, the same everywhere it's offered.
+String _modeBlurb(GameMode mode) => mode == GameMode.classic
+    ? 'You both guess the same ${CalorieGameService.rounds} everyday foods.'
+    : "You each pick ${CalorieGameService.rounds} things you've eaten. You "
+        'guess theirs, they guess yours.';
+
+/// Starts a game with a friend and opens it.
+///
+/// Always asks which kind of game first (a game can't start without one),
+/// with [mode] preselected if given. [confirm] is kept so existing callers
+/// (the Friends list) work unchanged: either way the choice sheet is the
+/// confirmation. For "Guess what I ate" you pick your 5 foods before the
+/// game is created, so backing out leaves no half-made game.
 Future<void> startCalorieGame(
   BuildContext context, {
   required String friendId,
   required String friendName,
   bool confirm = false,
+  GameMode? mode,
+}) async {
+  await _startGame(context,
+      friendId: friendId, friendName: friendName, initial: mode);
+}
+
+/// [startCalorieGame], and Rematch ([replace] swaps the finished game's
+/// page for the new one). True when a game was started.
+Future<bool> _startGame(
+  BuildContext context, {
+  required String friendId,
+  required String friendName,
+  GameMode? initial,
+  bool replace = false,
 }) async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
-  if (uid == null) return;
+  if (uid == null || _startingGame) return false;
   final messenger = ScaffoldMessenger.of(context);
   final navigator = Navigator.of(context);
-  if (_startingGame) return;
-  if (confirm) {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Guess the Calories 🎯'),
-        content: Text(
-          'Challenge $friendName? You both guess the calories in the same '
-          "${CalorieGameService.rounds} foods, and we'll tell $friendName "
-          "it's their turn.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Not now'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Let's play"),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-  }
   _startingGame = true;
   try {
+    final mode = await showModalBottomSheet<GameMode>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _ModeSheet(
+        friendName: friendName,
+        initial: initial ?? GameMode.classic,
+      ),
+    );
+    if (mode == null) return false;
+    List<GameFood>? picks;
+    if (mode == GameMode.swap) {
+      picks = await navigator.push(
+        GameFoodPicker.route(uid: uid, friendName: friendName),
+      );
+      if (picks == null || picks.length != CalorieGameService.rounds) {
+        return false;
+      }
+    }
     final id = await CalorieGameService.create(
       uid: uid,
       myName: await _myName(),
       friendId: friendId,
       friendName: friendName,
+      mode: mode,
+      picks: picks,
     );
-    navigator.push(
-      MaterialPageRoute(builder: (_) => CalorieGamePage(gameId: id)),
-    );
+    final route =
+        MaterialPageRoute<void>(builder: (_) => CalorieGamePage(gameId: id));
+    if (replace) {
+      navigator.pushReplacement(route);
+    } else {
+      navigator.push(route);
+    }
+    return true;
   } catch (_) {
     messenger.showSnackBar(const SnackBar(
         content: Text("Couldn't start the game. Please try again.")));
+    return false;
   } finally {
     _startingGame = false;
   }
+}
+
+/// "Guess the Calories with Sam": the two kinds of game, then Start.
+class _ModeSheet extends StatefulWidget {
+  final String friendName;
+  final GameMode initial;
+
+  const _ModeSheet({required this.friendName, required this.initial});
+
+  @override
+  State<_ModeSheet> createState() => _ModeSheetState();
+}
+
+class _ModeSheetState extends State<_ModeSheet> {
+  late GameMode _mode = widget.initial;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Guess the Calories with ${widget.friendName}',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Pick a game. You each play whenever suits you, and the '
+              'closest guesses win.',
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.35,
+                color: AppColors.gray600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            for (final m in GameMode.values) ...[
+              _ModeCard(
+                mode: m,
+                selected: _mode == m,
+                onTap: () => setState(() => _mode = m),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (_mode == GameMode.swap)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  "Next, you'll pick your ${CalorieGameService.rounds} "
+                  'foods.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: AppColors.gray600),
+                ),
+              ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 52,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(_mode),
+                child: const Text(
+                  'Start',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One big choice on the [_ModeSheet].
+class _ModeCard extends StatelessWidget {
+  final GameMode mode;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeCard({
+    required this.mode,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      label: '${mode.title}. ${_modeBlurb(mode)}',
+      onTap: onTap,
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? AppColors.indigo50 : AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDecor.radius),
+          side: BorderSide(
+            color: selected ? AppColors.primary : AppColors.border,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+            child: Row(
+              children: [
+                Text(mode.emoji, style: const TextStyle(fontSize: 32)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mode.title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _modeBlurb(mode),
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.35,
+                          color: AppColors.gray700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: selected ? AppText.primary : AppColors.gray400,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Ends Friday": when a game runs out if nobody moves.
+String _endsLabel(DateTime end, DateTime now) {
+  const weekdays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  // Hours, not inDays: a day with a clock change is 23 or 25 hours long.
+  final days = (BalanceService.startOfDay(end)
+              .difference(BalanceService.startOfDay(now))
+              .inHours /
+          24)
+      .round();
+  if (days <= 0) return 'Ends today';
+  if (days == 1) return 'Ends tomorrow';
+  final day = weekdays[end.weekday - 1];
+  // A week away is the same weekday as today.
+  return days >= 7 ? 'Ends next $day' : 'Ends $day';
+}
+
+/// The line a game that ran out of time ends with, from [uid]'s side.
+String _endedLine(CalorieGame game, String uid) {
+  final other = game.opponentOf(uid);
+  final name = game.nameOf(other);
+  final winner = game.isFinished
+      ? game.winner
+      : CalorieGameService.expiredWinnerOf(game);
+  if (winner == uid) return "This game ended: $name didn't finish in time";
+  if (winner == other) return "This game ended: you didn't finish in time";
+  return 'This game ended before anyone finished';
 }
 
 // ============================================================================
@@ -90,6 +314,9 @@ class _CalorieGamesPageState extends State<CalorieGamesPage> {
   late final Stream<List<CalorieGame>> _games =
       CalorieGameService.forUser(_uid);
 
+  /// Stale games already asked to end, so each is only asked once.
+  final Set<String> _expiring = {};
+
   Future<void> _newGame() async {
     final friend = await showModalBottomSheet<Friend>(
       context: context,
@@ -105,6 +332,21 @@ class _CalorieGamesPageState extends State<CalorieGamesPage> {
   void _open(CalorieGame g) => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => CalorieGamePage(gameId: g.id)),
       );
+
+  /// Ends games nobody has moved in for a week (after this frame: no
+  /// writes in the middle of a build). The list updates by itself.
+  void _expireStale(List<CalorieGame> games, DateTime now) {
+    final stale = [
+      for (final g in games)
+        if (g.isStaleAt(now) && _expiring.add(g.id)) g
+    ];
+    if (stale.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final g in stale) {
+        CalorieGameService.expireIfStale(g, _uid);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -127,17 +369,20 @@ class _CalorieGamesPageState extends State<CalorieGamesPage> {
             return const Center(child: CircularProgressIndicator());
           }
           final games = snap.data!;
+          final now = BalanceService.now();
+          _expireStale(games, now);
+          bool ended(CalorieGame g) => g.isFinished || g.isStaleAt(now);
           final yourTurn = [
             for (final g in games)
-              if (!g.isFinished && !g.doneBy(_uid)) g
+              if (!ended(g) && g.isTurnOf(_uid)) g
           ];
           final waiting = [
             for (final g in games)
-              if (!g.isFinished && g.doneBy(_uid)) g
+              if (!ended(g) && !g.isTurnOf(_uid)) g
           ];
           final finished = [
             for (final g in games)
-              if (g.isFinished) g
+              if (ended(g)) g
           ].take(20).toList();
 
           return Center(
@@ -185,6 +430,11 @@ class _HowToPlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final body = TextStyle(
+      color: Colors.white.withValues(alpha: 0.92),
+      fontSize: 13,
+      height: 1.35,
+    );
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -192,6 +442,7 @@ class _HowToPlay extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppDecor.radius),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('🎯', style: TextStyle(fontSize: 34)),
           const SizedBox(width: 14),
@@ -208,16 +459,20 @@ class _HowToPlay extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  "You and a friend both guess the calories in the same "
-                  "${CalorieGameService.rounds} foods, whenever suits you. "
-                  "The closer you are, the more points (up to 100 a food). "
-                  "The winner's revealed once you've both finished.",
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontSize: 13,
-                    height: 1.35,
+                Text('Two ways to play with a friend:', style: body),
+                const SizedBox(height: 4),
+                for (final m in GameMode.values)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text('${m.label}: ${_modeBlurb(m)}', style: body),
                   ),
+                const SizedBox(height: 4),
+                Text(
+                  'Play whenever suits you. The closer you are, the more '
+                  'points (up to 100 a food). The winner is revealed once '
+                  "you've both finished. A game ends 7 days after the last "
+                  'move.',
+                  style: body,
                 ),
               ],
             ),
@@ -259,13 +514,29 @@ class _GameTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final other = game.opponentOf(uid);
     final name = game.nameOf(other);
-    final total = game.foods.length;
+    final now = BalanceService.now();
 
+    // The same wording as the banner on the game itself.
     final String subtitle;
     final Color accent;
     final IconData icon;
-    if (game.isFinished) {
-      final score = '${game.scoreOf(uid)} – ${game.scoreOf(other)}';
+    if (game.expired || (!game.isFinished && game.isStaleAt(now))) {
+      final winner = game.isFinished
+          ? game.winner
+          : CalorieGameService.expiredWinnerOf(game);
+      if (winner == uid) {
+        subtitle = "Ended · $name didn't finish";
+        accent = AppText.emerald600;
+      } else if (winner == other) {
+        subtitle = "Ended · you didn't finish";
+        accent = AppText.rose600;
+      } else {
+        subtitle = 'Ended · nobody finished';
+        accent = AppColors.gray600;
+      }
+      icon = Icons.timer_off_outlined;
+    } else if (game.isFinished) {
+      final score = '${game.scoreOf(uid)}–${game.scoreOf(other)}';
       if (game.isDraw) {
         subtitle = 'Draw · $score';
         accent = AppColors.gray600;
@@ -279,12 +550,22 @@ class _GameTile extends StatelessWidget {
         accent = AppText.rose600;
         icon = Icons.emoji_events_outlined;
       }
+    } else if (game.needsPickFrom(uid)) {
+      subtitle = 'Your turn · pick your ${CalorieGameService.rounds} foods';
+      accent = AppText.primary;
+      icon = Icons.play_circle_fill;
+    } else if (game.needsPickFrom(other)) {
+      subtitle = 'Waiting for $name to pick';
+      accent = AppText.amber700;
+      icon = Icons.hourglass_top;
     } else if (!game.doneBy(uid)) {
-      subtitle = 'Your turn · ${game.progressOf(uid)}/$total guessed';
+      subtitle = 'Your turn · ${game.progressOf(uid)} of '
+          '${game.totalFor(uid)} guessed';
       accent = AppText.primary;
       icon = Icons.play_circle_fill;
     } else {
-      subtitle = '$name is on ${game.progressOf(other)}/$total';
+      subtitle = 'Waiting for $name · ${game.progressOf(other)} of '
+          '${game.totalFor(other)}';
       accent = AppText.amber700;
       icon = Icons.hourglass_top;
     }
@@ -332,9 +613,14 @@ class _GameTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                Text(
-                  game.foods.map((f) => f.emoji).join(),
-                  style: const TextStyle(fontSize: 14),
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: game.mode.title,
+                  child: Text(
+                    game.mode.emoji,
+                    semanticsLabel: game.mode.title,
+                    style: const TextStyle(fontSize: 22),
+                  ),
                 ),
                 Icon(Icons.chevron_right, color: AppColors.gray400),
               ],
@@ -448,13 +734,19 @@ class _PickFriendSheetState extends State<_PickFriendSheet> {
   }
 }
 
+
 // ============================================================================
 // One game
 // ============================================================================
 
-/// Playing one game: guess each food, see how close you were, then wait for
-/// your friend. Updates live, so if you're both playing at once you see each
-/// other's progress and the result the moment the last guess lands.
+/// Playing one game: pick your foods (Guess what I ate), guess each food,
+/// see how close you were, then wait for your friend. A banner at the top
+/// always says whose turn it is. Updates live, so if you're both playing
+/// at once you see each other's progress and the result the moment the
+/// last guess lands.
+///
+/// Works opened cold from a link or a notification, for either player,
+/// even if the game has since been cancelled.
 class CalorieGamePage extends StatefulWidget {
   final String gameId;
 
@@ -465,7 +757,9 @@ class CalorieGamePage extends StatefulWidget {
 }
 
 class _CalorieGamePageState extends State<CalorieGamePage> {
-  final String _uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  /// Read each time: opened cold from a link, sign-in may finish after
+  /// this page is created.
+  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? '';
   final _input = TextEditingController();
   final _focus = FocusNode();
 
@@ -480,14 +774,76 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
   int? _answering;
   int? _lastGuess;
   bool _saving = false;
+  bool _picking = false;
   bool _nudged = false;
   String? _error;
+
+  /// A stale game is only asked to end once.
+  bool _expireRequested = false;
+
+  /// "Get a notification when it's your turn", while you wait.
+  bool _offerAlerts = false;
+  bool _alertsBusy = false;
+  static const _alertsDismissedKey = 'calorie_game_alerts_offer_dismissed';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAlertsOffer();
+  }
 
   @override
   void dispose() {
     _input.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  /// Offer turn alerts if this device can have them, they aren't on, and
+  /// the offer hasn't been dismissed here.
+  Future<void> _loadAlertsOffer() async {
+    if (!NotificationService.supported) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_alertsDismissedKey) == true) return;
+      final settings = await NotificationService.load();
+      if (!mounted || settings.gameAlerts) return;
+      setState(() => _offerAlerts = true);
+    } catch (_) {
+      // No offer: the switch is still in the reminder settings.
+    }
+  }
+
+  Future<void> _dismissAlerts() async {
+    setState(() => _offerAlerts = false);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_alertsDismissedKey, true);
+    } catch (_) {}
+  }
+
+  Future<void> _turnOnAlerts() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _alertsBusy = true);
+    final error = await NotificationService.enableGameAlerts();
+    if (!mounted) return;
+    setState(() {
+      _alertsBusy = false;
+      if (error == null) _offerAlerts = false;
+    });
+    messenger.showSnackBar(SnackBar(
+      content: Text(error ?? "Done. We'll let you know when it's your turn."),
+    ));
+  }
+
+  /// Ends the game if nobody has moved in time (after this frame: no
+  /// writes in the middle of a build). The stream then shows the result.
+  void _maybeExpire(CalorieGame game) {
+    if (_expireRequested || !game.isStaleAt(BalanceService.now())) return;
+    _expireRequested = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      CalorieGameService.expireIfStale(game, _uid);
+    });
   }
 
   Future<void> _submit(CalorieGame game) async {
@@ -523,6 +879,28 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
   void _next() {
     setState(() => _revealing = null);
     _focus.requestFocus();
+  }
+
+  /// Opens the picker, saves your 5 foods, and the game moves straight on
+  /// to guessing (or waiting, if your friend hasn't picked yet).
+  Future<void> _pickFoods(CalorieGame game) async {
+    if (_picking) return;
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _picking = true);
+    try {
+      final picks = await navigator.push(GameFoodPicker.route(
+        uid: _uid,
+        friendName: game.nameOf(game.opponentOf(_uid)),
+      ));
+      if (picks == null || picks.length != CalorieGameService.rounds) return;
+      await CalorieGameService.pick(game.id, _uid, picks);
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text("Couldn't save your foods. Please try again.")));
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
   }
 
   Future<void> _nudge(CalorieGame game) async {
@@ -564,25 +942,16 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
     }
   }
 
+  /// Same friend, same kind of game (it can be changed on the sheet).
   Future<void> _rematch(CalorieGame game) async {
     final other = game.opponentOf(_uid);
-    final navigator = Navigator.of(context);
-    try {
-      final id = await CalorieGameService.create(
-        uid: _uid,
-        myName: await _myName(),
-        friendId: other,
-        friendName: game.nameOf(other),
-      );
-      navigator.pushReplacement(
-        MaterialPageRoute(builder: (_) => CalorieGamePage(gameId: id)),
-      );
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Couldn't start a rematch. Try again.")));
-      }
-    }
+    await _startGame(
+      context,
+      friendId: other,
+      friendName: game.nameOf(other),
+      initial: game.mode,
+      replace: true,
+    );
   }
 
   @override
@@ -590,15 +959,23 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
     return StreamBuilder<CalorieGame?>(
       stream: _game,
       builder: (context, snap) {
-        final game = snap.data;
+        final raw = snap.data;
+        // Someone else's game (an old link) reads as unavailable.
+        final game =
+            raw != null && raw.playerIds.contains(_uid) ? raw : null;
+        if (game != null) _maybeExpire(game);
+        final open = game != null &&
+            !game.isFinished &&
+            !game.isStaleAt(BalanceService.now());
         return Scaffold(
           backgroundColor: AppColors.canvas,
           appBar: AppBar(
-            title: Text(game == null
-                ? 'Guess the Calories'
-                : 'vs ${game.nameOf(game.opponentOf(_uid))}'),
+            toolbarHeight: game == null ? null : 64,
+            title: game == null
+                ? const Text('Guess the Calories')
+                : _AppBarTitle(game: game, uid: _uid),
             actions: [
-              if (game != null && !game.isFinished)
+              if (game != null && open)
                 PopupMenuButton<String>(
                   tooltip: 'More',
                   onSelected: (_) => _cancel(game),
@@ -616,23 +993,30 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
 
   Widget _body(AsyncSnapshot<CalorieGame?> snap, CalorieGame? game) {
     if (snap.hasError) {
-      return const Center(child: Text("Couldn't load this game."));
+      return const _Unavailable(
+        message: "Couldn't load this game. It may have ended or been "
+            "cancelled, or you're offline.",
+      );
     }
-    if (snap.connectionState == ConnectionState.waiting && game == null) {
+    if (snap.connectionState == ConnectionState.waiting && snap.data == null) {
       return const Center(child: CircularProgressIndicator());
     }
     if (game == null) {
-      return const Center(child: Text('This game was cancelled.'));
+      return const _Unavailable(
+        message: 'This game has ended or was cancelled.',
+      );
     }
+
+    final now = BalanceService.now();
+    final other = game.opponentOf(_uid);
+    final foods = game.foodsFor(_uid);
 
     final Widget content;
     final String step;
-    if (_revealing != null && _revealing! < game.foods.length) {
+    if (_revealing != null && _revealing! < foods.length) {
       content = _reveal(game, _revealing!);
       step = 'reveal-$_revealing';
-    } else if (_saving &&
-        _answering != null &&
-        _answering! < game.foods.length) {
+    } else if (_saving && _answering != null && _answering! < foods.length) {
       content = _question(game, _answering!);
       step = 'question-$_answering';
     } else if (game.isFinished) {
@@ -642,7 +1026,20 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
         uid: _uid,
         onRematch: () => _rematch(game),
       );
-    } else if (game.doneBy(_uid)) {
+    } else if (game.isStaleAt(now)) {
+      // Being ended: the result follows in a moment.
+      step = 'ending';
+      content = const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    } else if (game.needsPickFrom(_uid)) {
+      step = 'pick';
+      content = _pickIntro(game);
+    } else if (game.needsPickFrom(other)) {
+      step = 'waiting-pick';
+      content = _waitingForPick(game);
+    } else if (game.doneBy(_uid) || game.nextFoodFor(_uid) == null) {
       step = 'waiting';
       content = _waiting(game);
     } else {
@@ -651,6 +1048,8 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
       content = _question(game, index);
     }
 
+    final banner = _banner(game, now);
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -659,12 +1058,18 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!game.isFinished) ...[
+              if (banner != null) ...[
+                banner,
+                const SizedBox(height: 14),
+              ],
+              if (!game.isFinished && !game.isStaleAt(now) && game.ready) ...[
                 _Progress(game: game, uid: _uid),
                 const SizedBox(height: 16),
               ],
               AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
+                duration: reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 250),
                 child: KeyedSubtree(
                   key: ValueKey(step),
                   child: content,
@@ -677,14 +1082,175 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
     );
   }
 
-  Widget _foodCard(GameFood food, int index, int total) {
+  /// Always one line saying whose turn it is and what to do next (none
+  /// once the game has a normal result: the result says it all).
+  Widget? _banner(CalorieGame game, DateTime now) {
+    final other = game.opponentOf(_uid);
+    final name = game.nameOf(other);
+    if (game.isFinished) {
+      if (!game.expired) return null;
+      return _StatusBanner(tone: _Tone.ended, text: _endedLine(game, _uid));
+    }
+    if (game.isStaleAt(now)) {
+      return _StatusBanner(tone: _Tone.ended, text: _endedLine(game, _uid));
+    }
+    if (game.needsPickFrom(_uid)) {
+      return _StatusBanner(
+        tone: _Tone.yourTurn,
+        text: 'Your turn: pick ${CalorieGameService.rounds} foods for $name '
+            'to guess',
+        action: SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: FilledButton.icon(
+            onPressed: _picking ? null : () => _pickFoods(game),
+            icon: const Icon(Icons.restaurant_menu),
+            label: const Text('Pick my foods'),
+          ),
+        ),
+      );
+    }
+    if (game.needsPickFrom(other)) {
+      return _StatusBanner(
+        tone: _Tone.waiting,
+        text: 'Waiting for $name to pick their foods',
+        action: _nudgeButton(game, name),
+      );
+    }
+    if (!game.doneBy(_uid)) {
+      final total = game.totalFor(_uid);
+      return _StatusBanner(
+        tone: _Tone.yourTurn,
+        text: 'Your turn: ${total - game.progressOf(_uid)} of $total to '
+            'guess',
+      );
+    }
+    return _StatusBanner(
+      tone: _Tone.waiting,
+      text: 'Waiting for $name to finish (${game.progressOf(other)} of '
+          '${game.totalFor(other)})',
+      action: _nudgeButton(game, name),
+    );
+  }
+
+  Widget _nudgeButton(CalorieGame game, String name) {
+    return OutlinedButton.icon(
+      onPressed: _nudged ? null : () => _nudge(game),
+      icon: const Icon(Icons.notifications_active_outlined),
+      label: Text(
+        _nudged ? 'Nudge sent' : 'Nudge $name',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  /// "🔔 Get a notification when it's your turn", on the waiting screens.
+  Widget _alertsCard() {
+    if (!_offerAlerts) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 6, 4, 6),
+        decoration: AppDecor.card,
+        child: Row(
+          children: [
+            const ExcludeSemantics(
+              child: Text('🔔', style: TextStyle(fontSize: 20)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Get a notification when it's your turn",
+                style: TextStyle(fontSize: 14, color: AppColors.ink),
+              ),
+            ),
+            TextButton(
+              onPressed: _alertsBusy ? null : _turnOnAlerts,
+              child: const Text('Turn on'),
+            ),
+            IconButton(
+              onPressed: _dismissAlerts,
+              tooltip: 'Not now',
+              icon: Icon(Icons.close, size: 20, color: AppColors.gray600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Your turn to pick: what this game is, in a couple of lines. The
+  /// button is on the banner above.
+  Widget _pickIntro(CalorieGame game) {
+    final name = game.nameOf(game.opponentOf(_uid));
+    final rounds = CalorieGameService.rounds;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: AppDecor.card,
+      child: Column(
+        children: [
+          Text(GameMode.swap.emoji, style: const TextStyle(fontSize: 48)),
+          const SizedBox(height: 8),
+          Text(
+            GameMode.swap.title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            game.hasPicked(game.opponentOf(_uid))
+                ? "$name has picked $rounds foods they've eaten. Pick "
+                    "$rounds of yours, then you'll guess the calories in "
+                    "$name's while $name guesses yours. The higher total wins."
+                : "Pick $rounds foods you've eaten. $name guesses their "
+                    "calories, and you guess $name's. The higher total wins.",
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, height: 1.4, color: AppColors.gray600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// You've picked; your friend hasn't yet.
+  Widget _waitingForPick(CalorieGame game) {
+    final name = game.nameOf(game.opponentOf(_uid));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          "You'll start guessing as soon as $name has picked their foods.",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, height: 1.4, color: AppColors.gray600),
+        ),
+        const SizedBox(height: 14),
+        _GuessTable(
+          title: 'Your foods for $name to guess',
+          foods: game.picksOf(_uid),
+        ),
+        _alertsCard(),
+      ],
+    );
+  }
+
+  Widget _foodCard(CalorieGame game, GameFood food, int index) {
+    final total = game.totalFor(_uid);
+    final label = game.isSwap
+        ? "${game.nameOf(game.opponentOf(_uid))}'s food ${index + 1} of $total"
+        : 'Food ${index + 1} of $total';
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
       decoration: AppDecor.card,
       child: Column(
         children: [
           Text(
-            'Food ${index + 1} of $total',
+            label,
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -704,23 +1270,25 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
               color: AppColors.ink,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            food.portion,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, color: AppColors.gray600),
-          ),
+          if (food.portion.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              food.portion,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: AppColors.gray600),
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _question(CalorieGame game, int index) {
-    final food = game.foods[index];
+    final food = game.foodsFor(_uid)[index];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _foodCard(food, index, game.foods.length),
+        _foodCard(game, food, index),
         const SizedBox(height: 18),
         Text(
           'How many calories?',
@@ -788,12 +1356,12 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
   }
 
   Widget _reveal(CalorieGame game, int index) {
-    final food = game.foods[index];
+    final food = game.foodsFor(_uid)[index];
     final guesses = game.guessesOf(_uid);
     final guess =
         index < guesses.length ? guesses[index] : (_lastGuess ?? 0);
     final score = CalorieSense.score(guess.toDouble(), food.kcal.toDouble());
-    final last = index >= game.foods.length - 1;
+    final last = index >= game.totalFor(_uid) - 1;
     final color = score >= 85
         ? AppText.emerald600
         : score >= 50
@@ -803,7 +1371,7 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _foodCard(food, index, game.foods.length),
+        _foodCard(game, food, index),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(18),
@@ -855,6 +1423,7 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
     );
   }
 
+  /// You've guessed all yours; your friend is still going.
   Widget _waiting(CalorieGame game) {
     final other = game.opponentOf(_uid);
     final name = game.nameOf(other);
@@ -869,7 +1438,7 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
               const Text('⏳', style: TextStyle(fontSize: 48)),
               const SizedBox(height: 8),
               Text(
-                'Waiting for $name',
+                'You scored ${game.scoreOf(_uid)} out of ${game.maxScore}',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 20,
@@ -879,24 +1448,203 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
               ),
               const SizedBox(height: 6),
               Text(
-                "You scored ${game.scoreOf(_uid)} out of ${game.maxScore}. "
-                "You'll find out who won as soon as $name finishes. "
-                'Stay on this screen to see it happen.',
+                "You'll find out who won as soon as $name finishes. Stay on "
+                'this screen to see it happen, or come back later.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: AppColors.gray600),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: _nudged ? null : () => _nudge(game),
-                icon: const Icon(Icons.notifications_active_outlined),
-                label: Text(_nudged ? 'Nudge sent' : 'Nudge $name'),
               ),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        _AnswersTable(game: game, uid: _uid, showFriend: false),
+        if (game.isSwap)
+          _GuessTable(
+            title: "$name's foods: your guesses",
+            foods: game.foodsFor(_uid),
+            guesses: game.guessesOf(_uid),
+            scores: game.roundScoresOf(_uid),
+            guesser: 'You',
+            onlyGuessed: true,
+          )
+        else
+          _AnswersTable(game: game, uid: _uid, showFriend: false),
+        _alertsCard(),
       ],
+    );
+  }
+}
+
+/// A game that's gone (cancelled, or an old link): say so, and offer the
+/// way to your other games, so a link is never a dead end.
+class _Unavailable extends StatelessWidget {
+  final String message;
+
+  const _Unavailable({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('🎯', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: AppColors.ink),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pushReplacement(
+                MaterialPageRoute<void>(
+                    builder: (_) => const CalorieGamesPage()),
+              ),
+              child: const Text('See your games'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "vs Sam", with the kind of game and when it ends underneath.
+class _AppBarTitle extends StatelessWidget {
+  final CalorieGame game;
+  final String uid;
+
+  const _AppBarTitle({required this.game, required this.uid});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = BalanceService.now();
+    final end = game.endsAt;
+    final ends = !game.isFinished && !game.isStaleAt(now) && end != null
+        ? _endsLabel(end, now)
+        : null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'vs ${game.nameOf(game.opponentOf(uid))}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 3),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.indigo50,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  game.mode.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppText.primary,
+                  ),
+                ),
+              ),
+            ),
+            if (ends != null) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  ends,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.gray600,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+enum _Tone { yourTurn, waiting, ended }
+
+/// The one line at the top of a game: whose turn it is, or how it ended.
+class _StatusBanner extends StatelessWidget {
+  final _Tone tone;
+  final String text;
+  final Widget? action;
+
+  const _StatusBanner({required this.tone, required this.text, this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color bg;
+    final Color fg;
+    final IconData icon;
+    if (tone == _Tone.yourTurn) {
+      bg = AppColors.indigo50;
+      fg = AppText.primary;
+      icon = Icons.play_circle_fill;
+    } else if (tone == _Tone.waiting) {
+      bg = AppColors.amber50;
+      fg = AppText.amber700;
+      icon = Icons.hourglass_top;
+    } else {
+      bg = AppColors.gray100;
+      fg = AppColors.gray700;
+      icon = Icons.timer_off_outlined;
+    }
+    final act = action;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppDecor.radius),
+        border: Border.all(color: fg.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            liveRegion: true,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, color: fg, size: 24),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    text,
+                    style: TextStyle(
+                      fontSize: 16,
+                      height: 1.3,
+                      fontWeight: FontWeight.w800,
+                      color: tone == _Tone.ended ? AppColors.ink : fg,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (act != null) ...[
+            const SizedBox(height: 10),
+            Align(alignment: Alignment.centerLeft, child: act),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -937,12 +1685,12 @@ class _Progress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final other = game.opponentOf(uid);
-    Widget lane(String label, int done, Color color) => Expanded(
+    Widget lane(String label, int done, int total, Color color) => Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '$label  $done/${game.foods.length}',
+                '$label  $done/$total',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -955,7 +1703,7 @@ class _Progress extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
-                  value: game.foods.isEmpty ? 0 : done / game.foods.length,
+                  value: total == 0 ? 0 : done / total,
                   minHeight: 6,
                   color: color,
                   backgroundColor: AppColors.gray100,
@@ -966,16 +1714,154 @@ class _Progress extends StatelessWidget {
         );
     return Row(
       children: [
-        lane('You', game.progressOf(uid), AppColors.primary),
+        lane('You', game.progressOf(uid), game.totalFor(uid),
+            AppColors.primary),
         const SizedBox(width: 16),
-        lane(game.nameOf(other), game.progressOf(other), AppColors.violet),
+        lane(game.nameOf(other), game.progressOf(other), game.totalFor(other),
+            AppColors.violet),
       ],
     );
   }
 }
 
+/// One player's foods with the real calories and, when [guesser] is set,
+/// the guesses made for them and the points (out of 100 a food). With
+/// [onlyGuessed], foods not guessed yet stay hidden.
+class _GuessTable extends StatelessWidget {
+  final String title;
+  final List<GameFood> foods;
+  final List<int> guesses;
+  final List<int> scores;
+  final String? guesser;
+  final bool onlyGuessed;
+
+  const _GuessTable({
+    required this.title,
+    required this.foods,
+    this.guesses = const [],
+    this.scores = const [],
+    this.guesser,
+    this.onlyGuessed = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final who = guesser;
+    Widget cell(String text,
+            {bool bold = false, Color? color, TextAlign? align}) =>
+        Text(
+          text,
+          textAlign: align ?? TextAlign.right,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
+            color: color ?? AppColors.ink,
+          ),
+        );
+    final total = scores.fold<int>(0, (a, b) => a + b);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: AppDecor.card,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ),
+              if (who != null && scores.isNotEmpty)
+                Text(
+                  '$total pts',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppText.primary,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                flex: 5,
+                child: cell('Food',
+                    bold: true, color: AppColors.gray600, align: TextAlign.left),
+              ),
+              Expanded(
+                flex: 3,
+                child: cell('Actual', bold: true, color: AppColors.gray600),
+              ),
+              if (who != null)
+                Expanded(
+                  flex: 4,
+                  child: cell(who, bold: true, color: AppColors.gray600),
+                ),
+            ],
+          ),
+          const Divider(height: 16),
+          for (var i = 0; i < foods.length; i++)
+            if (!onlyGuessed || i < guesses.length)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: Text(
+                        '${foods[i].emoji} ${foods[i].name}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: AppColors.ink),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 3,
+                      child: cell('${foods[i].kcal}', bold: true),
+                    ),
+                    if (who != null)
+                      Expanded(
+                        flex: 4,
+                        child: i < guesses.length && i < scores.length
+                            ? cell(
+                                '${guesses[i]} (${scores[i]})',
+                                bold: scores[i] >= 85,
+                                color: scores[i] >= 85
+                                    ? AppText.emerald600
+                                    : null,
+                              )
+                            : cell('–', color: AppColors.gray400),
+                      ),
+                  ],
+                ),
+              ),
+          if (who != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Points in brackets, out of 100 a food',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: AppColors.gray600),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+
 /// Food by food: the real calories and each guess. [showFriend] is only
-/// true once the game is over.
+/// true once the game is over. Mystery foods only, where both players
+/// guess the same [CalorieGame.foods] (swap games use [_GuessTable]).
 class _AnswersTable extends StatelessWidget {
   final CalorieGame game;
   final String uid;
@@ -1102,6 +1988,7 @@ class _AnswersTable extends StatelessWidget {
   }
 }
 
+
 /// The big reveal: who won, the scores, everyone's guesses, your record.
 class _Result extends StatefulWidget {
   final CalorieGame game;
@@ -1133,7 +2020,23 @@ class _ResultState extends State<_Result> {
 
     final String emoji;
     final String headline;
-    if (game.isDraw) {
+    // Games that ran out of time say why they ended.
+    String? note;
+    if (game.expired) {
+      if (game.isDraw) {
+        emoji = '⏱️';
+        headline = 'Out of time';
+        note = 'Neither of you finished in time.';
+      } else if (won) {
+        emoji = '🏆';
+        headline = 'You win!';
+        note = "$name didn't finish in time, so you win.";
+      } else {
+        emoji = '⏱️';
+        headline = '$name wins';
+        note = "You didn't finish in time, so $name wins.";
+      }
+    } else if (game.isDraw) {
       emoji = '🤝';
       headline = "It's a draw!";
     } else if (won) {
@@ -1143,6 +2046,8 @@ class _ResultState extends State<_Result> {
       emoji = '🥈';
       headline = '$name wins';
     }
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final emojiText = Text(emoji, style: const TextStyle(fontSize: 64));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1155,14 +2060,17 @@ class _ResultState extends State<_Result> {
           ),
           child: Column(
             children: [
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.4, end: 1),
-                duration: const Duration(milliseconds: 600),
-                curve: Curves.elasticOut,
-                builder: (context, s, child) =>
-                    Transform.scale(scale: s, child: child),
-                child: Text(emoji, style: const TextStyle(fontSize: 64)),
-              ),
+              if (reduceMotion)
+                emojiText
+              else
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.4, end: 1),
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.elasticOut,
+                  builder: (context, s, child) =>
+                      Transform.scale(scale: s, child: child),
+                  child: emojiText,
+                ),
               const SizedBox(height: 6),
               Text(
                 headline,
@@ -1173,6 +2081,18 @@ class _ResultState extends State<_Result> {
                   fontWeight: FontWeight.w900,
                 ),
               ),
+              if (note != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  note,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               Row(
                 children: [
@@ -1221,7 +2141,29 @@ class _ResultState extends State<_Result> {
           ),
         ),
         const SizedBox(height: 16),
-        _AnswersTable(game: game, uid: uid, showFriend: true),
+        if (game.isSwap) ...[
+          // Each player's own foods, with the other's guesses.
+          _swapSection(
+            title: 'Your foods — $name guessed',
+            foods: game.picksOf(uid),
+            guesses: game.guessesOf(other),
+            scores: game.roundScoresOf(other),
+            guesser: name,
+            missing: "$name didn't get to guess any of your foods.",
+            empty: "You didn't pick any foods.",
+          ),
+          const SizedBox(height: 12),
+          _swapSection(
+            title: "$name's foods — you guessed",
+            foods: game.picksOf(other),
+            guesses: game.guessesOf(uid),
+            scores: game.roundScoresOf(uid),
+            guesser: 'You',
+            missing: "You didn't get to guess any of $name's foods.",
+            empty: "$name didn't pick any foods.",
+          ),
+        ] else
+          _AnswersTable(game: game, uid: uid, showFriend: true),
         const SizedBox(height: 18),
         SizedBox(
           height: 52,
@@ -1237,6 +2179,8 @@ class _ResultState extends State<_Result> {
             icon: const Icon(Icons.replay),
             label: Text(
               'Rematch $name',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             ),
           ),
@@ -1244,7 +2188,52 @@ class _ResultState extends State<_Result> {
       ],
     );
   }
+
+  /// One player's foods in a swap game. A game that ran out of time may
+  /// have no foods ([empty]) or no guesses ([missing]) to show.
+  Widget _swapSection({
+    required String title,
+    required List<GameFood> foods,
+    required List<int> guesses,
+    required List<int> scores,
+    required String guesser,
+    required String missing,
+    required String empty,
+  }) {
+    if (foods.isEmpty || guesses.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: AppDecor.card,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              foods.isEmpty ? empty : missing,
+              style: TextStyle(fontSize: 13, color: AppColors.gray600),
+            ),
+          ],
+        ),
+      );
+    }
+    return _GuessTable(
+      title: title,
+      foods: foods,
+      guesses: guesses,
+      scores: scores,
+      guesser: guesser,
+    );
+  }
 }
+
 
 class _ScoreBlock extends StatelessWidget {
   final String label;
