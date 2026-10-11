@@ -329,7 +329,8 @@ class _HomeInboxState extends State<HomeInbox> {
         icon: Icons.auto_awesome_rounded,
         color: AppColors.violet600,
         title: 'Premium trial: $days day${days == 1 ? '' : 's'} left',
-        subtitle: 'Logging, streaks and friends stay free after.',
+        subtitle: 'Choose a plan to keep it and unlock the Aurora card. '
+            'Logging stays free.',
         actions: [
           _InboxAction('See plans', _openPremium, primary: true),
         ],

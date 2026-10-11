@@ -125,7 +125,11 @@ class _PremiumPageState extends State<PremiumPage> {
                   const SizedBox(height: 6),
                   Center(
                     child: Text(
-                      'Aurora: the Premium-only card design',
+                      e.loaded && e.inTrial
+                          ? "Aurora: yours as soon as you choose a plan. It "
+                              "isn't part of the free trial."
+                          : 'Aurora: the Premium-only card design',
+                      textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12.5, color: AppColors.muted),
                     ),
                   ),
@@ -334,7 +338,7 @@ class _Comparison extends StatelessWidget {
     ('Coach adds and removes food for you', '–', '✓'),
     ('Photo logging', '–', '✓'),
     ('"Even it out" plans when you go over', '–', '✓'),
-    ('Aurora card design', '–', '✓'),
+    ('Aurora card design (paid plans)', '–', '✓'),
     ('Wrapped for every past month', 'Last month', 'All'),
   ];
 

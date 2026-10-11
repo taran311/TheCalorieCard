@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/card_design_service.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -57,7 +58,9 @@ class CardDesignPage extends StatelessWidget {
           final current = CardDesignService.designOf(data);
           final best =
               (BalanceService.number(data?['best_streak']) ?? 0).round();
-          return ListView(
+          return ValueListenableBuilder<Entitlement>(
+            valueListenable: Premium.notifier,
+            builder: (context, e, _) => ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
             children: [
               Text(
@@ -76,9 +79,13 @@ class CardDesignPage extends StatelessWidget {
                   daysToUnlock: CardDesignService.daysToUnlock(design, data),
                   progress: CardDesignService.unlockProgress(design, data),
                   wasChosen: data?['card_design'] == design.id,
+                  // On the free trial: everything else is unlocked, so say
+                  // plainly that Aurora comes with a paid plan.
+                  inTrial: e.loaded && e.inTrial,
                   onPick: () => _choose(context, user.uid, design),
                 ),
             ],
+            ),
           );
         },
       ),
@@ -100,6 +107,9 @@ class _DesignOption extends StatelessWidget {
   /// Saved as your design (it may be locked again, e.g. Premium ended).
   final bool wasChosen;
 
+  /// On the free Premium trial (Aurora needs a paid plan).
+  final bool inTrial;
+
   const _DesignOption({
     required this.design,
     required this.holder,
@@ -109,15 +119,25 @@ class _DesignOption extends StatelessWidget {
     this.daysToUnlock,
     this.progress,
     this.wasChosen = false,
+    this.inTrial = false,
   });
 
-  void _showPremium(BuildContext context) => showPremiumSheet(
-        context,
-        title: 'Aurora is a Premium design',
-        message: 'Premium members get the Aurora finish on their card, and '
-            'friends see it too. If Premium ends, your card goes back to '
-            'Midnight, and Aurora comes back whenever you rejoin.',
-      );
+  void _showPremium(BuildContext context) => inTrial
+      ? showPremiumSheet(
+          context,
+          title: 'Aurora comes with a Premium plan',
+          message: "You're on the free Premium trial, so you've got all the "
+              "other Premium features. Aurora is our thank-you to members: "
+              "it unlocks the moment you choose a plan, and friends see it on "
+              'your card too.',
+        )
+      : showPremiumSheet(
+          context,
+          title: 'Aurora is a Premium design',
+          message: 'Premium members get the Aurora finish on their card, and '
+              'friends see it too. If Premium ends, your card goes back to '
+              'Midnight, and Aurora comes back whenever you rejoin.',
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +231,11 @@ class _DesignOption extends StatelessWidget {
                             ],
                           ],
                         ),
-                        Text(design.requirement,
+                        Text(
+                            design.premium && inTrial && !unlocked
+                                ? "Unlocks when you choose a plan. It isn't "
+                                    'part of the free trial.'
+                                : design.requirement,
                             style: TextStyle(
                                 fontSize: 12, color: AppColors.muted)),
                       ],
@@ -227,7 +251,7 @@ class _DesignOption extends StatelessWidget {
                   else if (design.premium)
                     FilledButton(
                       onPressed: () => _showPremium(context),
-                      child: const Text('Go Premium'),
+                      child: Text(inTrial ? 'Upgrade' : 'Go Premium'),
                     )
                   else
                     const Chip(label: Text('Locked')),

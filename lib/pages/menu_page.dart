@@ -226,7 +226,7 @@ class _MenuPageState extends State<MenuPage> {
     } else if (e.loaded && e.inTrial) {
       final d = e.trialDaysLeft;
       title = 'Premium trial: $d day${d == 1 ? '' : 's'} left';
-      subtitle = 'Choose a plan any time to keep it';
+      subtitle = 'Choose a plan to keep it and unlock the Aurora card';
     } else if (!e.loaded) {
       // Still checking: no prices yet, so someone who has already paid
       // never sees an upsell flash past.
