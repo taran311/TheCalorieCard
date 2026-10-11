@@ -55,19 +55,10 @@ final _boards = <_Board>[
     value: (p) => p.proteinThisWeek.round(),
   ),
   _Board(
-    label: 'Calorie sense',
-    emoji: '🎯',
-    description:
-        'How close your calorie guesses are this month. Shows after 5 guesses.',
-    unit: '%',
-    // One lucky guess shouldn't top the board: you need a few first.
-    // Until then there's no score (not 0 %, which reads as "terrible").
-    value: (p) => p.senseGuesses >= 5 ? p.calorieSense.round() : null,
-  ),
-  _Board(
     label: 'Games',
     emoji: '🎮',
-    description: 'Games XP earned this month',
+    description: 'XP this month: games, plus Calorie Sense guesses when '
+        'you log food. The best judge of calories wins.',
     unit: 'XP',
     value: (p) => p.gamesXp > 0 ? p.gamesXp : null,
   ),

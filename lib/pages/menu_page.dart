@@ -22,6 +22,7 @@ import 'package:namer_app/pages/direct_debits_page.dart';
 import 'package:namer_app/pages/pots_page.dart';
 import 'package:namer_app/pages/wrapped_page.dart';
 import 'package:namer_app/pages/games_hub_page.dart';
+import 'package:namer_app/pages/gift_codes_page.dart';
 import 'package:namer_app/services/balance_service.dart';
 
 /// The Profile tab: your card's extras, progress and account.
@@ -58,8 +59,14 @@ class _MenuPageState extends State<MenuPage> {
           .snapshots();
       _user =
           FirebaseFirestore.instance.collection('users').doc(uid).snapshots();
+      // Gift codes only show for admins (the server decides who).
+      GiftCodes.isAdmin().then((admin) {
+        if (admin && mounted) setState(() => _giftAdmin = true);
+      });
     }
   }
+
+  bool _giftAdmin = false;
 
   Future<void> _confirmSignOut() async {
     final yes = await showDialog<bool>(
@@ -220,10 +227,12 @@ class _MenuPageState extends State<MenuPage> {
     final String title;
     final String subtitle;
     if (e.loaded && e.subscribed) {
-      title = "You're Premium";
-      subtitle = e.cancelAtPeriodEnd
-          ? 'Ends at the end of this period'
-          : 'Thanks for your support · ${e.planLabel}';
+      title = e.lifetime ? "You're Premium for life" : "You're Premium";
+      subtitle = e.lifetime
+          ? 'A gift, with thanks 💜'
+          : e.cancelAtPeriodEnd
+              ? 'Ends at the end of this period'
+              : 'Thanks for your support · ${e.planLabel}';
     } else if (e.loaded && e.inTrial) {
       final d = e.trialDaysLeft;
       title = 'Premium trial: $d day${d == 1 ? '' : 's'} left';
@@ -496,7 +505,7 @@ class _MenuPageState extends State<MenuPage> {
                       icon: Icons.sports_esports_outlined,
                       iconColor: AppText.primary,
                       title: 'Games',
-                      subtitle: 'Daily challenge, Guess the Meal and your level',
+                      subtitle: 'Daily Calorie Quiz, more games and your level',
                       onTap: () => _open(const GamesHubPage()),
                     ),
                     _menuRow(
@@ -573,6 +582,14 @@ class _MenuPageState extends State<MenuPage> {
                       subtitle: 'Short walk-throughs of each feature',
                       onTap: () => showTutorialsSheet(context),
                     ),
+                    if (_giftAdmin)
+                      _menuRow(
+                        icon: Icons.redeem_outlined,
+                        iconColor: AppText.violet600,
+                        title: 'Gift codes',
+                        subtitle: 'Give a friend lifetime Premium',
+                        onTap: () => _open(const GiftCodesPage()),
+                      ),
                   ]),
                   const SizedBox(height: 24),
                   Center(

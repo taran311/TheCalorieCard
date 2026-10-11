@@ -591,6 +591,16 @@ void main() {
       expect(CardDesignService.isUnlocked(CardDesign.sunset, user), isTrue);
     });
 
+    test('guesses earn Games XP, up to 10 a day', () async {
+      for (var i = 0; i < 12; i++) {
+        await CalorieSense.record(me, 100);
+      }
+      final user = (await w.db.collection('users').doc(me).get()).data();
+      expect(CalorieSense.thisMonth(user).count, 12);
+      expect((user!['games'] as Map)['xp'], 100);
+      expect((user['games'] as Map)['sense_count'], 12);
+    });
+
     test('a new month starts fresh', () async {
       await CalorieSense.record(me, 50);
       w.now = DateTime(2026, 11, 2, 9);

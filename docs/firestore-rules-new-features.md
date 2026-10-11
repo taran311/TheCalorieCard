@@ -112,7 +112,7 @@ Also check these existing rules:
   `{uid}_{date}` docs to score challenges. If only friends can read them,
   a member who isn't your friend shows 0 rather than breaking the page.
 - **users/{uid}**: you write `card_design`, `best_streak`, `card_unlocks`,
-  `calorie_sense` and `games` (Games XP, level and Daily challenge) on your
+  `calorie_sense` and `games` (Games XP, level and Daily Calorie Quiz) on your
   own doc, and friends need to read them to see your card design, Calorie
   Sense and Games XP on the hiscores (and friends' Daily scores).
 - **user_data/{doc}**: pots add the fields `pots_enabled`, `pot`, `pot_week`,
@@ -308,6 +308,29 @@ it's `false`, as long as the user has a token in `fcm_tokens`), written by
 the owner alongside the existing `fcm_tokens` and `tz_offset_minutes`. If
 your `users` rule limits which keys you can write, add
 `game_notifications`.
+
+## Games play counts
+
+`game_stats/{yyyy-MM-dd}` counts how often each game is played, so you can
+see what people use. It holds only numbers (no names or ids):
+`plays: {quiz, meal, own, higher_lower, friends}` and
+`players: {...}` (first play on each device that day). Any signed-in user
+can add to it; only you (in the console) read it:
+
+```
+match /game_stats/{day} {
+  allow read: if false;
+  allow create, update: if signedIn() &&
+    request.resource.data.keys().hasOnly(['plays', 'players']);
+}
+```
+
+## Gift codes (lifetime Premium)
+
+Codes are kept at `meta/gifts/codes/{CODE}`, under `meta`, which the app
+can never read or write, so no rule changes are needed. Only the server
+makes, lists and redeems them. Redeeming sets `billing/{uid}.lifetime`.
+Admins are set on the server with `ADMIN_EMAILS` and/or `ADMIN_UIDS`.
 
 ## Weight log
 

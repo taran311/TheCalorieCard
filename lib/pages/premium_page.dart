@@ -65,6 +65,43 @@ class _PremiumPageState extends State<PremiumPage> {
     }
   }
 
+  /// "Have a code?": asks for a gift code and uses it.
+  Future<void> _redeem() async {
+    final code = await showDialog<String>(
+      context: context,
+      builder: (_) => const _RedeemDialog(),
+    );
+    if (code == null || code.trim().isEmpty || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final r = await GiftCodes.redeem(code);
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 8),
+        content: Text(r.already
+            ? "You've already got lifetime Premium."
+            : r.stillPaying
+                ? "Lifetime Premium is yours! 💜 Your paid plan is still "
+                    'running: cancel it under Manage subscription so '
+                    "you're not charged."
+                : 'Lifetime Premium is yours! 💜 Your Aurora card '
+                    'appears in a few seconds.'),
+      ));
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e is PremiumException
+            ? e.message
+            : 'Something went wrong. Try again?');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   static const _months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -138,7 +175,27 @@ class _PremiumPageState extends State<PremiumPage> {
                   const SizedBox(height: 20),
                   if (checking)
                     const _PlansSkeleton()
+                  else if (e.loaded && e.lifetime && !e.paying)
+                    Text(
+                      'Lifetime Premium came from a gift code. Thank you '
+                      'for being part of The Calorie Card.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: AppColors.gray700),
+                    )
                   else if (subscribed) ...[
+                    if (e.lifetime) ...[
+                      Text(
+                        "You've got lifetime Premium, but your paid plan is "
+                        'still running. Cancel it here so you\'re not '
+                        'charged again.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppText.amber700),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
@@ -225,6 +282,16 @@ class _PremiumPageState extends State<PremiumPage> {
                       style: TextStyle(fontSize: 12.5, color: AppColors.muted),
                     ),
                   ],
+                  if (!checking && !(e.loaded && e.lifetime)) ...[
+                    const SizedBox(height: 14),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: _busy ? null : _redeem,
+                        icon: const Icon(Icons.redeem_outlined),
+                        label: const Text('Have a code?'),
+                      ),
+                    ),
+                  ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -254,7 +321,10 @@ class _Header extends StatelessWidget {
     final e = entitlement;
     String title;
     String body;
-    if (e.loaded && e.subscribed) {
+    if (e.loaded && e.lifetime) {
+      title = "You're Premium for life";
+      body = 'Everything in Premium, for good. Nothing to pay, ever.';
+    } else if (e.loaded && e.subscribed && e.periodEnd != null) {
       final end = e.periodEnd!;
       title = "You're Premium";
       body = '${e.planLabel} plan · '
@@ -556,6 +626,58 @@ class _PlansSkeleton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RedeemDialog extends StatefulWidget {
+  const _RedeemDialog();
+
+  @override
+  State<_RedeemDialog> createState() => _RedeemDialogState();
+}
+
+class _RedeemDialogState extends State<_RedeemDialog> {
+  final _code = TextEditingController();
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final code = _code.text.trim();
+    if (code.isEmpty) return;
+    Navigator.of(context).pop(code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Redeem a code'),
+      content: TextField(
+        controller: _code,
+        autofocus: true,
+        textCapitalization: TextCapitalization.characters,
+        autocorrect: false,
+        enableSuggestions: false,
+        textInputAction: TextInputAction.done,
+        style: const TextStyle(
+            fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: 1.5),
+        decoration: const InputDecoration(
+          hintText: 'CC-XXXX-XXXX',
+          border: OutlineInputBorder(),
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Redeem')),
+      ],
     );
   }
 }

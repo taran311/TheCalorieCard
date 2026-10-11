@@ -33,6 +33,9 @@ class Entitlement {
   final bool cancelAtPeriodEnd;
   final bool founder;
 
+  /// Premium for good, from a gift code (see [GiftCodes]).
+  final bool lifetime;
+
   const Entitlement({
     this.loaded = false,
     this.status,
@@ -41,6 +44,7 @@ class Entitlement {
     this.periodEnd,
     this.cancelAtPeriodEnd = false,
     this.founder = false,
+    this.lifetime = false,
   });
 
   static const unknown = Entitlement();
@@ -56,19 +60,27 @@ class Entitlement {
   // so nothing locks while that's sorted out.
   factory Entitlement.fromMap(Map<String, dynamic>? d) => Entitlement(
         loaded: d != null &&
-            (d['trial_ends_at'] != null || d['status'] != null),
+            (d['trial_ends_at'] != null ||
+                d['status'] != null ||
+                d['lifetime'] == true),
         status: d?['status'] as String?,
         plan: d?['plan'] as String?,
         trialEndsAt: _date(d?['trial_ends_at']),
         periodEnd: _date(d?['current_period_end']),
         cancelAtPeriodEnd: d?['cancel_at_period_end'] == true,
         founder: d?['founder'] == true,
+        lifetime: d?['lifetime'] == true,
       );
 
   static const _paid = {'active', 'trialing', 'past_due'};
 
-  bool subscribedAt(DateTime now) =>
+  bool subscribedAt(DateTime now) => lifetime || payingAt(now);
+
+  /// A Stripe subscription that's still running (and charging).
+  bool payingAt(DateTime now) =>
       _paid.contains(status) && periodEnd != null && periodEnd!.isAfter(now);
+
+  bool get paying => payingAt(DateTime.now());
 
   bool inTrialAt(DateTime now) =>
       !subscribedAt(now) && trialEndsAt != null && trialEndsAt!.isAfter(now);
@@ -95,7 +107,7 @@ class Entitlement {
     return (hours / 24).ceil().clamp(1, 999);
   }
 
-  String get planLabel => switch (plan) {
+  String get planLabel => lifetime ? 'Lifetime' : switch (plan) {
         'monthly' => 'Monthly',
         'founder' => 'Early supporter (yearly)',
         _ => 'Yearly',
@@ -221,4 +233,118 @@ class Premium {
   /// Opens Stripe's page to change plan, update card or cancel.
   static Future<void> manage() async =>
       _open(await _url('/billing/portal', const {}));
+}
+
+/// A gift code as the Gift codes screen shows it.
+class GiftCode {
+  final String code;
+  final String note;
+  final DateTime? createdAt;
+  final DateTime? redeemedAt;
+  final String? redeemedName;
+  final bool cancelled;
+
+  const GiftCode({
+    required this.code,
+    required this.note,
+    this.createdAt,
+    this.redeemedAt,
+    this.redeemedName,
+    this.cancelled = false,
+  });
+
+  bool get used => redeemedAt != null || redeemedName != null;
+  bool get open => !used && !cancelled;
+
+  static DateTime? _date(Object? v) =>
+      v is String ? DateTime.tryParse(v)?.toLocal() : null;
+
+  factory GiftCode.fromJson(Map j) => GiftCode(
+        code: '${j['code'] ?? ''}',
+        note: '${j['note'] ?? ''}',
+        createdAt: _date(j['createdAt']),
+        redeemedAt: _date(j['redeemedAt']),
+        redeemedName: j['redeemedName'] as String?,
+        cancelled: j['cancelled'] == true,
+      );
+}
+
+/// Lifetime Premium gift codes: redeeming one (anyone), and making and
+/// managing them (admins only; the server checks).
+class GiftCodes {
+  GiftCodes._();
+
+  static bool? _admin;
+
+  static Future<Map> _call(Future<http.Response> Function() request) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      throw const PremiumException('Please sign in again.');
+    }
+    final http.Response r;
+    try {
+      r = await request().timeout(const Duration(seconds: 60));
+    } catch (_) {
+      throw const PremiumException(
+          "Couldn't reach the server. Check your connection and try again.");
+    }
+    Map? j;
+    try {
+      final d = json.decode(r.body);
+      if (d is Map) j = d;
+    } catch (_) {}
+    if (r.statusCode == 200 && j != null) return j;
+    throw PremiumException(
+        (j?['error'] as String?) ?? 'Something went wrong. Try again?');
+  }
+
+  /// Whether this account can make gift codes (asked once per session).
+  static Future<bool> isAdmin() async {
+    final known = _admin;
+    if (known != null) return known;
+    try {
+      final j = await _call(() => ProxyClient.get('/gift/admin'));
+      return _admin = j['admin'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Forgets the admin check (e.g. after signing out).
+  static void reset() => _admin = null;
+
+  /// Uses [code]. Returns whether they still have a paid Stripe plan
+  /// running (which they'll want to cancel, now Premium is free).
+  static Future<({bool stillPaying, bool already})> redeem(String code) async {
+    final j = await _call(
+        () => ProxyClient.post('/gift/redeem', {'code': code.trim()}));
+    return (
+      stillPaying: j['stillPaying'] == true,
+      already: j['already'] == true,
+    );
+  }
+
+  /// Makes a new code, e.g. "CC-7KQ2-M9XD". [note] is just for you.
+  static Future<String> create({String note = ''}) async {
+    final j = await _call(
+        () => ProxyClient.post('/gift/create', {'note': note.trim()}));
+    final code = j['code'];
+    if (code is! String) {
+      throw const PremiumException("Couldn't make a code. Try again.");
+    }
+    return code;
+  }
+
+  static Future<List<GiftCode>> list() async {
+    final j = await _call(() => ProxyClient.get('/gift/list'));
+    final codes = j['codes'];
+    return [
+      if (codes is List)
+        for (final c in codes)
+          if (c is Map) GiftCode.fromJson(c)
+    ];
+  }
+
+  static Future<void> cancel(String code) async {
+    await _call(() => ProxyClient.post('/gift/cancel', {'code': code}));
+  }
 }

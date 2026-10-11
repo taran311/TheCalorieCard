@@ -769,7 +769,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Scores count towards your Calorie Sense on the hiscores.',
+                  'Close guesses earn Games XP and count towards your Calorie Sense.',
                   style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
               ],

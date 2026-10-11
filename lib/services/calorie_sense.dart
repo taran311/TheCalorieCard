@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/games_service.dart';
 
 /// "Guess the price": how well you can estimate calories before the lookup
 /// comes back. Scores feed the Calorie Sense hiscore.
@@ -34,7 +35,8 @@ class CalorieSense {
   static String monthKey(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}';
 
-  /// Adds a scored guess to this month's running total.
+  /// Adds a scored guess to this month's running total, and its Games XP
+  /// (for the first [Xp.senseGuessesPerDay] guesses a day).
   static Future<void> record(String uid, int score) async {
     final ref = BalanceService.db.collection('users').doc(uid);
     final month = monthKey(BalanceService.now());
@@ -48,6 +50,14 @@ class CalorieSense {
           sameMonth ? (BalanceService.number(current['count']) ?? 0) : 0;
       final newTotal = total + score;
       final newCount = count + 1;
+      final games = snap.data()?['games'];
+      final g = games is Map ? games : const {};
+      final day = GamesService.dayKey();
+      final senseToday = g['sense_day'] == day
+          ? (BalanceService.number(g['sense_count']) ?? 0).round()
+          : 0;
+      final xp =
+          senseToday < Xp.senseGuessesPerDay ? Xp.forScore(score) : 0;
       final value = <String, dynamic>{
         'calorie_sense': {
           'month': month,
@@ -58,12 +68,14 @@ class CalorieSense {
         // and it's kept for good.
         if (newCount >= 10 && newTotal / newCount >= 75)
           'card_unlocks': FieldValue.arrayUnion(['sunset']),
+        'games': {
+          if (xp > 0) ...GamesService.xpFields(g, xp),
+          'sense_day': day,
+          'sense_count': senseToday + 1,
+        },
       };
-      if (snap.exists) {
-        tx.update(ref, value);
-      } else {
-        tx.set(ref, value, SetOptions(merge: true));
-      }
+      // Merge, so the rest of `games` (and the doc) is kept.
+      tx.set(ref, value, SetOptions(merge: true));
     });
   }
 

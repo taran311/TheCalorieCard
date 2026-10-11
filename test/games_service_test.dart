@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/services/calorie_game.dart';
 import 'package:namer_app/services/games_service.dart';
+import 'package:namer_app/services/statement_service.dart';
 
 void main() {
   group('Levels', () {
@@ -54,7 +55,7 @@ void main() {
     });
   });
 
-  group('Daily challenge', () {
+  group('Daily Calorie Quiz', () {
     test('is the same five foods all day, for everyone', () {
       final a = GamesService.dailyFoods('2026-10-11');
       final b = GamesService.dailyFoods('2026-10-11');
@@ -199,5 +200,84 @@ void main() {
     );
     expect(Xp.forFriendGame(g, 'a'), 10 + 10 + Xp.winBonus);
     expect(Xp.forFriendGame(g, 'b'), 5 + 5);
+  });
+
+  group('Higher or Lower', () {
+    test('a round has 10 pairs, no food twice, never a coin toss', () {
+      for (var seed = 0; seed < 100; seed++) {
+        final pairs = GamesService.dealHigherLower(random: Random(seed));
+        expect(pairs.length, GamesService.higherLowerPairs);
+        final names = <String>{};
+        for (final p in pairs) {
+          expect(names.add(p.a.name), isTrue);
+          expect(names.add(p.b.name), isTrue);
+          final hi = p.a.kcal > p.b.kcal ? p.a.kcal : p.b.kcal;
+          expect(p.difference, greaterThanOrEqualTo(hi * 0.15));
+          expect(p.higher.kcal, hi);
+        }
+      }
+    });
+
+    test('the pool has no repeats', () {
+      final pool = GamesService.higherLowerPool();
+      expect(pool.map((f) => f.name.toLowerCase()).toSet().length,
+          pool.length);
+      expect(pool.every((f) => f.kcal > 0), isTrue);
+    });
+  });
+
+  group('Guess your own day', () {
+    CardTransaction tx(String name, String meal, double kcal, DateTime t) =>
+        CardTransaction(
+          id: name,
+          description: name,
+          portion: '1',
+          category: meal,
+          time: t,
+          calories: kcal,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+        );
+
+    test('picks the latest earlier day with 3+ foods, in meal order', () {
+      final today = DateTime(2026, 10, 11, 9);
+      final d9 = DateTime(2026, 10, 9);
+      final d10 = DateTime(2026, 10, 10);
+      final statement = Statement(dailyBudget: 2000, days: [
+        DaySummary(d9, [
+          tx('Toast', 'Breakfast', 200, d9.add(const Duration(hours: 8))),
+          tx('Soup', 'Lunch', 300, d9.add(const Duration(hours: 13))),
+          tx('Pasta', 'Dinner', 600, d9.add(const Duration(hours: 19))),
+        ]),
+        // Only two foods: skipped.
+        DaySummary(d10, [
+          tx('Apple', 'Snacks', 95, d10.add(const Duration(hours: 15))),
+          tx('Pizza', 'Dinner', 900, d10.add(const Duration(hours: 20))),
+        ]),
+        // Today never counts.
+        DaySummary(DateTime(2026, 10, 11), [
+          tx('A', 'Lunch', 1, today),
+          tx('B', 'Lunch', 1, today),
+          tx('C', 'Lunch', 1, today),
+        ]),
+      ]);
+      final own = GamesService.ownDayFrom(statement, today);
+      expect(own, isNotNull);
+      expect(own!.day, d9);
+      expect(own.total, 1100);
+      expect(own.items.map((i) => i.name).toList(),
+          ['Toast (1)', 'Soup (1)', 'Pasta (1)']);
+    });
+
+    test('null when nothing has enough foods', () {
+      final statement = Statement(dailyBudget: 2000, days: [
+        DaySummary(DateTime(2026, 10, 10), [
+          tx('Apple', 'Snacks', 95, DateTime(2026, 10, 10, 15)),
+        ]),
+      ]);
+      expect(GamesService.ownDayFrom(statement, DateTime(2026, 10, 11)),
+          isNull);
+    });
   });
 }

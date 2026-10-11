@@ -87,6 +87,7 @@ Future<bool> _startGame(
       mode: mode,
       picks: picks,
     );
+    GamesService.countPlay('friends');
     final route =
         MaterialPageRoute<void>(builder: (_) => CalorieGamePage(gameId: id));
     if (replace) {

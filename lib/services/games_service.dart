@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_game.dart';
 import 'package:namer_app/services/calorie_sense.dart';
+import 'package:namer_app/services/statement_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ============================================================================
 // Levels and XP
@@ -81,7 +83,7 @@ class Xp {
   /// 0-10 for one guess, from its 0-100 score.
   static int forScore(int score) => (score.clamp(0, 100) / 10).round();
 
-  /// For finishing all of the Daily challenge.
+  /// For finishing all of the Daily Calorie Quiz.
   static const dailyBonus = 10;
 
   /// A friend game: on top of the XP for your guesses.
@@ -90,6 +92,15 @@ class Xp {
 
   /// Guess the Meal rounds a day that earn XP (more is just practice).
   static const mealRoundsPerDay = 3;
+
+  /// Higher or Lower: XP for each right answer, and rounds a day that
+  /// earn it.
+  static const perHigherLower = 2;
+  static const higherLowerRoundsPerDay = 3;
+
+  /// Calorie Sense guesses (guessing before a lookup when you log food)
+  /// a day that earn XP.
+  static const senseGuessesPerDay = 10;
 
   /// XP for a finished friend game.
   static int forFriendGame(CalorieGame g, String uid) {
@@ -384,7 +395,10 @@ final List<GameMeal> kGameMeals = [
 ///     xp: 1240,                     all-time XP
 ///     month: '2026-10', month_xp: 310     (Hiscores)
 ///     daily: {day: '2026-10-11', guesses: [250, 90], score: 171}
+///                                   (the Daily Calorie Quiz)
 ///     meal_day: '2026-10-11', meal_rounds: 2    (rounds that earned XP)
+///     hl_day: '2026-10-11', hl_rounds: 1, hl_best: 9   (Higher or Lower)
+///     own_day: '2026-10-11'         (Guess your own day earned XP today)
 ///   }
 class GamesProgress {
   final int xp;
@@ -394,6 +408,10 @@ class GamesProgress {
   final int dailyScore;
   final String? mealDay;
   final int mealRounds;
+  final String? hlDay;
+  final int hlRounds;
+  final int hlBest;
+  final String? ownDay;
 
   const GamesProgress({
     this.xp = 0,
@@ -403,6 +421,10 @@ class GamesProgress {
     this.dailyScore = 0,
     this.mealDay,
     this.mealRounds = 0,
+    this.hlDay,
+    this.hlRounds = 0,
+    this.hlBest = 0,
+    this.ownDay,
   });
 
   static int _int(Object? v) => (BalanceService.number(v) ?? 0).round();
@@ -423,12 +445,31 @@ class GamesProgress {
       dailyScore: daily is Map ? _int(daily['score']) : 0,
       mealDay: g['meal_day']?.toString(),
       mealRounds: _int(g['meal_rounds']),
+      hlDay: g['hl_day']?.toString(),
+      hlRounds: _int(g['hl_rounds']),
+      hlBest: _int(g['hl_best']),
+      ownDay: g['own_day']?.toString(),
     );
   }
 
+  /// The same progress with [xp] and this month's XP moved on by [gained].
+  GamesProgress withXp(int xp, int gained) => GamesProgress(
+        xp: xp,
+        monthXp: monthXp + gained,
+        dailyDay: dailyDay,
+        dailyGuesses: dailyGuesses,
+        dailyScore: dailyScore,
+        mealDay: mealDay,
+        mealRounds: mealRounds,
+        hlDay: hlDay,
+        hlRounds: hlRounds,
+        hlBest: hlBest,
+        ownDay: ownDay,
+      );
+
   GameLevel get level => Levels.of(xp);
 
-  /// Today's Daily challenge guesses (empty if not started today).
+  /// Today's Calorie Quiz guesses (empty if not started today).
   List<int> dailyGuessesOn(String day) =>
       dailyDay == day ? dailyGuesses : const [];
 
@@ -440,6 +481,51 @@ class GamesProgress {
   /// Guess the Meal rounds left today that still earn XP.
   int mealXpRoundsLeft(String day) =>
       max(0, Xp.mealRoundsPerDay - (mealDay == day ? mealRounds : 0));
+
+  /// Higher or Lower rounds left today that still earn XP.
+  int higherLowerXpRoundsLeft(String day) => max(
+      0, Xp.higherLowerRoundsPerDay - (hlDay == day ? hlRounds : 0));
+
+  /// Guess your own day still earns XP today.
+  bool ownXpLeft(String day) => ownDay != day;
+}
+
+// ============================================================================
+// Higher or Lower
+// ============================================================================
+
+/// One side of a Higher or Lower pair.
+class HlFood {
+  final String emoji;
+  final String name;
+
+  /// The portion, when it isn't already in the name.
+  final String detail;
+  final int kcal;
+  const HlFood(this.emoji, this.name, this.detail, this.kcal);
+}
+
+/// Two foods: which has more calories?
+class HlPair {
+  final HlFood a;
+  final HlFood b;
+  const HlPair(this.a, this.b);
+
+  HlFood get higher => a.kcal >= b.kcal ? a : b;
+  int get difference => (a.kcal - b.kcal).abs();
+}
+
+// ============================================================================
+// Guess your own day
+// ============================================================================
+
+/// A day from your own log to guess the total of.
+class OwnDay {
+  final DateTime day;
+  final List<MealItem> items;
+  const OwnDay(this.day, this.items);
+
+  int get total => items.fold(0, (a, b) => a + b.kcal);
 }
 
 class GamesService {
@@ -447,11 +533,15 @@ class GamesService {
 
   static const dailyRounds = 5;
   static const mealsPerRound = 3;
+  static const higherLowerPairs = 10;
+
+  /// Guess your own day needs at least this many foods in a day.
+  static const ownDayMinFoods = 3;
 
   static DocumentReference<Map<String, dynamic>> _user(String uid) =>
       BalanceService.db.collection('users').doc(uid);
 
-  /// "2026-10-11", in the phone's own time zone (everyone's Daily changes
+  /// "2026-10-11", in the phone's own time zone (everyone's quiz changes
   /// at their midnight).
   static String dayKey([DateTime? d]) {
     final t = d ?? BalanceService.now();
@@ -468,7 +558,7 @@ class GamesService {
     return h;
   }
 
-  /// Today's Daily challenge: the same 5 foods for everyone on [day].
+  /// Today's Calorie Quiz: the same 5 foods for everyone on [day].
   static List<GameFood> dailyFoods(String day) {
     final ranked = [...kGameFoods]..sort((a, b) {
         final ha = _hash('$day|${a.name}|${a.portion}');
@@ -522,10 +612,14 @@ class GamesService {
     };
   }
 
+  /// The `games` fields that add [xp] (for other services' transactions).
+  static Map<String, dynamic> xpFields(Map? games, int xp) =>
+      _xpFields(games, xp);
+
   static int _xpOf(Map? games) =>
       (BalanceService.number(games?['xp']) ?? 0).round();
 
-  /// Saves a Daily challenge guess for food number [index] on [day] and
+  /// Saves a Daily Calorie Quiz guess for food number [index] on [day] and
   /// adds its XP (plus the bonus for the last one). A guess for a food
   /// already guessed (a double tap, another device) is ignored.
   static Future<XpResult> saveDailyGuess({
@@ -574,7 +668,23 @@ class GamesService {
   /// Starts a Guess the Meal round. True when it earns XP (the first
   /// [Xp.mealRoundsPerDay] of the day); counted as it starts, so quitting
   /// half way still uses it up.
-  static Future<bool> startMealRound(String uid) async {
+  static Future<bool> startMealRound(String uid) => _startRound(uid,
+      dayField: 'meal_day',
+      countField: 'meal_rounds',
+      left: (p, day) => p.mealXpRoundsLeft(day));
+
+  /// Starts a Higher or Lower round (see [startMealRound]).
+  static Future<bool> startHigherLowerRound(String uid) => _startRound(uid,
+      dayField: 'hl_day',
+      countField: 'hl_rounds',
+      left: (p, day) => p.higherLowerXpRoundsLeft(day));
+
+  static Future<bool> _startRound(
+    String uid, {
+    required String dayField,
+    required String countField,
+    required int Function(GamesProgress p, String day) left,
+  }) async {
     final ref = _user(uid);
     final day = dayKey();
     var earns = false;
@@ -582,21 +692,79 @@ class GamesService {
       // A retried transaction starts again from scratch.
       earns = false;
       final snap = await tx.get(ref);
+      final games = snap.data()?['games'];
       final p = GamesProgress.fromUser(snap.data());
-      if (p.mealXpRoundsLeft(day) <= 0) return;
+      if (left(p, day) <= 0) return;
       earns = true;
+      final sameDay = games is Map && games[dayField] == day;
+      final count = sameDay
+          ? (BalanceService.number((games as Map)[countField]) ?? 0).round()
+          : 0;
       tx.set(
         ref,
         {
-          'games': {
-            'meal_day': day,
-            'meal_rounds': (p.mealDay == day ? p.mealRounds : 0) + 1,
-          },
+          'games': {dayField: day, countField: count + 1},
         },
         SetOptions(merge: true),
       );
     });
     return earns;
+  }
+
+  /// Saves a finished Higher or Lower round: its XP (when [earns]) and
+  /// your best score.
+  static Future<XpResult> finishHigherLower(
+      String uid, {required int correct, required bool earns}) async {
+    final ref = _user(uid);
+    var result = XpResult.none;
+    await BalanceService.db.runTransaction<void>((tx) async {
+      final snap = await tx.get(ref);
+      final games = snap.data()?['games'];
+      final g = games is Map ? games : const {};
+      final before = _xpOf(g);
+      final xp = earns ? correct * Xp.perHigherLower : 0;
+      final best = (BalanceService.number(g['hl_best']) ?? 0).round();
+      result = XpResult(before, before + xp);
+      if (xp <= 0 && correct <= best) return;
+      tx.set(
+        ref,
+        {
+          'games': {
+            if (xp > 0) ..._xpFields(g, xp),
+            if (correct > best) 'hl_best': correct,
+          },
+        },
+        SetOptions(merge: true),
+      );
+    });
+    return result;
+  }
+
+  /// Saves a Guess your own day guess: [xp] the first time today, nothing
+  /// after that (practice).
+  static Future<XpResult> saveOwnDay(String uid, int xp) async {
+    final ref = _user(uid);
+    final day = dayKey();
+    var result = XpResult.none;
+    await BalanceService.db.runTransaction<void>((tx) async {
+      final snap = await tx.get(ref);
+      final games = snap.data()?['games'];
+      final g = games is Map ? games : const {};
+      final before = _xpOf(g);
+      if (g['own_day'] == day) {
+        result = XpResult(before, before);
+        return;
+      }
+      result = XpResult(before, before + max(0, xp));
+      tx.set(
+        ref,
+        {
+          'games': {..._xpFields(g, max(0, xp)), 'own_day': day},
+        },
+        SetOptions(merge: true),
+      );
+    });
+    return result;
   }
 
   /// Adds [xp] (e.g. one Guess the Meal answer).
@@ -647,7 +815,7 @@ class GamesService {
     return result;
   }
 
-  /// Friends' Daily challenge scores for [day] (only those who finished).
+  /// Friends' Calorie Quiz scores for [day] (only those who finished).
   static Future<List<({String uid, Map<String, dynamic>? user, int score})>>
       friendsDaily(List<String> friendIds, String day) async {
     final docs = await Future.wait(friendIds.map((id) async {
@@ -669,7 +837,116 @@ class GamesService {
     return out;
   }
 
-  /// "🎯 The Calorie Card Daily · 11 Oct · 412/500 · 🟩🟩🟨🟩🟥".
+  /// Everything Higher or Lower deals from: the quiz foods and the meal
+  /// items, each once.
+  static List<HlFood> higherLowerPool() {
+    final seen = <String>{};
+    final out = <HlFood>[];
+    for (final f in kGameFoods) {
+      if (f.kcal <= 0 || !seen.add(f.name.toLowerCase())) continue;
+      out.add(HlFood(f.emoji, f.name, f.portion, f.kcal));
+    }
+    for (final m in kGameMeals) {
+      if (m.kind == MealKind.day) continue;
+      for (final i in m.items) {
+        if (i.kcal <= 0 || !seen.add(i.name.toLowerCase())) continue;
+        out.add(HlFood(i.emoji, i.name, '', i.kcal));
+      }
+    }
+    return out;
+  }
+
+  /// A round of Higher or Lower: [higherLowerPairs] pairs, no food twice,
+  /// and never two foods so close it's a coin toss (at least 15% apart).
+  static List<HlPair> dealHigherLower({Random? random}) {
+    final r = random ?? Random();
+    final pool = higherLowerPool()..shuffle(r);
+    final used = <int>{};
+    final pairs = <HlPair>[];
+    for (var i = 0; i < pool.length && pairs.length < higherLowerPairs; i++) {
+      if (used.contains(i)) continue;
+      for (var j = i + 1; j < pool.length; j++) {
+        if (used.contains(j)) continue;
+        final a = pool[i].kcal, b = pool[j].kcal;
+        if ((a - b).abs() < max(a, b) * 0.15) continue;
+        used..add(i)..add(j);
+        pairs.add(HlPair(pool[i], pool[j]));
+        break;
+      }
+    }
+    return pairs;
+  }
+
+  /// The most recent day before [today] (within a week) with at least
+  /// [ownDayMinFoods] foods logged, for Guess your own day. Null if there
+  /// isn't one.
+  static OwnDay? ownDayFrom(Statement statement, DateTime today) {
+    const recipePrefix = 'Recipe:';
+    final todayKey = dayKey(today);
+    const order = {'breakfast': 0, 'lunch': 1, 'dinner': 2, 'snacks': 3};
+    for (final d in statement.days.reversed) {
+      if (dayKey(d.day) == todayKey || d.day.isAfter(today)) continue;
+      final foods = [
+        for (final t in d.transactions)
+          if (t.calories.round() > 0) t
+      ];
+      if (foods.length < ownDayMinFoods) continue;
+      int rank(CardTransaction t) =>
+          order[t.category.trim().toLowerCase()] ?? 4;
+      foods.sort((a, b) {
+        final m = rank(a).compareTo(rank(b));
+        return m != 0 ? m : a.time.compareTo(b.time);
+      });
+      return OwnDay(d.day, [
+        for (final t in foods)
+          MealItem(
+            CalorieGameService.mealEmoji(t.category),
+            () {
+              final raw = t.description.trim();
+              final name = raw.startsWith(recipePrefix)
+                  ? raw.substring(recipePrefix.length).trim()
+                  : raw;
+              final portion = t.portion.trim();
+              return portion.isEmpty ? name : '$name ($portion)';
+            }(),
+            t.calories.round(),
+          ),
+      ]);
+    }
+    return null;
+  }
+
+  /// Loads the day for Guess your own day.
+  static Future<OwnDay?> loadOwnDay(String uid) async {
+    final statement =
+        await StatementService.load(uid, days: 8, withLogs: false);
+    return ownDayFrom(statement, BalanceService.now());
+  }
+
+  /// Counts a play in `game_stats/{day}` so you can see what's played:
+  ///   plays: {quiz: 41, meal: 17, ...}   every game started
+  ///   players: {quiz: 30, ...}           first play on each device a day
+  /// No names or ids are stored. Never throws.
+  static Future<void> countPlay(String game) async {
+    try {
+      final day = dayKey();
+      var first = false;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final key = 'games_counted_$game';
+        first = prefs.getString(key) != day;
+        if (first) await prefs.setString(key, day);
+      } catch (_) {}
+      await BalanceService.db.collection('game_stats').doc(day).set({
+        'plays': {game: FieldValue.increment(1)},
+        if (first) 'players': {game: FieldValue.increment(1)},
+      }, SetOptions(merge: true));
+    } catch (_) {
+      // Only for your own curiosity: never get in the way of a game.
+    }
+  }
+
+  /// "🎯 Daily Calorie Quiz · 11 Oct · 412/500" then "🟩🟩🟨🟩🟥".
   static String shareLine(String day, List<int> scores) {
     final total = scores.fold(0, (a, b) => a + b);
     final squares = scores
@@ -690,7 +967,7 @@ class GamesService {
         ? '${int.tryParse(parts[2]) ?? parts[2]} '
             '${months[((int.tryParse(parts[1]) ?? 1) - 1).clamp(0, 11)]}'
         : day;
-    return '🎯 The Calorie Card Daily · $label · '
+    return '🎯 Daily Calorie Quiz · $label · '
         '$total/${dailyRounds * 100}\n$squares';
   }
 }

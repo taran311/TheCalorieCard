@@ -3,9 +3,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:namer_app/pages/budgets_page.dart';
+import 'package:namer_app/pages/games_hub_page.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/budget_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
+import 'package:namer_app/services/games_service.dart';
 import 'package:namer_app/services/notification_service.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/pages/premium_page.dart';
@@ -15,7 +17,8 @@ import 'package:namer_app/ui/responsive.dart';
 
 /// The Card screen's inbox, like a banking app's notification strip:
 /// split-the-bill requests, direct debits due today, balance alerts, the
-/// evening "finish your day" nudge and this week's pot.
+/// evening "finish your day" nudge, this week's pot and today's Calorie
+/// Quiz.
 ///
 /// Shows one item at a time (swipe for more) so the card stays the hero.
 class HomeInbox extends StatefulWidget {
@@ -68,6 +71,39 @@ class _HomeInboxState extends State<HomeInbox> {
         setState(() => _offerReminder = true);
       }
     } catch (_) {}
+  }
+
+  /// Games progress, for "Today's Calorie Quiz is ready".
+  StreamSubscription<GamesProgress>? _gamesSub;
+  GamesProgress? _games;
+
+  /// The day "Not today" was tapped on the quiz card, on this device.
+  String? _quizHiddenDay;
+
+  String get _quizHiddenKey => 'quiz_card_hidden_${widget.userId}';
+
+  Future<void> _loadQuizHidden() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final day = prefs.getString(_quizHiddenKey);
+      if (mounted) setState(() => _quizHiddenDay = day);
+    } catch (_) {}
+  }
+
+  Future<void> _hideQuiz() async {
+    final day = GamesService.dayKey();
+    setState(() => _quizHiddenDay = day);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_quizHiddenKey, day);
+    } catch (_) {}
+  }
+
+  void _openQuiz() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+          builder: (_) => const SoloGamePage(kind: SoloKind.daily)),
+    );
   }
 
   /// "Your trial has ended" was dismissed on this device.
@@ -162,6 +198,13 @@ class _HomeInboxState extends State<HomeInbox> {
     _checkReminderOffer();
     _loadTrialSeen();
     _loadBudgetSeen();
+    _loadQuizHidden();
+    _gamesSub = GamesService.watch(widget.userId).listen(
+      (g) {
+        if (mounted) setState(() => _games = g);
+      },
+      onError: (_) {},
+    );
     Premium.notifier.addListener(_onPremiumChanged);
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
@@ -195,6 +238,7 @@ class _HomeInboxState extends State<HomeInbox> {
     _splitSub?.cancel();
     _debitSub?.cancel();
     _profileSub?.cancel();
+    _gamesSub?.cancel();
     _clock?.cancel();
     _budgetDebounce?.cancel();
     _pages.dispose();
@@ -391,6 +435,33 @@ class _HomeInboxState extends State<HomeInbox> {
         actions: [
           _InboxAction('Finish day', widget.onFinishDay, primary: true),
         ],
+      ));
+    }
+
+    // Last, so anything that needs doing comes first. Gone once played
+    // (or for the rest of the day after "Not today").
+    final today = GamesService.dayKey();
+    final games = _games;
+    if (games != null &&
+        !games.dailyDoneOn(today) &&
+        _quizHiddenDay != today) {
+      final started = games.dailyGuessesOn(today).length;
+      items.add(_InboxCard(
+        icon: Icons.sports_esports,
+        color: AppColors.primary,
+        title: started > 0
+            ? "Finish today's Calorie Quiz"
+            : "Today's Calorie Quiz is ready",
+        subtitle: started > 0
+            ? '$started of ${GamesService.dailyRounds} guessed. Pick up '
+                'where you left off.'
+            : '${GamesService.dailyRounds} foods, about a minute. How close '
+                'can you get?',
+        actions: [
+          _InboxAction('Not today', _hideQuiz),
+          _InboxAction('Play', _openQuiz, primary: true),
+        ],
+        stacked: narrow,
       ));
     }
     return items;

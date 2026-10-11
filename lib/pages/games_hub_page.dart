@@ -2,6 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
+import 'package:namer_app/pages/higher_lower_page.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_game.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/friends_service.dart';
@@ -82,6 +84,7 @@ class _GamesHubPageState extends State<GamesHubPage> {
           final dailyDone = p.dailyDoneOn(day);
           final dailyStarted = p.dailyGuessesOn(day).isNotEmpty;
           final mealsLeft = p.mealXpRoundsLeft(day);
+          final hlLeft = p.higherLowerXpRoundsLeft(day);
           return Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
@@ -92,7 +95,7 @@ class _GamesHubPageState extends State<GamesHubPage> {
                   const _Heading('Play solo'),
                   _GameCard(
                     emoji: '📅',
-                    title: 'Daily challenge',
+                    title: 'Daily Calorie Quiz',
                     subtitle: dailyDone
                         ? 'Done today: ${p.dailyScoreOn(day)} of '
                             '${GamesService.dailyRounds * 100}. New foods '
@@ -113,6 +116,16 @@ class _GamesHubPageState extends State<GamesHubPage> {
                         _open(const SoloGamePage(kind: SoloKind.daily)),
                   ),
                   _GameCard(
+                    emoji: '🪞',
+                    title: 'Guess your own day',
+                    subtitle: 'You logged it, but do you know it? Guess '
+                        "how many calories one of your recent days came to. "
+                        '${p.ownXpLeft(day) ? 'Earns XP once a day.' : 'Practice only until tomorrow.'}',
+                    action: 'Play',
+                    onTap: () =>
+                        _open(const SoloGamePage(kind: SoloKind.own)),
+                  ),
+                  _GameCard(
                     emoji: '🍽️',
                     title: 'Guess the Meal',
                     subtitle: 'How much did they eat? Real meals, nights out '
@@ -120,6 +133,16 @@ class _GamesHubPageState extends State<GamesHubPage> {
                     action: 'Play',
                     onTap: () =>
                         _open(const SoloGamePage(kind: SoloKind.meals)),
+                  ),
+                  _GameCard(
+                    emoji: '⚖️',
+                    title: 'Higher or Lower',
+                    subtitle: 'Which has more calories? '
+                        '${GamesService.higherLowerPairs} quick pairs.'
+                        '${p.hlBest > 0 ? ' Your best: ${p.hlBest}.' : ''} '
+                        '${hlLeft > 0 ? '$hlLeft of ${Xp.higherLowerRoundsPerDay} XP rounds left today.' : 'Practice only until tomorrow.'}',
+                    action: 'Play',
+                    onTap: () => _open(const HigherLowerPage()),
                   ),
                   const _Heading('With friends'),
                   StreamBuilder<List<CalorieGame>>(
@@ -273,7 +296,7 @@ class _GameCard extends StatelessWidget {
   }
 }
 
-/// Friends who've done today's Daily, best first. Only shown once you've
+/// Friends who've done today's Calorie Quiz, best first. Only shown once you've
 /// done it too, so nobody's put off (or spoiled).
 class _FriendsToday extends StatefulWidget {
   final String uid;
@@ -305,7 +328,7 @@ class _FriendsTodayState extends State<_FriendsToday> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _Heading("Today's Daily with friends"),
+            const _Heading("Today's Calorie Quiz with friends"),
             Container(
               decoration: AppDecor.card,
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -354,10 +377,11 @@ class _FriendsTodayState extends State<_FriendsToday> {
 }
 
 // ============================================================================
-// Solo play: Daily challenge and Guess the Meal
+// Solo play: Daily Calorie Quiz, Guess the Meal and Guess your own day
 // ============================================================================
 
-enum SoloKind { daily, meals }
+/// [daily] is the Daily Calorie Quiz.
+enum SoloKind { daily, meals, own }
 
 /// One thing to guess.
 class _Question {
@@ -397,7 +421,7 @@ class _SoloGamePageState extends State<SoloGamePage> {
   final _input = TextEditingController();
   final _focus = FocusNode();
 
-  /// The Daily's day, fixed when the page opens (it doesn't change under
+  /// The quiz's day, fixed when the page opens (it doesn't change under
   /// you at midnight).
   final String _day = GamesService.dayKey();
 
@@ -417,6 +441,10 @@ class _SoloGamePageState extends State<SoloGamePage> {
   String? _error;
 
   bool get _daily => widget.kind == SoloKind.daily;
+  bool get _own => widget.kind == SoloKind.own;
+
+  /// Whether a guess here earns XP (the quiz always does, once).
+  bool get _showXp => _daily || _earnsXp;
   bool get _finished =>
       _questions.isNotEmpty && _guesses.length >= _questions.length && !_revealed;
   int get _index => _revealed ? _guesses.length - 1 : _guesses.length;
@@ -460,6 +488,8 @@ class _SoloGamePageState extends State<SoloGamePage> {
         if (_xp.length >= GamesService.dailyRounds) {
           _xp[_xp.length - 1] += Xp.dailyBonus;
         }
+      } else if (_own) {
+        await _loadOwnDay();
       } else {
         await _dealMeals();
       }
@@ -469,6 +499,49 @@ class _SoloGamePageState extends State<SoloGamePage> {
     if (!mounted) return;
     setState(() => _loading = false);
     if (!_finished) _focus.requestFocus();
+  }
+
+  Future<void> _loadOwnDay() async {
+    final results = await Future.wait<Object?>([
+      GamesService.loadOwnDay(_uid),
+      GamesService.watch(_uid).first,
+    ]);
+    final own = results[0] as OwnDay?;
+    _progress = results[1] as GamesProgress;
+    _earnsXp = _progress.ownXpLeft(_day);
+    if (own == null) {
+      _error = 'Nothing to guess yet. Log at least '
+          '${GamesService.ownDayMinFoods} foods in a day, then come back '
+          'the next day to guess what it all came to.';
+      return;
+    }
+    _questions = [
+      _Question(
+        emoji: '🪞',
+        title: _dayName(own.day),
+        subtitle: '${own.items.length} foods you logged. How many calories '
+            'altogether?',
+        items: own.items,
+        answer: own.total,
+      ),
+    ];
+  }
+
+  /// "Yesterday", or "Thursday 8 Oct".
+  String _dayName(DateTime d) {
+    final today = DateTime(BalanceService.now().year,
+        BalanceService.now().month, BalanceService.now().day);
+    final that = DateTime(d.year, d.month, d.day);
+    if (today.difference(that).inHours.round() <= 30) return 'Yesterday';
+    const days = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', //
+      'Saturday', 'Sunday',
+    ];
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}';
   }
 
   Future<void> _dealMeals() async {
@@ -501,6 +574,7 @@ class _SoloGamePageState extends State<SoloGamePage> {
     _earnsXp = false;
     _earnsXp = await GamesService.startMealRound(_uid);
     _progress = await GamesService.watch(_uid).first;
+    GamesService.countPlay('meal');
   }
 
   Future<void> _playAgain() async {
@@ -547,6 +621,12 @@ class _SoloGamePageState extends State<SoloGamePage> {
           score: score,
         );
         xp = result.gained;
+        if (_guesses.isEmpty) GamesService.countPlay('quiz');
+      } else if (_own) {
+        result = await GamesService.saveOwnDay(
+            _uid, _earnsXp ? Xp.forScore(score) : 0);
+        xp = result.gained;
+        GamesService.countPlay('own');
       } else if (_earnsXp) {
         xp = Xp.forScore(score);
         result = await GamesService.addXp(_uid, xp);
@@ -569,10 +649,7 @@ class _SoloGamePageState extends State<SoloGamePage> {
       _revealed = true;
       _saving = false;
       if (result.after > 0) {
-        _progress = GamesProgress(
-          xp: result.after,
-          monthXp: _progress.monthXp + result.gained,
-        );
+        _progress = _progress.withXp(result.after, result.gained);
       }
     });
     _input.clear();
@@ -590,7 +667,7 @@ class _SoloGamePageState extends State<SoloGamePage> {
     final messenger = ScaffoldMessenger.of(context);
     var shared = false;
     try {
-      shared = await web.shareText('The Calorie Card Daily', text, link);
+      shared = await web.shareText('Daily Calorie Quiz', text, link);
     } catch (_) {}
     if (shared) return;
     try {
@@ -602,7 +679,11 @@ class _SoloGamePageState extends State<SoloGamePage> {
 
   @override
   Widget build(BuildContext context) {
-    final title = _daily ? 'Daily challenge' : 'Guess the Meal';
+    final title = _daily
+        ? 'Daily Calorie Quiz'
+        : _own
+            ? 'Guess your own day'
+            : 'Guess the Meal';
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(title: Text(title)),
@@ -655,10 +736,12 @@ class _SoloGamePageState extends State<SoloGamePage> {
           ),
         ],
       ),
-      if (!_daily && !_earnsXp) ...[
+      if (!_showXp) ...[
         const SizedBox(height: 8),
         Text(
-          "Practice round: you've had today's XP rounds.",
+          _own
+              ? "Practice: you've had today's XP for this one."
+              : "Practice round: you've had today's XP rounds.",
           style: TextStyle(fontSize: 12.5, color: AppColors.muted),
         ),
       ],
@@ -671,7 +754,7 @@ class _SoloGamePageState extends State<SoloGamePage> {
           guess: _guesses.last,
           score: _scores.last,
           xp: _xp.last,
-          showXp: _daily || _earnsXp,
+          showXp: _showXp,
           last: _guesses.length >= n,
           onNext: _next,
         )
@@ -688,7 +771,11 @@ class _SoloGamePageState extends State<SoloGamePage> {
           ],
           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           decoration: InputDecoration(
-            labelText: q.isMeal ? 'Your guess for all of it' : 'Your guess',
+            labelText: _own
+                ? 'Your guess for the whole day'
+                : q.isMeal
+                    ? 'Your guess for all of it'
+                    : 'Your guess',
             suffixText: 'kcal',
             border: const OutlineInputBorder(),
             errorText: _error,
@@ -751,7 +838,7 @@ class _SoloGamePageState extends State<SoloGamePage> {
                 color: AppColors.gray700,
               ),
             ),
-            if (_daily || _earnsXp) ...[
+            if (_showXp) ...[
               const SizedBox(height: 10),
               XpPill(xp),
             ],
@@ -811,7 +898,18 @@ class _SoloGamePageState extends State<SoloGamePage> {
           textAlign: TextAlign.center,
           style: TextStyle(color: AppColors.muted),
         ),
-      ] else
+      ] else if (_own)
+        SizedBox(
+          height: 52,
+          child: FilledButton(
+            onPressed: () => Navigator.of(context).maybePop(),
+            style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primaryDark),
+            child: const Text('Back to Games',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          ),
+        )
+      else
         SizedBox(
           height: 52,
           child: FilledButton.icon(
