@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/pages/auth_page.dart';
+import 'package:namer_app/pages/email_action_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/ui/adaptive_frame.dart';
 import 'package:namer_app/ui/theme_controller.dart';
@@ -14,6 +15,9 @@ void main() async {
   await ThemeController.instance.load();
   runApp(const MyApp());
 }
+
+/// Read once at start-up (the page clears it from the address bar).
+final EmailAction? _emailAction = EmailAction.current;
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -41,7 +45,11 @@ class MyApp extends StatelessWidget {
           // desktop layout takes over.
           builder: (context, child) =>
               AdaptiveFrame(child: child ?? const SizedBox.shrink()),
-          home: const AuthPage(),
+          // A link from one of our emails (verify, reset password…) is
+          // handled first, then carries on into the app.
+          home: _emailAction == null
+              ? const AuthPage()
+              : EmailActionPage(action: _emailAction!),
         ),
       ),
     );
