@@ -273,3 +273,16 @@ SpeechSession? startSpeech({
     return null;
   }
 }
+
+/// Loads the newest version of the site (window.tccReload in index.html:
+/// clears old service workers, then reloads from a fresh address).
+void reloadToLatest() {
+  try {
+    globalContext.callMethod('tccReload'.toJS);
+  } catch (_) {
+    try {
+      (globalContext.getProperty('location'.toJS) as JSObject)
+          .callMethod('reload'.toJS);
+    } catch (_) {}
+  }
+}

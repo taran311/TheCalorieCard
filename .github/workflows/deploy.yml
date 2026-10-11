@@ -30,7 +30,20 @@ jobs:
 
       # Site is served from the ROOT of thecaloriecard.com, so base-href must be "/".
       - name: Build web
-        run: flutter build web --release --base-href /
+        # BUILD_ID lets the app spot when a newer version is live (see
+        # lib/services/app_update.dart).
+        run: flutter build web --release --base-href / --dart-define=BUILD_ID=${{ github.sha }}
+
+      - name: Stamp this build
+        run: |
+          # What the running app compares itself against.
+          echo '{"build":"${{ github.sha }}"}' > build/web/build.json
+          # New file names each deploy, so "Refresh" never gets an old
+          # copy of the app from a cache.
+          sed -i 's#"main.dart.js"#"main.dart.js?v=${{ github.sha }}"#' build/web/flutter_bootstrap.js
+          sed -i 's#src="flutter_bootstrap.js"#src="flutter_bootstrap.js?v=${{ github.sha }}"#' build/web/index.html
+          grep -q 'main.dart.js?v=' build/web/flutter_bootstrap.js || echo "::warning::couldn't version main.dart.js (refresh may need a second go)"
+          grep -q 'flutter_bootstrap.js?v=' build/web/index.html || echo "::warning::couldn't version flutter_bootstrap.js"
 
       - name: Check the build is configured for the site root
         run: |

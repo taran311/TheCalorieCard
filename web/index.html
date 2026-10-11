@@ -141,6 +141,24 @@
       setTimeout(hideSplash, 20000);
     })();
   </script>
+  <script>
+    // "A new version is ready · Refresh": drops any old service worker,
+    // then loads the page fresh (a new address, so no cache can answer).
+    window.tccReload = function () {
+      var go = function () {
+        location.replace(location.pathname + '?refresh=' + Date.now() + location.hash);
+      };
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            return Promise.all(regs.map(function (r) { return r.unregister(); }));
+          }).then(go, go);
+          return;
+        }
+      } catch (e) {}
+      go();
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

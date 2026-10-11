@@ -35,3 +35,6 @@ SpeechSession? startSpeech({
   String lang = 'en-GB',
 }) =>
     null;
+
+/// Nothing to reload outside a browser.
+void reloadToLatest() {}

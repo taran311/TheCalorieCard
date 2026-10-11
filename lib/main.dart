@@ -4,10 +4,13 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/email_action_page.dart';
+import 'package:namer_app/services/app_update.dart';
 import 'package:namer_app/services/category_service.dart';
+import 'package:namer_app/services/web_platform.dart' as web;
 import 'package:namer_app/ui/adaptive_frame.dart';
 import 'package:namer_app/ui/gift_claim.dart';
 import 'package:namer_app/ui/theme_controller.dart';
+import 'package:namer_app/ui/update_banner.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -16,7 +19,12 @@ void main() async {
   await ThemeController.instance.load();
   // A gift link (?gift=…): remembered until they're signed in to claim it.
   await PendingGift.captureFromUrl();
+  // Just refreshed to a new version (?refresh=…): tidy the address bar.
+  final query = Uri.base.queryParameters;
+  if (query.length == 1 && query.containsKey('refresh')) web.clearUrlQuery();
   runApp(const MyApp());
+  // "A new version is ready · Refresh" when a newer deploy is live.
+  AppUpdate.start();
 }
 
 /// Read once at start-up (the page clears it from the address bar).
@@ -46,8 +54,8 @@ class MyApp extends StatelessWidget {
           // Phones: full screen. Signed-out pages on big screens: framed
           // next to a brand panel. Signed in on big screens: the shell's
           // desktop layout takes over.
-          builder: (context, child) =>
-              AdaptiveFrame(child: child ?? const SizedBox.shrink()),
+          builder: (context, child) => UpdateBanner(
+              child: AdaptiveFrame(child: child ?? const SizedBox.shrink())),
           // A link from one of our emails (verify, reset password…) is
           // handled first, then carries on into the app.
           home: _emailAction == null
