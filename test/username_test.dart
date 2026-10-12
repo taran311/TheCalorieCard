@@ -239,6 +239,9 @@ void main() {
         await w.db.collection('users').doc(me).update({
           'friends': [friend],
         });
+        await w.db.collection('users').doc(friend).update({
+          'friends': [me],
+        });
         final status = await FriendsService.sendRequest(
           myUid: me,
           myEmail: 'taran@example.com',
@@ -247,6 +250,33 @@ void main() {
         );
         expect(status.relation, FriendRelation.friends);
         expect((await w.db.collection('friend_requests').get()).docs, isEmpty);
+      });
+
+      test('a one-sided friendship can be mended with a request', () async {
+        // Left over from an older version: you have them, they don't
+        // have you.
+        await w.db.collection('users').doc(me).update({
+          'friends': [friend],
+        });
+        final status = await FriendsService.sendRequest(
+          myUid: me,
+          myEmail: 'taran@example.com',
+          toUid: friend,
+          toEmail: 'sam@example.com',
+        );
+        expect(status.relation, FriendRelation.none);
+        final sent = await w.db.collection('friend_requests').get();
+        expect(sent.docs.length, 1);
+
+        await FriendsService.acceptRequest(
+          requestId: sent.docs.first.id,
+          myUid: friend,
+          fromUid: me,
+        );
+        expect(await FriendsService.friendIds(me), [friend]);
+        expect(await FriendsService.friendIds(friend), [me]);
+        expect((await FriendsService.relationTo(me, friend)).relation,
+            FriendRelation.friends);
       });
 
       test('if they asked first, that request can be accepted', () async {

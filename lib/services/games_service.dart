@@ -178,84 +178,102 @@ class GameMeal {
 }
 
 // Standard portions, from UK labels and UK / USDA reference values. The
-// same item always has the same value everywhere in the game.
-const _sausages2 = MealItem('🌭', '2 pork sausages, grilled', 236);
-const _bacon2 = MealItem('🥓', '2 rashers back bacon, grilled', 130);
-const _friedEgg = MealItem('🍳', '1 fried egg', 90);
+// same item always has the same value everywhere in the game. All vegan:
+// the app doesn't feature animal products in its own content.
+const _plantSausages2 = MealItem('🌭', '2 plant-based sausages, grilled', 180);
 const _beans = MealItem('🫘', 'Half a can of baked beans (207g)', 164);
-const _toastButter =
-    MealItem('🍞', '1 slice white toast, thinly buttered', 122);
+const _mushrooms =
+    MealItem('🍄', 'Mushrooms (80g), fried in 1 teaspoon of oil', 58);
+const _tomatoHalf = MealItem('🍅', 'Half a tomato, grilled', 11);
+const _toastSpread =
+    MealItem('🍞', '1 slice white toast, thinly spread with plant butter', 121);
 const _oats40 = MealItem('🥣', 'Porridge oats (40g)', 150);
-const _semi200 = MealItem('🥛', 'Semi-skimmed milk (200ml)', 100);
+const _oats30 = MealItem('🥣', 'Porridge oats (30g)', 112);
+const _oatMilk200 = MealItem('🥛', 'Oat milk (200ml)', 92);
+const _oatMilk150 = MealItem('🥛', 'Oat milk (150ml)', 69);
+const _soya150 = MealItem('🥛', 'Unsweetened soya milk (150ml)', 50);
 const _banana = MealItem('🍌', '1 banana', 105);
-const _honey2 = MealItem('🍯', '2 teaspoons of honey', 42);
-const _honey1 = MealItem('🍯', '1 teaspoon of honey', 21);
+const _maple2 = MealItem('🍁', '2 teaspoons of maple syrup', 34);
+const _maple1 = MealItem('🍁', '1 teaspoon of maple syrup', 17);
 const _granola = MealItem('🥣', 'Granola (45g)', 200);
-const _greekFull = MealItem('🥛', 'Full-fat Greek-style yogurt (150g)', 165);
+const _soyaYogurt = MealItem('🥣', 'Plain soya yogurt (150g)', 75);
 const _blueberries = MealItem('🫐', 'Blueberries (80g)', 46);
+const _strawberries = MealItem('🍓', 'Strawberries (80g)', 26);
 const _sourdough = MealItem('🍞', 'Sourdough, 1 large slice (50g)', 120);
 const _avocadoHalf = MealItem('🥑', 'Half an avocado', 114);
-const _poached2 = MealItem('🥚', '2 poached eggs', 156);
-const _latteWhole = MealItem('☕', 'Large latte, whole milk', 192);
-const _latteSemi = MealItem('☕', 'Large latte, semi-skimmed', 150);
-const _flatWhite = MealItem('☕', 'Flat white, whole milk', 96);
-const _croissant = MealItem('🥐', 'Butter croissant', 231);
+const _cherryTomatoes = MealItem('🍅', 'Cherry tomatoes (80g)', 14);
+const _oatLatte = MealItem('☕', 'Large oat latte', 170);
+const _coffeeSplash = MealItem('☕', 'Coffee with a splash of oat milk', 15);
+const _weetabix2 = MealItem('🥣', '2 Weetabix', 136);
+const _sugar1 = MealItem('🥄', '1 teaspoon of sugar', 16);
+const _white2 = MealItem('🍞', '2 slices white toast', 170);
+const _wholemeal2 = MealItem('🍞', '2 slices wholemeal toast', 182);
+const _plantButter10 = MealItem('🧈', 'Plant butter (10g)', 71);
 const _jam = MealItem('🍓', 'Jam (1 tablespoon)', 38);
-const _butter10 = MealItem('🧈', 'Butter (10g)', 74);
-const _cornflakes = MealItem('🥣', 'Cornflakes (45g)', 170);
-const _semi150 = MealItem('🥛', 'Semi-skimmed milk (150ml)', 75);
 const _oj = MealItem('🍊', 'Orange juice (200ml)', 90);
-const _eggs2 = MealItem('🥚', '2 large eggs, scrambled', 156);
-const _milkSplash = MealItem('🥛', 'Splash of semi-skimmed milk', 15);
-const _wholemeal2 = MealItem('🍞', '2 slices wholemeal toast', 156);
-const _white2 = MealItem('🍞', '2 slices white bread', 170);
-const _cheddar30 = MealItem('🧀', 'Cheddar (30g)', 125);
-const _cheddar40 = MealItem('🧀', 'Cheddar (40g)', 166);
-const _ham = MealItem('🍖', '2 slices of ham', 33);
+const _peanutButter = MealItem('🥜', 'Peanut butter (1 tablespoon)', 94);
+const _tofu150 = MealItem('🧊', 'Firm tofu (150g), scrambled', 216);
+const _tofu100 = MealItem('🧊', 'Firm tofu (100g)', 144);
+const _oil1tsp = MealItem('🫒', 'Oil for cooking (1 teaspoon)', 40);
+const _oil = MealItem('🫒', 'Olive oil for cooking (1 tablespoon)', 119);
+const _spinach = MealItem('🥬', 'Spinach (80g)', 18);
+
+const _wrap = MealItem('🌯', 'Large tortilla wrap', 190);
+const _falafel3 = MealItem('🧆', '3 falafel', 167);
+const _hummus = MealItem('🫘', 'Hummus (2 tablespoons)', 90);
+const _salad = MealItem('🥬', 'Lettuce and tomato', 20);
 const _crisps = MealItem('🥔', 'Walkers Ready Salted (32.5g bag)', 171);
 const _coke = MealItem('🥤', 'Coca-Cola (330ml can)', 139);
 const _dietCoke = MealItem('🥤', 'Medium Diet Coke', 1);
 const _jacket = MealItem('🥔', 'Jacket potato (200g)', 186);
-const _tuna = MealItem('🐟', 'Tuna (60g, drained)', 66);
-const _mayo = MealItem('🥄', 'Mayonnaise (1 tablespoon)', 108);
-const _lightMayo = MealItem('🥄', 'Light mayonnaise (1 tablespoon)', 39);
-const _chicken150 = MealItem('🍗', 'Grilled chicken breast (150g)', 248);
-const _chicken100 = MealItem('🍗', 'Cooked chicken breast (100g)', 165);
-const _croutons = MealItem('🍞', 'Croutons (20g)', 90);
-const _parmesan = MealItem('🧀', 'Parmesan (10g)', 39);
-const _caesar = MealItem('🥫', 'Caesar dressing (2 tablespoons)', 140);
-const _romaine = MealItem('🥬', 'Romaine lettuce (80g)', 14);
-const _wrap = MealItem('🌯', 'Large tortilla wrap', 190);
-const _salad = MealItem('🍅', 'Lettuce and tomato', 20);
-const _soup = MealItem('🍅', 'Cream of tomato soup (half a can)', 118);
+const _quinoa = MealItem('🌾', 'Quinoa (150g cooked)', 180);
+const _chickpeas = MealItem('🫘', 'Chickpeas (half a tin, drained)', 167);
+const _roastVeg = MealItem('🫑', 'Roasted peppers and courgette (150g)', 45);
+const _tahini = MealItem('🫙', 'Tahini dressing (1 tablespoon)', 89);
+const _lentilSoup = MealItem('🥣', 'Lentil soup (400g carton)', 220);
+const _roll = MealItem('🥖', 'Crusty white roll (60g)', 150);
 const _pitta = MealItem('🫓', 'White pitta', 160);
-const _hummus = MealItem('🫘', 'Hummus (2 tablespoons)', 90);
 const _carrot = MealItem('🥕', 'Carrot sticks (1 carrot)', 25);
 const _apple = MealItem('🍎', '1 apple', 95);
-const _sausageRoll = MealItem('🥐', 'Greggs sausage roll', 327);
-const _mars = MealItem('🍫', 'Mars bar', 228);
+const _veganSausageRoll = MealItem('🌱', 'Greggs vegan sausage roll', 312);
+const _skittles = MealItem('🍬', 'Skittles (45g bag)', 179);
+
 const _spaghetti = MealItem('🍝', 'Spaghetti (200g cooked)', 316);
-const _mince5 = MealItem('🥩', 'Lean beef mince, 5% fat (125g)', 155);
-const _mince20 = MealItem('🥩', 'Beef mince, 20% fat (125g)', 318);
+const _lentils = MealItem('🫘', 'Cooked green lentils (150g)', 174);
+const _plantMince = MealItem('🌱', 'Plant-based mince (125g)', 300);
 const _sauce = MealItem('🍅', 'Tomato pasta sauce (125g)', 60);
-const _oil = MealItem('🫒', 'Olive oil for cooking (1 tablespoon)', 119);
-const _salmon = MealItem('🐟', 'Baked salmon fillet (120g)', 247);
+const _nooch = MealItem('🧀', 'Nutritional yeast (1 tablespoon)', 20);
+const _riceNoodles = MealItem('🍜', 'Rice noodles (150g cooked)', 162);
+const _padThaiSauce = MealItem('🥫', 'Pad thai sauce (3 tablespoons)', 100);
+const _peanuts15 = MealItem('🥜', 'Crushed peanuts (15g)', 92);
+const _beansprouts =
+    MealItem('🌱', 'Beansprouts and spring onion (80g)', 25);
+const _coconutMilk = MealItem('🥥', 'Coconut milk (100ml)', 170);
+const _curryPaste = MealItem('🌶️', 'Curry paste (1 tablespoon)', 30);
 const _rice = MealItem('🍚', 'White rice (150g cooked)', 195);
-const _broccoli = MealItem('🥦', 'Broccoli (80g)', 27);
-const _noodles = MealItem('🍜', 'Egg noodles (1 nest)', 220);
+const _kidneyBeans = MealItem('🫘', 'Kidney beans (half a tin, drained)', 125);
+const _choppedTomatoes =
+    MealItem('🍅', 'Chopped tomatoes (half a tin)', 44);
+const _pepperOnion = MealItem('🫑', '1 pepper and 1 onion', 81);
+const _guacamole = MealItem('🥑', 'Guacamole (2 tablespoons)', 45);
+const _tempeh = MealItem('🟫', 'Tempeh (100g)', 192);
 const _veg = MealItem('🥕', 'Stir-fry vegetables (150g)', 45);
 const _soy = MealItem('🥢', 'Soy sauce (1 tablespoon)', 10);
-const _bigMac = MealItem('🍔', "McDonald's Big Mac", 508);
+const _mcPlant = MealItem('🍔', "McDonald's McPlant", 429);
 const _fries = MealItem('🍟', "McDonald's medium fries", 337);
-const _choccyDigestives3 = MealItem('🍪', '3 chocolate digestives', 249);
-const _maltesers = MealItem('🍫', 'Maltesers (37g bag)', 187);
-const _twix = MealItem('🍫', 'Twix (2 fingers)', 250);
-const _wholeMilk150 = MealItem('🥛', 'Whole milk (150ml)', 96);
-const _peanutButter = MealItem('🥜', 'Peanut butter (1 tablespoon)', 94);
-const _oats30 = MealItem('🥣', 'Porridge oats (30g)', 112);
-const _teas = MealItem('🫖', '2 cups of tea, milk and 1 sugar', 62);
-const _digestives4 = MealItem('🍪', "4 McVitie's Digestives", 284);
+
+const _digestives3 = MealItem('🍪', "3 McVitie's Digestives", 213);
+const _pringles = MealItem('🥔', 'Pringles Original (half a 165g tube)', 440);
+const _teas = MealItem('🫖', '2 cups of tea, oat milk and 1 sugar', 60);
+const _biscoff4 = MealItem('🍪', '4 Lotus Biscoff biscuits', 120);
 const _almonds = MealItem('🌰', 'Almonds (30g)', 174);
+const _darkChoc = MealItem('🍫', 'Dark chocolate, 70% (4 squares)', 120);
+const _grapes = MealItem('🍇', 'Grapes (80g)', 53);
+const _satsuma = MealItem('🍊', '1 satsuma', 37);
+const _kiwi = MealItem('🥝', '1 kiwi', 42);
+const _tortillaChips = MealItem('🌽', 'Tortilla chips (60g)', 300);
+const _salsa = MealItem('🍅', 'Salsa (4 tablespoons)', 20);
+
 const _lager3 = MealItem('🍺', '3 pints of lager (4%)', 546);
 const _peanuts = MealItem('🥜', 'Salted peanuts (50g bag)', 305);
 const _wine2 = MealItem('🍷', '2 large glasses of red wine (250ml)', 454);
@@ -266,75 +284,75 @@ const _prosecco3 = MealItem('🥂', '3 glasses of prosecco (125ml)', 258);
 const _rumCoke3 = MealItem('🥃', '3 single rum and Cokes', 345);
 const _guinness2 = MealItem('🍺', '2 pints of Guinness', 420);
 
-const _fryUp = GameMeal('fry_up', '🍳', 'Saturday fry-up', MealKind.breakfast,
-    [_sausages2, _bacon2, _friedEgg, _beans, _toastButter]);
-const _porridge = GameMeal('porridge', '🥣', 'Porridge made with milk',
-    MealKind.breakfast, [_oats40, _semi200, _banana, _honey2]);
-const _granolaBowl = GameMeal('granola', '🥣', 'Granola and yogurt bowl',
-    MealKind.breakfast, [_granola, _greekFull, _blueberries, _honey1]);
+const _fryUp = GameMeal('fry_up', '🍳', 'Saturday vegan fry-up',
+    MealKind.breakfast,
+    [_plantSausages2, _beans, _mushrooms, _tomatoHalf, _toastSpread]);
+const _porridge = GameMeal('porridge', '🥣', 'Porridge made with oat milk',
+    MealKind.breakfast, [_oats40, _oatMilk200, _banana, _maple2]);
+const _granolaBowl = GameMeal('granola', '🥣', 'Granola and soya yogurt bowl',
+    MealKind.breakfast, [_granola, _soyaYogurt, _blueberries, _maple1]);
 const _avoToast = GameMeal('avo_toast', '🥑', 'Brunch: avocado toast',
-    MealKind.breakfast, [_sourdough, _avocadoHalf, _poached2, _latteWhole]);
-const _coffeeShop = GameMeal('croissant', '🥐', 'Coffee-shop breakfast',
-    MealKind.breakfast, [_croissant, _butter10, _jam, _flatWhite]);
-const _cereal = GameMeal('cereal', '🥣', 'Bowl of cereal and a juice',
-    MealKind.breakfast, [_cornflakes, _semi150, _oj]);
-const _scrambled = GameMeal('scrambled', '🍳', 'Scrambled eggs on toast',
-    MealKind.breakfast, [_eggs2, _butter10, _milkSplash, _wholemeal2]);
+    MealKind.breakfast, [_sourdough, _avocadoHalf, _cherryTomatoes, _oatLatte]);
+const _pbToast = GameMeal('pb_toast', '🥜', 'Peanut butter and banana toast',
+    MealKind.breakfast, [_wholemeal2, _peanutButter, _banana, _coffeeSplash]);
+const _toastJam = GameMeal('toast_jam', '🍓', 'Toast, jam and a juice',
+    MealKind.breakfast, [_white2, _plantButter10, _jam, _oj]);
+const _weetabix = GameMeal('weetabix', '🥣', 'Weetabix with soya milk',
+    MealKind.breakfast, [_weetabix2, _soya150, _strawberries, _sugar1]);
+const _tofuScramble = GameMeal('tofu_scramble', '🍳',
+    'Tofu scramble on toast', MealKind.breakfast,
+    [_tofu150, _oil1tsp, _spinach, _wholemeal2]);
 
-const _mealDeal = GameMeal(
-    'meal_deal',
-    '🥪',
-    'Cheese and ham sandwich, crisps and a Coke',
-    MealKind.lunch,
-    [_white2, _butter10, _cheddar30, _ham, _crisps, _coke]);
-const _jacketLunch = GameMeal(
-    'jacket',
-    '🥔',
-    'Jacket potato with tuna mayo and cheese',
-    MealKind.lunch,
-    [_jacket, _butter10, _tuna, _mayo, _cheddar30]);
-const _caesarSalad = GameMeal('caesar', '🥗', 'Chicken Caesar salad',
-    MealKind.lunch, [_chicken150, _croutons, _parmesan, _caesar, _romaine]);
-const _chickenWrap = GameMeal('wrap', '🌯', 'Chicken wrap', MealKind.lunch,
-    [_wrap, _chicken100, _lightMayo, _salad]);
-const _toastie = GameMeal('toastie_soup', '🧀',
-    'Cheese toastie and tomato soup', MealKind.lunch,
-    [_white2, _cheddar40, _butter10, _soup]);
-const _beansToast = GameMeal('beans_toast', '🫘', 'Cheesy beans on toast',
-    MealKind.lunch, [_wholemeal2, _butter10, _beans, _cheddar30]);
+const _mealDeal = GameMeal('meal_deal', '🌯',
+    'Falafel wrap, crisps and a Coke', MealKind.lunch,
+    [_wrap, _falafel3, _hummus, _salad, _crisps, _coke]);
+const _jacketLunch = GameMeal('jacket', '🥔', 'Jacket potato and beans',
+    MealKind.lunch, [_jacket, _plantButter10, _beans]);
+const _buddhaBowl = GameMeal('buddha_bowl', '🥗', 'Quinoa and chickpea bowl',
+    MealKind.lunch, [_quinoa, _chickpeas, _roastVeg, _oil, _tahini]);
+const _soupLunch = GameMeal('soup', '🥣', 'Lentil soup and a roll',
+    MealKind.lunch, [_lentilSoup, _roll, _plantButter10]);
+const _beansToast = GameMeal('beans_toast', '🫘', 'Beans on toast',
+    MealKind.lunch, [_wholemeal2, _plantButter10, _beans]);
 const _pittaLunch = GameMeal('pitta', '🫓', 'Pitta, hummus and carrots',
     MealKind.lunch, [_pitta, _hummus, _carrot, _apple]);
-const _greggs = GameMeal('greggs', '🥐', 'Greggs run', MealKind.lunch,
-    [_sausageRoll, _coke, _mars]);
+const _greggs = GameMeal('greggs', '🌱', 'Greggs run', MealKind.lunch,
+    [_veganSausageRoll, _coke, _skittles]);
 
-const _spagBol = GameMeal('spag_bol', '🍝', 'Spaghetti bolognese, lean mince',
-    MealKind.dinner, [_spaghetti, _mince5, _sauce, _oil, _parmesan],
+const _spagBol = GameMeal('spag_bol', '🍝', 'Lentil bolognese',
+    MealKind.dinner, [_spaghetti, _lentils, _sauce, _oil, _nooch],
     pair: 'spag_bol');
-const _spagBol20 = GameMeal('spag_bol_20', '🍝',
-    'Spaghetti bolognese, 20% fat mince', MealKind.dinner,
-    [_spaghetti, _mince20, _sauce, _oil, _parmesan],
+const _spagBolMince = GameMeal('spag_bol_mince', '🍝',
+    'Spaghetti bolognese, plant-based mince', MealKind.dinner,
+    [_spaghetti, _plantMince, _sauce, _oil, _nooch],
     pair: 'spag_bol');
-const _salmonDinner = GameMeal('salmon', '🐟',
-    'Salmon, rice and buttery broccoli', MealKind.dinner,
-    [_salmon, _rice, _broccoli, _butter10]);
-const _stirFry = GameMeal('stir_fry', '🥢', 'Chicken noodle stir-fry',
-    MealKind.dinner, [_chicken150, _noodles, _veg, _oil, _soy]);
+const _padThai = GameMeal('pad_thai', '🍜', 'Tofu pad thai', MealKind.dinner,
+    [_riceNoodles, _tofu100, _oil, _padThaiSauce, _peanuts15, _beansprouts]);
+const _curry = GameMeal('curry', '🍛', 'Chickpea and spinach curry with rice',
+    MealKind.dinner,
+    [_chickpeas, _coconutMilk, _curryPaste, _spinach, _oil1tsp, _rice]);
+const _chilli = GameMeal('chilli', '🌶️', 'Bean chilli with rice',
+    MealKind.dinner,
+    [_kidneyBeans, _choppedTomatoes, _pepperOnion, _oil, _rice, _guacamole]);
+const _stirFry = GameMeal('stir_fry', '🥢', 'Tempeh stir-fry with rice',
+    MealKind.dinner, [_tempeh, _rice, _veg, _oil, _soy]);
 const _maccies = GameMeal('maccies', '🍔', "McDonald's on the way home",
-    MealKind.dinner, [_bigMac, _fries, _dietCoke]);
-const _chickenJacket = GameMeal('chicken_jacket', '🍗',
-    'Chicken, jacket potato and broccoli', MealKind.dinner,
-    [_chicken150, _jacket, _butter10, _broccoli]);
+    MealKind.dinner, [_mcPlant, _fries, _dietCoke]);
 
 const _office = GameMeal('office', '🏢', 'Afternoon at the office',
-    MealKind.snack, [_choccyDigestives3, _latteSemi, _banana]);
+    MealKind.snack, [_digestives3, _oatLatte, _banana]);
 const _filmNight = GameMeal('film', '🍿', 'Film night snacks',
-    MealKind.snack, [_maltesers, _twix, _coke]);
+    MealKind.snack, [_pringles, _skittles, _coke]);
 const _smoothie = GameMeal('smoothie', '🥤', "Homemade 'healthy' smoothie",
-    MealKind.snack, [_banana, _wholeMilk150, _peanutButter, _oats30, _honey1]);
+    MealKind.snack, [_banana, _oatMilk150, _peanutButter, _oats30, _maple1]);
 const _teaBiscuits = GameMeal('tea_biscuits', '🫖', 'Tea and biscuits',
-    MealKind.snack, [_teas, _digestives4]);
-const _deskSnacks = GameMeal('desk_snacks', '🧀', 'Desk snacks',
-    MealKind.snack, [_almonds, _apple, _cheddar30]);
+    MealKind.snack, [_teas, _biscoff4]);
+const _deskSnacks = GameMeal('desk_snacks', '🍫', 'Desk snacks',
+    MealKind.snack, [_almonds, _apple, _darkChoc]);
+const _fruitBowl = GameMeal('fruit_bowl', '🍇', 'Grazing the fruit bowl',
+    MealKind.snack, [_banana, _grapes, _satsuma, _kiwi]);
+const _chipsDip = GameMeal('chips_dip', '🌽', 'Tortilla chips and dips',
+    MealKind.snack, [_tortillaChips, _salsa, _guacamole]);
 
 const _pints = GameMeal('pints', '🍺', 'Three pints and some peanuts',
     MealKind.nightOut, [_lager3, _peanuts]);
@@ -348,7 +366,7 @@ const _ginSlim = GameMeal('gin_slim', '🍸', 'Gin night, slimline tonic',
 const _vodka = GameMeal('vodka_rb', '🥤', 'Pre-drinks', MealKind.nightOut,
     [_vodkaRb2]);
 const _bottomless = GameMeal('prosecco', '🥂', 'Bottomless brunch',
-    MealKind.nightOut, [_prosecco3, _croissant]);
+    MealKind.nightOut, [_prosecco3, _sourdough, _avocadoHalf]);
 const _rum = GameMeal('rum_coke', '🥃', 'Rum and Cokes', MealKind.nightOut,
     [_rumCoke3]);
 const _pub = GameMeal('guinness', '🍺', 'Pub with friends',
@@ -359,30 +377,38 @@ MealItem _asItem(String text, GameMeal m) => MealItem(m.emoji, text, m.total);
 
 /// Every meal the game deals from.
 final List<GameMeal> kGameMeals = [
-  _fryUp, _porridge, _granolaBowl, _avoToast, _coffeeShop, _cereal,
-  _scrambled,
-  _mealDeal, _jacketLunch, _caesarSalad, _chickenWrap, _toastie, _beansToast,
-  _pittaLunch, _greggs,
-  _spagBol, _spagBol20, _salmonDinner, _stirFry, _maccies, _chickenJacket,
-  _office, _filmNight, _smoothie, _teaBiscuits, _deskSnacks,
+  _fryUp, _porridge, _granolaBowl, _avoToast, _pbToast, _toastJam, _weetabix,
+  _tofuScramble,
+  _mealDeal, _jacketLunch, _buddhaBowl, _soupLunch, _beansToast, _pittaLunch,
+  _greggs,
+  _spagBol, _spagBolMince, _padThai, _curry, _chilli, _stirFry, _maccies,
+  _office, _filmNight, _smoothie, _teaBiscuits, _deskSnacks, _fruitBowl,
+  _chipsDip,
   _pints, _wineNight, _gin, _ginSlim, _vodka, _bottomless, _rum, _pub,
   GameMeal('day_weekday', '📅', 'A normal weekday', MealKind.day, [
-    _asItem('Breakfast: porridge with banana and honey', _porridge),
-    _asItem('Lunch: cheese and ham sandwich, crisps and a Coke', _mealDeal),
-    _asItem('Snack: 3 chocolate digestives, a latte and a banana', _office),
-    _asItem('Dinner: spaghetti bolognese', _spagBol),
+    _asItem('Breakfast: porridge with oat milk, banana and maple', _porridge),
+    _asItem('Lunch: falafel wrap, crisps and a Coke', _mealDeal),
+    _asItem('Snack: 3 digestives, an oat latte and a banana', _office),
+    _asItem('Dinner: lentil bolognese', _spagBol),
   ]),
   GameMeal('day_saturday', '📅', 'A big Saturday', MealKind.day, [
-    _asItem('Breakfast: full fry-up', _fryUp),
-    _asItem('Lunch: Greggs sausage roll, a Coke and a Mars', _greggs),
+    _asItem('Breakfast: vegan fry-up', _fryUp),
+    _asItem('Lunch: Greggs vegan sausage roll, a Coke and Skittles', _greggs),
     _asItem('Evening: 3 pints of lager and peanuts', _pints),
-    _asItem('Late: Big Mac, fries and a Diet Coke', _maccies),
+    _asItem('Late: McPlant, fries and a Diet Coke', _maccies),
   ]),
   GameMeal('day_clean', '📅', "A 'clean eating' day", MealKind.day, [
-    _asItem('Breakfast: granola and yogurt bowl', _granolaBowl),
-    _asItem('Lunch: chicken Caesar salad', _caesarSalad),
+    _asItem('Breakfast: granola and soya yogurt bowl', _granolaBowl),
+    _asItem('Lunch: quinoa and chickpea bowl', _buddhaBowl),
     _asItem('Snack: homemade smoothie', _smoothie),
-    _asItem('Dinner: salmon, rice and buttery broccoli', _salmonDinner),
+    _asItem('Dinner: tempeh stir-fry with rice', _stirFry),
+  ]),
+  GameMeal('day_takeaway', '📅', 'Takeaway Friday', MealKind.day, [
+    _asItem('Breakfast: peanut butter and banana toast', _pbToast),
+    _asItem('Lunch: lentil soup and a roll', _soupLunch),
+    _asItem('Snack: tortilla chips and dips', _chipsDip),
+    _asItem('Dinner: tofu pad thai', _padThai),
+    _asItem('Drinks: 2 large glasses of red wine and crisps', _wineNight),
   ]),
 ];
 

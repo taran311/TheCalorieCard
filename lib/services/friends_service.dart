@@ -148,7 +148,20 @@ class FriendsService {
     final db = BalanceService.db;
     final mine = await friendIds(myUid);
     if (mine.contains(otherUid)) {
-      return const FriendStatus(FriendRelation.friends);
+      // Friends only if it's both ways. Older versions could leave someone
+      // on just one list, and then neither person could fix it: they
+      // didn't show up as a friend, but adding them said "already
+      // friends". One-sided counts as not friends, so a request can be
+      // sent, and accepting it puts you back on both lists.
+      List<String>? theirs;
+      try {
+        theirs = await friendIds(otherUid);
+      } catch (_) {
+        theirs = null; // Can't check: trust your own list.
+      }
+      if (theirs == null || theirs.contains(myUid)) {
+        return const FriendStatus(FriendRelation.friends);
+      }
     }
     final sent = await db
         .collection('friend_requests')

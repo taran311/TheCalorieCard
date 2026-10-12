@@ -97,7 +97,7 @@ void main() {
 
     test('whole days add up their meals', () {
       final weekday = kGameMeals.firstWhere((m) => m.id == 'day_weekday');
-      expect(weekday.total, 397 + 712 + 504 + 689);
+      expect(weekday.total, 381 + 777 + 488 + 689);
     });
 
     test('a round has 3 meals, at most one whole day, never a pair', () {
