@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/auth_services.dart';
+import 'package:namer_app/services/session_hint.dart';
 import 'package:namer_app/pages/email_verification_page.dart';
 import 'package:namer_app/pages/get_started_page.dart';
 import 'package:namer_app/pages/main_shell.dart';
@@ -23,6 +26,22 @@ class AuthPage extends StatefulWidget {
 class _AuthPageState extends State<AuthPage> {
   /// Created once, so rebuilds don't resubscribe (and flash the splash).
   final Stream<User?> _authState = FirebaseAuth.instance.authStateChanges();
+
+  /// On a refresh, Firebase can say "signed out" for a moment before it
+  /// restores the saved session. If this device was signed in, wait up to
+  /// [SessionHint.grace] before believing it, rather than flashing the
+  /// sign-in page and then jumping into the app.
+  final DateTime _graceEnds = DateTime.now().add(SessionHint.grace);
+  Timer? _graceTimer;
+
+  bool get _waitingForSession =>
+      SessionHint.wasSignedIn && DateTime.now().isBefore(_graceEnds);
+
+  @override
+  void dispose() {
+    _graceTimer?.cancel();
+    super.dispose();
+  }
 
   /// The profile check for [_checkedUid], kept so rebuilds don't run the
   /// query again.
@@ -70,8 +89,19 @@ class _AuthPageState extends State<AuthPage> {
           }
           final user = snapshot.data;
           if (user == null) {
+            if (_waitingForSession) {
+              // Look again once the wait is over (the session usually
+              // arrives well before then).
+              _graceTimer ??= Timer(_graceEnds.difference(DateTime.now()),
+                  () {
+                if (mounted) setState(() {});
+              });
+              return const AuthSplash();
+            }
+            SessionHint.set(false);
             return const LoginOrRegisterPage();
           }
+          SessionHint.set(true);
           // Next time this device opens on "Sign in", not "Create".
           LoginOrRegisterPage.rememberSignedIn();
 

@@ -7,6 +7,7 @@ import 'package:namer_app/pages/email_action_page.dart';
 import 'package:namer_app/services/app_update.dart';
 import 'package:namer_app/services/auth_services.dart';
 import 'package:namer_app/services/category_service.dart';
+import 'package:namer_app/services/session_hint.dart';
 import 'package:namer_app/services/web_platform.dart' as web;
 import 'package:namer_app/ui/adaptive_frame.dart';
 import 'package:namer_app/ui/gift_claim.dart';
@@ -25,6 +26,9 @@ void main() async {
     ThemeController.instance.load(),
     // A gift link (?gift=…): remembered until they're signed in to claim it.
     PendingGift.captureFromUrl(),
+    // Was this device signed in? Then a refresh waits for the session
+    // rather than flashing the sign-in page.
+    SessionHint.load(),
   ]);
   // Just refreshed to a new version (?refresh=…): tidy the address bar.
   final query = Uri.base.queryParameters;
