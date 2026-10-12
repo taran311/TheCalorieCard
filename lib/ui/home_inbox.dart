@@ -8,6 +8,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/budget_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/games_service.dart';
+import 'package:namer_app/services/late_close.dart';
 import 'package:namer_app/services/notification_service.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/pages/premium_page.dart';
@@ -73,31 +74,76 @@ class _HomeInboxState extends State<HomeInbox> {
     } catch (_) {}
   }
 
+  /// Yesterday, if food was logged but it was never closed (it can be
+  /// closed until midnight). Checked when the inbox opens and as the
+  /// date changes.
+  DateTime? _openYesterday;
+  String? _yesterdayCheckedOn;
+
+  Future<void> _checkYesterday() async {
+    final today = BalanceService.dateKey(BalanceService.now());
+    if (_yesterdayCheckedOn == today) return;
+    _yesterdayCheckedOn = today;
+    try {
+      final day = await LateClose.openYesterday(widget.userId);
+      if (mounted) setState(() => _openYesterday = day);
+    } catch (_) {
+      _yesterdayCheckedOn = null; // try again on the next tick
+    }
+  }
+
+  Future<Object?> _closeYesterday() async {
+    final day = _openYesterday;
+    if (day == null) return null;
+    final ok = await LateClose.closeYesterday(widget.userId, day);
+    if (!mounted) return null;
+    setState(() => _openYesterday = null);
+    if (!ok) return false;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Yesterday closed ✓ It counts towards your streak.')));
+    return null;
+  }
+
   /// Games progress, for "Today's Calorie Quiz is ready".
   StreamSubscription<GamesProgress>? _gamesSub;
   GamesProgress? _games;
 
-  /// The day "Not today" was tapped on the quiz card, on this device.
-  String? _quizHiddenDay;
+  /// Cards hidden for the rest of today on this device ("Not today",
+  /// "Later", "Not now"), by card: the date they were hidden on.
+  final Map<String, String?> _hiddenOn = {};
 
-  String get _quizHiddenKey => 'quiz_card_hidden_${widget.userId}';
+  static const _hideable = ['quiz', 'finish_day', 'late_close'];
 
-  Future<void> _loadQuizHidden() async {
+  String _hiddenKey(String card) => card == 'quiz'
+      ? 'quiz_card_hidden_${widget.userId}'
+      : '${card}_card_hidden_${widget.userId}';
+
+  bool _hiddenToday(String card) =>
+      _hiddenOn[card] == GamesService.dayKey();
+
+  Future<void> _loadHidden() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final day = prefs.getString(_quizHiddenKey);
-      if (mounted) setState(() => _quizHiddenDay = day);
+      if (!mounted) return;
+      setState(() {
+        for (final card in _hideable) {
+          _hiddenOn[card] = prefs.getString(_hiddenKey(card));
+        }
+      });
     } catch (_) {}
   }
 
-  Future<void> _hideQuiz() async {
+  /// Hides [card] until tomorrow.
+  Future<void> _hideToday(String card) async {
     final day = GamesService.dayKey();
-    setState(() => _quizHiddenDay = day);
+    setState(() => _hiddenOn[card] = day);
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_quizHiddenKey, day);
+      await prefs.setString(_hiddenKey(card), day);
     } catch (_) {}
   }
+
+  Future<void> _hideQuiz() => _hideToday('quiz');
 
   void _openQuiz() {
     Navigator.of(context).push(
@@ -198,7 +244,8 @@ class _HomeInboxState extends State<HomeInbox> {
     _checkReminderOffer();
     _loadTrialSeen();
     _loadBudgetSeen();
-    _loadQuizHidden();
+    _loadHidden();
+    _checkYesterday();
     _gamesSub = GamesService.watch(widget.userId).listen(
       (g) {
         if (mounted) setState(() => _games = g);
@@ -207,7 +254,9 @@ class _HomeInboxState extends State<HomeInbox> {
     );
     Premium.notifier.addListener(_onPremiumChanged);
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(() {});
+      _checkYesterday(); // only does anything once the date changes
     });
     _splitSub = SplitService.pendingFor(widget.userId).listen(
       (v) => setState(() => _splits = v),
@@ -275,6 +324,25 @@ class _HomeInboxState extends State<HomeInbox> {
   List<_InboxCard> _items({bool narrow = false}) {
     final items = <_InboxCard>[];
     final uid = widget.userId;
+
+    // First: it can only be done until midnight.
+    if (_openYesterday != null && !_hiddenToday('late_close')) {
+      items.add(_InboxCard(
+        icon: Icons.event_available,
+        color: AppColors.amber700,
+        title: "Yesterday's still open",
+        subtitle: 'You logged food but didn\'t close the day. Close it now '
+            'so it counts towards your streak.',
+        busy: _busy.contains('late_close'),
+        actions: [
+          _InboxAction('Not now', () => _hideToday('late_close')),
+          _InboxAction(
+              'Close yesterday', () => _run('late_close', _closeYesterday),
+              primary: true),
+        ],
+        stacked: narrow,
+      ));
+    }
 
     for (final split in _splits) {
       final key = 'split:${split.id}';
@@ -426,15 +494,18 @@ class _HomeInboxState extends State<HomeInbox> {
 
     if (BalanceService.now().hour >= 20 &&
         !widget.isDayFinished &&
-        widget.hasFoodToday) {
+        widget.hasFoodToday &&
+        !_hiddenToday('finish_day')) {
       items.add(_InboxCard(
         icon: Icons.nightlight_round,
         color: AppColors.indigo700,
         title: 'Finish your day?',
         subtitle: 'Finished days count towards streaks and challenges.',
         actions: [
+          _InboxAction('Later', () => _hideToday('finish_day')),
           _InboxAction('Finish day', widget.onFinishDay, primary: true),
         ],
+        stacked: narrow,
       ));
     }
 
@@ -444,7 +515,7 @@ class _HomeInboxState extends State<HomeInbox> {
     final games = _games;
     if (games != null &&
         !games.dailyDoneOn(today) &&
-        _quizHiddenDay != today) {
+        !_hiddenToday('quiz')) {
       final started = games.dailyGuessesOn(today).length;
       items.add(_InboxCard(
         icon: Icons.sports_esports,
