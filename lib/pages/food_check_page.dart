@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -153,7 +154,11 @@ class _FoodCheckPageState extends State<FoodCheckPage> {
             ),
           ],
           const SizedBox(height: 12),
-          FilledButton.icon(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
             onPressed: _running ? null : _runAll,
             icon: _running
                 ? const SizedBox(
@@ -168,6 +173,14 @@ class _FoodCheckPageState extends State<FoodCheckPage> {
                     ? 'Run the check'
                     : 'Run again'),
           ),
+              if (done.isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: () => _copyResults(foods),
+                  icon: const Icon(Icons.copy_rounded, size: 18),
+                  label: const Text('Copy results'),
+                ),
+            ],
+          ),
           const SizedBox(height: 6),
           Text(
             'Looks every food up fresh on the live server (about a minute, '
@@ -177,6 +190,50 @@ class _FoodCheckPageState extends State<FoodCheckPage> {
         ],
       ),
     );
+  }
+
+  /// The results as plain text, misses first, ready to paste into a chat.
+  String _resultsText(List<_CheckFood> foods) {
+    final done = foods.where((f) => f.done).toList();
+    final hits = done.where((f) => f.ok).length;
+    String line(_CheckFood f) {
+      final r = f.result;
+      if (r == null) {
+        return 'ERROR ${f.query} | expected ${f.kcal.round()} | ${f.error}';
+      }
+      final diff = _n(r['diff']);
+      return [
+        '${f.ok ? 'ok' : 'MISS'} ${f.query}',
+        'expected ${f.kcal.round()} (±${f.tolerance.round()}%)',
+        'got ${r['kcal']} (${diff >= 0 ? '+' : ''}${diff.toStringAsFixed(1)}%)',
+        'P${r['protein']} C${r['carbs']} F${r['fat']}',
+        _sourceLabel('${r['source']}'),
+        if ('${r['portion']}'.isNotEmpty) 'portion: ${r['portion']}',
+        if ('${r['name']}'.isNotEmpty) 'matched: ${r['name']}',
+        if ('${r['why']}'.isNotEmpty) 'why: ${r['why']}',
+        'ref: ${f.ref}',
+      ].join(' | ');
+    }
+
+    final misses = done.where((f) => !f.ok).toList();
+    final passes = done.where((f) => f.ok).toList();
+    return [
+      'Food check: $hits of ${done.length} within range',
+      if (misses.isNotEmpty) ...['', 'Misses:', ...misses.map(line)],
+      if (passes.isNotEmpty) ...['', 'Within range:', ...passes.map(line)],
+    ].join('\n');
+  }
+
+  Future<void> _copyResults(List<_CheckFood> foods) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await Clipboard.setData(ClipboardData(text: _resultsText(foods)));
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Results copied. Paste them into a message.')));
+    } catch (_) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text("Couldn't copy the results.")));
+    }
   }
 
   static String _sourceLabel(String s) => switch (s) {
