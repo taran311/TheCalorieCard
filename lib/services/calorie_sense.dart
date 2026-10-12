@@ -68,8 +68,10 @@ class CalorieSense {
         // and it's kept for good.
         if (newCount >= 10 && newTotal / newCount >= 75)
           'card_unlocks': FieldValue.arrayUnion(['sunset']),
+        // The XP fields are always written (unchanged once today's
+        // guesses stop earning), so they're never lost from `games`.
         'games': {
-          if (xp > 0) ...GamesService.xpFields(g, xp),
+          ...GamesService.xpFields(g, xp),
           'sense_day': day,
           'sense_count': senseToday + 1,
         },

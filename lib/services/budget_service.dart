@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/spend_category.dart';
@@ -265,7 +266,12 @@ class BudgetService {
   static Future<void> save(String userId, BudgetSettings settings) async {
     final doc = await BalanceService.userDataDoc(userId);
     if (doc == null) throw StateError('No profile to update');
-    await doc.reference.update({'budgets': settings.toMap()});
+    // Cleared first, then written, so a removed budget is really gone
+    // (one atomic batch, so the budgets are never seen half-saved).
+    final batch = BalanceService.db.batch();
+    batch.update(doc.reference, {'budgets': FieldValue.delete()});
+    batch.update(doc.reference, {'budgets': settings.toMap()});
+    await batch.commit();
   }
 
   /// Progress on [settings] right now: reads this week's food (Monday to
