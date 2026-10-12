@@ -30,13 +30,13 @@ void main() {
     for (final step in t.steps.take(6)) {
       step.complete(s);
     }
-    expect(s.left, start - 452);
+    expect(s.left, start - 482);
     expect(s.foodsIn('Lunch').map((f) => f.name),
-        containsAll(['Falafel wrap', 'Apple']));
+        containsAll(['Falafel wrap', 'Apple', 'Lotus Biscoff']));
     for (final step in t.steps.skip(6)) {
       step.complete(s);
     }
-    expect(s.left, start - 380, reason: 'apple swiped away');
+    expect(s.left, start - 410, reason: 'apple swiped away');
   });
 
   test('voice tutorial: "and" between foods gives one item each', () {

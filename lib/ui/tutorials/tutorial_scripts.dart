@@ -13,6 +13,9 @@ const _tofu = MockFood('Scrambled tofu', '100g', 'Breakfast', 156,
     protein: 14, carbs: 3, fat: 10);
 const _toast = MockFood('Wholemeal toast with vegan spread', '1 slice', 'Breakfast',
     128, protein: 4, carbs: 14, fat: 6);
+// A mix of branded and plain foods, as people really type them.
+const _biscoff = MockFood('Lotus Biscoff', '1 biscuit', 'Lunch', 30,
+    protein: 0.3, carbs: 4.5, fat: 1.2);
 const _latte = MockFood('Oat latte', '1 regular', 'Lunch', 120,
     protein: 3, carbs: 16, fat: 5);
 const _pizza = MockFood('Vegan margherita pizza', '1/2 large', 'Dinner', 900,
@@ -21,13 +24,19 @@ const _brownie = MockFood('Chocolate brownie', '1 slice', 'Dinner', 518,
     protein: 6, carbs: 62, fat: 28);
 const _curry = MockFood('Chickpea curry with rice', '1 plate', 'Dinner', 920,
     protein: 28, carbs: 140, fat: 26);
+// UK labels: Tofoo Naked (145 kcal/100g), Blue Dragon Satay Stir Fry
+// sauce (164 kcal/100g).
 const _ingredients = [
-  MockFood('Firm tofu', '230g', 'Recipe', 330,
-      protein: 38, carbs: 6, fat: 19),
-  MockFood('Red pepper', '1', 'Recipe', 31, protein: 1, carbs: 6, fat: 0.3),
-  MockFood('Rice noodles', '150g', 'Recipe', 207,
-      protein: 3, carbs: 46, fat: 1),
-  MockFood('Soy sauce', '1 tbsp', 'Recipe', 9, protein: 1, carbs: 1, fat: 0),
+  MockFood('Tofoo tofu', '280g', 'Recipe', 406,
+      protein: 46.2, carbs: 3.1, fat: 21.8),
+  MockFood('Red onion', '1 medium', 'Recipe', 44,
+      protein: 1.2, carbs: 10.3, fat: 0.1),
+  MockFood('Courgette', '1 medium', 'Recipe', 33,
+      protein: 2.4, carbs: 6.1, fat: 0.6),
+  MockFood('Blue Dragon satay sauce', '120g', 'Recipe', 197,
+      protein: 3.5, carbs: 24, fat: 8.3),
+  MockFood('Rice noodles', '150g cooked', 'Recipe', 162,
+      protein: 2.7, carbs: 36, fat: 0.3),
 ];
 
 final _finished = TStep(
@@ -72,7 +81,7 @@ final List<Tutorial> tutorials = [
             'accurate, and commas split it into separate foods.',
         target: 'input',
         act: TAct.type,
-        text: '1 falafel wrap, 1 apple',
+        text: '1 falafel wrap, 1 apple, 1 Lotus Biscoff',
         onType: (s, t) => s.typed = t,
         focus: 'mainBtn',
       ),
@@ -83,7 +92,7 @@ final List<Tutorial> tutorials = [
         act: TAct.tap,
         apply: (s) => s.found
           ..clear()
-          ..addAll([_wrap, _apple]),
+          ..addAll([_wrap, _apple, _biscoff]),
         focus: 'mainBtn',
       ),
       TStep(
@@ -96,14 +105,14 @@ final List<Tutorial> tutorials = [
           s.found.clear();
           s.typed = '';
           s.screen = MockScreen.home;
-          s.toast = 'Added 2 items to Lunch';
+          s.toast = 'Added 3 items to Lunch';
         },
         then: (s) => s.toast = null,
         focus: 'section_Lunch',
       ),
       const TStep(
         title: 'Your card updates',
-        body: 'The 452 kcal came straight off your balance, just like '
+        body: 'The 482 kcal came straight off your balance, just like '
             'spending on a bank card. Your macros went down too.',
         target: 'card',
       ),
@@ -341,15 +350,17 @@ final List<Tutorial> tutorials = [
         body: "Call it whatever you'll recognise.",
         target: 'recipeName',
         act: TAct.type,
-        text: 'Tofu stir fry',
+        text: 'Satay tofu stir-fry',
         onType: (s, t) => s.draftName = t,
       ),
       TStep(
         title: 'Add the ingredients',
-        body: 'Type everything in the whole recipe, with amounts.',
+        body: 'Type everything in the whole recipe, with amounts. Brands '
+            'make it more accurate: tofu and sauces vary a lot.',
         target: 'ingInput',
         act: TAct.type,
-        text: '230g tofu, 1 pepper, 150g noodles, 1 tbsp soy sauce',
+        text: '280g Tofoo tofu, 1 red onion, 1 courgette, 120g Blue Dragon '
+            'satay sauce, 150g rice noodles',
         onType: (s, t) => s.draftTyped = t,
         focus: 'recipeMain',
       ),
@@ -378,7 +389,7 @@ final List<Tutorial> tutorials = [
           s.toast = 'Saved to My recipes';
         },
         then: (s) => s.toast = null,
-        focus: 'recipe_Tofu stir fry',
+        focus: 'recipe_Satay tofu stir-fry',
       ),
       TStep(
         title: 'Back to your card',
@@ -407,7 +418,7 @@ final List<Tutorial> tutorials = [
         apply: (s) {
           s.showPicker = false;
           s.foods.add(s.recipes.last.serving('Dinner'));
-          s.toast = 'Added Tofu stir fry to Dinner';
+          s.toast = 'Added Satay tofu stir-fry to Dinner';
         },
         then: (s) => s.toast = null,
         focus: 'section_Dinner',
