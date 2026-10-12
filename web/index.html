@@ -35,6 +35,25 @@
   <title>The Calorie Card</title>
   <link rel="manifest" href="manifest.json">
 
+  <!-- Open connections to what the app needs straight away, while it
+       downloads: the graphics engine and font, sign-in, the database and
+       our lookup server. -->
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fatsecret-proxy.onrender.com" crossorigin>
+  <script>
+    // The lookup server sleeps when nobody's used it for a while and takes
+    // a few seconds to wake. Nudge it now, so it's awake by the time the
+    // app is ready to look up food. Sends nothing about the person.
+    try {
+      fetch('https://fatsecret-proxy.onrender.com/health',
+          { mode: 'no-cors', cache: 'no-store' }).catch(function () {});
+    } catch (e) {}
+  </script>
+
   <style>
     /* Shown while the app downloads and starts, then faded out. */
     html, body { margin: 0; height: 100%; }

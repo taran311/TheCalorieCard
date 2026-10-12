@@ -15,12 +15,17 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await ThemeController.instance.load();
   // ?facebook=1 shows Facebook sign-in before it's live (for testing).
+  // Read first: a gift link below tidies the address bar.
   AuthService.readUrlFlags();
-  // A gift link (?gift=…): remembered until they're signed in to claim it.
-  await PendingGift.captureFromUrl();
+  // These don't depend on each other, so start them together rather than
+  // one after another (a quicker start).
+  await Future.wait([
+    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+    ThemeController.instance.load(),
+    // A gift link (?gift=…): remembered until they're signed in to claim it.
+    PendingGift.captureFromUrl(),
+  ]);
   // Just refreshed to a new version (?refresh=…): tidy the address bar.
   final query = Uri.base.queryParameters;
   if (query.length == 1 && query.containsKey('refresh')) web.clearUrlQuery();

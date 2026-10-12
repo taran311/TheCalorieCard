@@ -65,6 +65,11 @@ class _FriendsPageState extends State<FriendsPage> {
   /// StreamBuilder) because both the page and the add-friend sheet need it.
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _meSub;
 
+  /// Unread messages per chat (conversation id → count), for the badges
+  /// on each friend's and group's chat button. One listener for the page.
+  final ValueNotifier<Map<String, int>> _unread = ValueNotifier(const {});
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _unreadSub;
+
   /// Your username (no @), once [_meKnown].
   String? _myUsername;
   bool _meKnown = false;
@@ -118,6 +123,19 @@ class _FriendsPageState extends State<FriendsPage> {
     _initializeUserDocument();
     _loadPromptDismissed();
     if (_uid.isNotEmpty) {
+      _unreadSub = FirebaseFirestore.instance
+          .collection('conversations')
+          .where('participant_ids', arrayContains: _uid)
+          .snapshots()
+          .listen((snap) {
+        final counts = <String, int>{};
+        for (final doc in snap.docs) {
+          final c = doc.data()['unread_count'];
+          final v = c is Map ? c[_uid] : null;
+          if (v is num && v > 0) counts[doc.id] = v.toInt();
+        }
+        _unread.value = counts;
+      }, onError: (Object _) {});
       _meSub = FirebaseFirestore.instance
           .collection('users')
           .doc(_uid)
@@ -219,6 +237,8 @@ class _FriendsPageState extends State<FriendsPage> {
   @override
   void dispose() {
     _meSub?.cancel();
+    _unreadSub?.cancel();
+    _unread.dispose();
     _groupsSub?.cancel();
     _isSubmitting.dispose();
     _addError.dispose();
@@ -875,6 +895,28 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
+  /// The chat button's icon, with a red count when there are unread
+  /// messages in [conversationId].
+  Widget _chatIcon(String conversationId) {
+    final icon = Icon(
+      Icons.chat_bubble_outline,
+      color: AppText.primary,
+      size: 22,
+    );
+    return ValueListenableBuilder<Map<String, int>>(
+      valueListenable: _unread,
+      builder: (context, unread, _) {
+        final n = unread[conversationId] ?? 0;
+        if (n <= 0) return icon;
+        return Badge(
+          label: Text(n > 99 ? '99+' : '$n'),
+          backgroundColor: AppColors.red,
+          child: icon,
+        );
+      },
+    );
+  }
+
   Widget _avatar(String text, {Color color = AppColors.primary}) {
     return CircleAvatar(
       radius: 22,
@@ -1309,11 +1351,7 @@ class _FriendsPageState extends State<FriendsPage> {
               ),
             IconButton(
               onPressed: () => _startChatWithFriend(friendId, name),
-              icon: Icon(
-                Icons.chat_bubble_outline,
-                color: AppText.primary,
-                size: 22,
-              ),
+              icon: _chatIcon(ChatService.conversationId(_uid, friendId)),
               tooltip: 'Chat',
             ),
             PopupMenuButton<String>(
@@ -1676,11 +1714,7 @@ class _FriendsPageState extends State<FriendsPage> {
             ),
             IconButton(
               onPressed: () => _startGroupChat(doc.id, groupName, memberIds),
-              icon: Icon(
-                Icons.chat_bubble_outline,
-                color: AppText.primary,
-                size: 22,
-              ),
+              icon: _chatIcon('group_${doc.id}'),
               tooltip: 'Group chat',
             ),
             IconButton(
