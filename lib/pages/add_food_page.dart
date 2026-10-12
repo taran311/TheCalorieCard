@@ -413,6 +413,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         if (source == 'web')
                           badge('Label found online', AppText.emerald700,
                               Icons.public),
+                        if (source == 'label')
+                          badge('UK label values', AppText.emerald700,
+                              Icons.verified_outlined),
                         if (source == 'recent')
                           badge('From your history', AppColors.sky700,
                               Icons.history),

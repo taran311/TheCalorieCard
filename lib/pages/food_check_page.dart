@@ -240,6 +240,7 @@ class _FoodCheckPageState extends State<FoodCheckPage> {
         'fatsecret' => 'database',
         'ai' => 'AI',
         'web' => 'web label',
+        'label' => 'UK label',
         _ => s,
       };
 
