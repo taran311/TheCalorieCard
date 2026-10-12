@@ -125,4 +125,28 @@ class ChatService {
           for (final e in extra.entries)
             if (!_reserved.contains(e.key)) e.key: e.value,
       };
+
+  /// "Clear chat" for [uid] only: messages up to now are hidden for them
+  /// (everyone else still sees them). Nothing to clear if the chat was
+  /// never started.
+  static Future<void> clearForMe(String uid, String conversationId) async {
+    final ref = BalanceService.db.collection('conversations').doc(conversationId);
+    if (!(await ref.get()).exists) return;
+    await ref.update({
+      'cleared_at.$uid': FieldValue.serverTimestamp(),
+      'unread_count.$uid': 0,
+    });
+  }
+
+  /// When [uid] last cleared this chat, from its conversation fields.
+  static DateTime? clearedAt(Map<String, dynamic>? conversation, String uid) {
+    final cleared = conversation?['cleared_at'];
+    final t = cleared is Map ? cleared[uid] : null;
+    return t is Timestamp ? t.toDate() : null;
+  }
+
+  /// Whether a message sent at [sent] still shows after a clear at
+  /// [cleared]. A message still sending (no time yet) always shows.
+  static bool showsAfterClear(Timestamp? sent, DateTime? cleared) =>
+      cleared == null || sent == null || sent.toDate().isAfter(cleared);
 }

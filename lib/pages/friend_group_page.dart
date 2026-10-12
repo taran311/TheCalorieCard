@@ -7,6 +7,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/friend_activity.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/ui/friend_today.dart';
+import 'package:namer_app/ui/group_actions.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/home_page.dart';
@@ -181,85 +182,37 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
     }
   }
 
-  Future<bool> _confirm({
-    required String title,
-    required String body,
-    required String action,
-  }) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: TextButton.styleFrom(foregroundColor: AppText.red600),
-            child: Text(action),
-          ),
-        ],
-      ),
-    );
-    return ok == true;
-  }
-
-  /// Takes you out of the group and its group chat.
-  Future<void> _leaveGroup(String groupName) async {
+  /// Takes you out of the group and its group chat (handing it on, or
+  /// deleting it if you're the last one in it).
+  Future<void> _leaveGroup(
+      String groupName, Map<String, dynamic>? groupData) async {
     if (_busy || _uid.isEmpty) return;
-    final ok = await _confirm(
-      title: 'Leave $groupName?',
-      body: "You'll stop seeing the group's day and its group chat.",
-      action: 'Leave',
-    );
-    if (!ok) return;
     setState(() => _busy = true);
-    try {
-      await _groupRef.update({
-        'members': FieldValue.arrayRemove([_uid]),
-      });
-    } catch (_) {
-      if (mounted) setState(() => _busy = false);
-      _snack('Something went wrong. Please try again.');
-      return;
-    }
-    // The group chat may not exist yet; that's fine.
-    try {
-      await FirebaseFirestore.instance
-          .collection('conversations')
-          .doc('group_${widget.groupId}')
-          .update({
-        'participant_ids': FieldValue.arrayRemove([_uid]),
-      });
-    } catch (_) {}
+    final left = await leaveGroupWithConfirm(context,
+        uid: _uid,
+        groupId: widget.groupId,
+        groupName: groupName,
+        groupData: groupData);
     if (!mounted) return;
-    _snack('You left $groupName');
-    Navigator.of(context).maybePop();
+    if (left) {
+      Navigator.of(context).maybePop();
+    } else {
+      setState(() => _busy = false);
+    }
   }
 
-  /// Deletes the group for everyone (creator only).
+  /// Deletes the group for everyone (whoever looks after it).
   Future<void> _deleteGroup(String groupName) async {
     if (_busy) return;
-    final ok = await _confirm(
-      title: 'Delete $groupName?',
-      body: 'This removes the group for everyone.',
-      action: 'Delete',
-    );
-    if (!ok) return;
     setState(() => _busy = true);
-    try {
-      await _groupRef.delete();
-    } catch (_) {
-      if (mounted) setState(() => _busy = false);
-      _snack('Something went wrong. Please try again.');
-      return;
-    }
+    final deleted = await deleteGroupWithConfirm(context,
+        groupId: widget.groupId, groupName: groupName);
     if (!mounted) return;
-    _snack('Group deleted');
-    Navigator.of(context).maybePop();
+    if (deleted) {
+      Navigator.of(context).maybePop();
+    } else {
+      setState(() => _busy = false);
+    }
   }
 
   @override
@@ -322,10 +275,19 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
                   tooltip: 'More',
                   enabled: !_busy,
                   onSelected: (value) {
-                    if (value == 'leave') _leaveGroup(groupName);
+                    if (value == 'clear') {
+                      clearGroupChatWithConfirm(context,
+                          uid: _uid, groupId: widget.groupId);
+                    }
+                    if (value == 'leave') _leaveGroup(groupName, groupData);
                     if (value == 'delete') _deleteGroup(groupName);
                   },
                   itemBuilder: (_) => [
+                    if (memberIds.contains(_uid))
+                      const PopupMenuItem(
+                        value: 'clear',
+                        child: Text('Clear chat'),
+                      ),
                     if (memberIds.contains(_uid))
                       const PopupMenuItem(
                         value: 'leave',

@@ -13,6 +13,7 @@ import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/services/username_service.dart';
 import 'package:namer_app/ui/add_friend_link.dart';
 import 'package:namer_app/ui/friend_today.dart';
+import 'package:namer_app/ui/group_actions.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:namer_app/ui/text_utils.dart';
@@ -882,19 +883,25 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
-  /// A white, bordered, tappable card.
-  Widget _tappableCard({required VoidCallback onTap, required Widget child}) {
+  /// A white, bordered, tappable card. [wrap] goes round the card itself
+  /// (inside the gap below it), e.g. to make it swipeable.
+  Widget _tappableCard({
+    required VoidCallback onTap,
+    required Widget child,
+    Widget Function(Widget card)? wrap,
+  }) {
+    final card = Material(
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(AppDecor.radius)),
+        side: BorderSide(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(onTap: onTap, child: child),
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(AppDecor.radius)),
-          side: BorderSide(color: AppColors.border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: onTap, child: child),
-      ),
+      child: wrap == null ? card : wrap(card),
     );
   }
 
@@ -1516,7 +1523,39 @@ class _FriendsPageState extends State<FriendsPage> {
       for (final id in (data['members'] as List?) ?? const []) id.toString()
     ];
 
+    void actions() => showGroupActions(context,
+        uid: _uid, groupId: doc.id, groupName: groupName, groupData: data);
+
     return _tappableCard(
+      // Swipe left (like removing a food) for Clear chat and Leave. It
+      // opens the options rather than acting, since leaving can't be undone.
+      wrap: (card) => Dismissible(
+        key: ValueKey('group-${doc.id}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) async {
+          actions();
+          return false;
+        },
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          decoration: BoxDecoration(
+            color: AppColors.primaryDark,
+            borderRadius: BorderRadius.circular(AppDecor.radius),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.more_horiz, color: Colors.white),
+              SizedBox(width: 6),
+              Text('Options',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+        child: card,
+      ),
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
@@ -1577,6 +1616,11 @@ class _FriendsPageState extends State<FriendsPage> {
                 size: 22,
               ),
               tooltip: 'Group chat',
+            ),
+            IconButton(
+              onPressed: actions,
+              icon: Icon(Icons.more_vert, color: AppColors.gray600),
+              tooltip: 'More',
             ),
           ],
         ),

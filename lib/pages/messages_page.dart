@@ -5,6 +5,7 @@ import 'package:namer_app/ui/shell_back.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -198,8 +199,12 @@ class _MessagesPageState extends State<MessagesPage> {
 
               final conversationName =
                   (data['conversation_name'] ?? 'Unknown').toString();
-              final lastMessage = (data['last_message'] ?? '').toString();
               final lastMessageTime = data['last_message_time'] as Timestamp?;
+              // Cleared since: don't show the old message as a preview.
+              final lastMessage = ChatService.showsAfterClear(lastMessageTime,
+                      ChatService.clearedAt(data, currentUserId))
+                  ? (data['last_message'] ?? '').toString()
+                  : '';
               final isGroup = data['is_group'] == true;
               final rawUnread = data['unread_count'] is Map
                   ? (data['unread_count'] as Map)[currentUserId]
@@ -763,6 +768,22 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
   }
 
+  /// Hides the messages so far, for you only.
+  Future<void> _clearChat() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await confirmClearChat(context);
+    if (!ok) return;
+    try {
+      await ChatService.clearForMe(uid, widget.conversationId);
+      messenger.showSnackBar(const SnackBar(content: Text('Chat cleared')));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text("Couldn't clear the chat. Please try again.")));
+    }
+  }
+
   Future<void> _resetUnreadCount() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -1010,6 +1031,17 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             ),
           ],
         ),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (v) {
+              if (v == 'clear') _clearChat();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'clear', child: Text('Clear chat')),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -1039,7 +1071,16 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                     if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    final docs = snapshot.data!.docs;
+                    // Messages from before you cleared the chat stay hidden
+                    // for you (everyone else still has them).
+                    final cleared = ChatService.clearedAt(
+                        conversationSnapshot.data?.data(), currentUserId ?? '');
+                    final docs = [
+                      for (final d in snapshot.data!.docs)
+                        if (ChatService.showsAfterClear(
+                            d.data()['timestamp'] as Timestamp?, cleared))
+                          d
+                    ];
 
                     if (docs.isEmpty) {
                       return Center(
@@ -1501,4 +1542,28 @@ class _GameMessage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "Clear chat?" Returns true to go ahead.
+Future<bool> confirmClearChat(BuildContext context) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Clear chat?'),
+      content: const Text(
+          'The messages so far will be hidden for you. Everyone else '
+          'still sees them.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Clear'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
 }
