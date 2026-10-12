@@ -769,7 +769,8 @@ class LegalAgreement extends StatelessWidget {
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text('By creating a card you agree to our', style: style),
+        Text("By creating a card you confirm you're 16 or over and agree to our",
+            style: style),
         _link('Terms', '/terms.html'),
         Text('and', style: style),
         _link('Privacy Policy', '/privacy.html'),

@@ -1,3 +1,4 @@
+import 'package:namer_app/services/analytics.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -114,6 +115,7 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   late ShellTab _current;
+  AppLifecycleListener? _lifecycle;
   // This shell's own keys for the first-time tour.
   final _tourKeys = ShellTourKeys();
   final Set<ShellTab> _visited = {};
@@ -132,6 +134,9 @@ class _MainShellState extends State<MainShell> {
     super.initState();
     // Wake the lookup server early (it sleeps when idle).
     ProxyClient.warmUp();
+    // Usage stats: here today (and again whenever they come back to it).
+    Analytics.active();
+    _lifecycle = AppLifecycleListener(onResume: Analytics.active);
     // Keep the evening reminder's time zone and device token fresh.
     NotificationService.sync();
     // Premium: start the free trial if needed and follow billing changes.
@@ -232,6 +237,7 @@ class _MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    _lifecycle?.dispose();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final next = ShellPresence.mounted.value - 1;
       ShellPresence.mounted.value = next < 0 ? 0 : next;

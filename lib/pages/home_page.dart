@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:namer_app/services/analytics.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -987,6 +988,7 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _isDayFinished = true;
     });
+    Analytics.track('day_closed');
     await _upsertDailyLogForDate(_selectedLogDate);
     await _setDailyLogFinished(_selectedLogDate, true);
     await _fetchDailyLogForDate(_selectedLogDate);

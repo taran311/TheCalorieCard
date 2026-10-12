@@ -129,8 +129,8 @@ void main() {
 
   group('ProfileLimits', () {
     test('ages, heights and weights at the edges', () {
-      expect(ProfileLimits.ageOk(13), isTrue);
-      expect(ProfileLimits.ageOk(12), isFalse);
+      expect(ProfileLimits.ageOk(16), isTrue);
+      expect(ProfileLimits.ageOk(15), isFalse, reason: '16 and over only');
       expect(ProfileLimits.ageOk(120), isTrue);
       expect(ProfileLimits.ageOk(null), isFalse);
       expect(ProfileLimits.heightOk(100), isTrue);

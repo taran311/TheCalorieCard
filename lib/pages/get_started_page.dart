@@ -1,3 +1,4 @@
+import 'package:namer_app/services/analytics.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -1242,6 +1243,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
           fat: _fatsGoal ?? 0,
           holder: holder.isEmpty ? 'You' : holder,
           onDone: () {
+            Analytics.track('card_created');
             Navigator.of(revealContext, rootNavigator: true)
                 .pushAndRemoveUntil(
               MaterialPageRoute(

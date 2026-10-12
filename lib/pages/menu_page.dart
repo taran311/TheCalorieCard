@@ -16,6 +16,7 @@ import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/food_check_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
 import 'package:namer_app/pages/statement_page.dart';
+import 'package:namer_app/pages/stats_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/card_design_page.dart';
@@ -616,6 +617,14 @@ class _MenuPageState extends State<MenuPage> {
                         title: 'Food check',
                         subtitle: 'Test lookups against known values',
                         onTap: () => _open(const FoodCheckPage()),
+                      ),
+                    if (_giftAdmin)
+                      _menuRow(
+                        icon: Icons.insights_outlined,
+                        iconColor: AppText.primary,
+                        title: 'Stats',
+                        subtitle: 'Sign-ups, first foods and returns',
+                        onTap: () => _open(const StatsPage()),
                       ),
                   ]),
                   const SizedBox(height: 24),

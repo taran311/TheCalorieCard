@@ -4,7 +4,8 @@
 class ProfileLimits {
   ProfileLimits._();
 
-  static const int minAge = 13;
+  /// The Calorie Card is for people aged 16 and over (see the terms).
+  static const int minAge = 16;
   static const int maxAge = 120;
 
   static const double minHeightCm = 100;
@@ -23,5 +24,6 @@ class ProfileLimits {
       kg != null && kg.isFinite && kg >= minWeightKg && kg <= maxWeightKg;
 
   static String get ageRangeMessage =>
-      'Enter an age between $minAge and $maxAge';
+      'The Calorie Card is for ages $minAge and over. Enter an age between '
+      '$minAge and $maxAge.';
 }

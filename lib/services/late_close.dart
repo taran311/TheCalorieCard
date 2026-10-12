@@ -1,3 +1,4 @@
+import 'package:namer_app/services/analytics.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
@@ -71,6 +72,8 @@ class LateClose {
       ...fill,
       'updated_at': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    Analytics.track('day_closed');
 
     // Streak, best streak and achievements catch up straight away.
     try {
