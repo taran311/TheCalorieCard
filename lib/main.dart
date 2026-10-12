@@ -11,7 +11,6 @@ import 'package:namer_app/services/web_platform.dart' as web;
 import 'package:namer_app/ui/adaptive_frame.dart';
 import 'package:namer_app/ui/gift_claim.dart';
 import 'package:namer_app/ui/theme_controller.dart';
-import 'package:namer_app/ui/update_banner.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -26,7 +25,7 @@ void main() async {
   final query = Uri.base.queryParameters;
   if (query.length == 1 && query.containsKey('refresh')) web.clearUrlQuery();
   runApp(const MyApp());
-  // "A new version is ready · Refresh" when a newer deploy is live.
+  // Moves to a newer deploy quietly, when nothing would be lost.
   AppUpdate.start();
 }
 
@@ -57,8 +56,10 @@ class MyApp extends StatelessWidget {
           // Phones: full screen. Signed-out pages on big screens: framed
           // next to a brand panel. Signed in on big screens: the shell's
           // desktop layout takes over.
-          builder: (context, child) => UpdateBanner(
-              child: AdaptiveFrame(child: child ?? const SizedBox.shrink())),
+          builder: (context, child) =>
+              AdaptiveFrame(child: child ?? const SizedBox.shrink()),
+          // Lets a waiting update load quietly only when nothing is open.
+          navigatorObservers: [AppUpdate.rootWatch],
           // A link from one of our emails (verify, reset password…) is
           // handled first, then carries on into the app.
           home: _emailAction == null

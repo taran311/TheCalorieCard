@@ -1157,10 +1157,12 @@ class _AddRecipePageState extends State<AddRecipePage> {
           textInputAction: TextInputAction.done,
           decoration: InputDecoration(
             labelText: 'Add ingredients',
-            hintText: 'e.g. 200g firm tofu, 1 onion, 100g rice',
+            hintText: 'e.g. 280g Tofoo tofu, 1 red onion, 120g Blue Dragon '
+                'satay sauce',
             border: const OutlineInputBorder(),
-            helperText:
-                'Separate with commas or press Enter. Pasting a list works too.',
+            helperText: 'Add brands and grams for the most accurate numbers: '
+                'the same food can differ a lot between brands. Separate with '
+                'commas or press Enter. Pasting a list works too.',
             helperMaxLines: 2,
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,

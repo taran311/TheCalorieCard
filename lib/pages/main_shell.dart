@@ -1,4 +1,5 @@
 import 'package:namer_app/services/analytics.dart';
+import 'package:namer_app/services/app_update.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -127,6 +128,11 @@ class _MainShellState extends State<MainShell> {
   bool _phone = true;
   final Map<ShellTab, GlobalKey<NavigatorState>> _navKeys = {
     for (final t in ShellTab.values) t: GlobalKey<NavigatorState>(),
+  };
+
+  /// Lets a waiting update load quietly only when no tab has a page open.
+  final Map<ShellTab, NavigatorObserver> _navWatch = {
+    for (final t in ShellTab.values) t: AppUpdate.watch(),
   };
 
   @override
@@ -337,6 +343,7 @@ class _MainShellState extends State<MainShell> {
       child: HeroControllerScope.none(
         child: Navigator(
           key: _navKeys[tab],
+          observers: [_navWatch[tab]!],
           onGenerateRoute: (settings) => MaterialPageRoute(
             settings: settings,
             builder: (_) => _rootPageFor(tab),

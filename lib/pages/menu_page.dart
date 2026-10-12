@@ -25,6 +25,7 @@ import 'package:namer_app/pages/pots_page.dart';
 import 'package:namer_app/pages/wrapped_page.dart';
 import 'package:namer_app/pages/games_hub_page.dart';
 import 'package:namer_app/pages/gift_codes_page.dart';
+import 'package:namer_app/services/app_update.dart';
 import 'package:namer_app/services/balance_service.dart';
 
 /// The Profile tab: your card's extras, progress and account.
@@ -472,6 +473,24 @@ class _MenuPageState extends State<MenuPage> {
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),
                 children: [
                   const SizedBox(height: 16),
+                  // A newer version is live: load it when it suits you.
+                  ValueListenableBuilder<bool>(
+                    valueListenable: AppUpdate.available,
+                    builder: (context, available, _) => !available
+                        ? const SizedBox.shrink()
+                        : Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _group('Update', [
+                              _menuRow(
+                                icon: Icons.system_update_alt_rounded,
+                                iconColor: AppText.primary,
+                                title: 'Update ready',
+                                subtitle: 'Tap to load the latest version',
+                                onTap: AppUpdate.reload,
+                              ),
+                            ]),
+                          ),
+                  ),
                   ValueListenableBuilder<Entitlement>(
                     valueListenable: Premium.notifier,
                     builder: (context, e, _) => _premiumBanner(e),
