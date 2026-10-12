@@ -1284,9 +1284,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                                     color: AppColors.ink,
                                   ),
                                 ),
-                                if (tx.portion.trim().isNotEmpty)
+                                if (_portionToShow(tx) != null)
                                   Text(
-                                    tx.portion.trim(),
+                                    _portionToShow(tx)!,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -1408,6 +1408,14 @@ class _AddFoodPageState extends State<AddFoodPage> {
     );
   }
 
+  /// A past food's portion, only when its name doesn't already say how
+  /// much: "Banana · 1 medium", but not "2 toast · 2 slices of toast".
+  static String? _portionToShow(CardTransaction tx) {
+    final portion = tx.portion.trim();
+    if (portion.isEmpty || VoiceText.hasAmount(tx.description)) return null;
+    return portion;
+  }
+
   /// "Or add again": the foods most often had for [meal]. A scrolling row
   /// on phones; on wider screens they wrap so all of them show.
   List<Widget> _buildRecents(String meal) {
@@ -1416,9 +1424,10 @@ class _AddFoodPageState extends State<AddFoodPage> {
     if (recent.isEmpty) return const [];
 
     Widget chip(CardTransaction tx) {
+      final portion = _portionToShow(tx);
       final label = [
         tx.description,
-        if (tx.portion.trim().isNotEmpty) tx.portion.trim(),
+        if (portion != null) portion,
         '${tx.calories.round()} kcal',
       ].join(' · ');
       return ActionChip(
