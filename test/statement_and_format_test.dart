@@ -60,7 +60,7 @@ void main() {
       expect(s.daysUnderBudget, 1);
     });
 
-    test("finished days are judged like Hiscores: by the card's close",
+    test("finished days are judged like High scores: by the card's close",
         () async {
       Future<void> log(String key, Map<String, dynamic> data) =>
           w.db.collection('daily_logs').doc('${uid}_$key').set(data);
@@ -317,7 +317,7 @@ void main() {
           DateTime(2024, 2, 29));
     });
 
-    test('hiscores: protein since Monday, finished days and streak',
+    test('high scores: protein since Monday, finished days and streak',
         () async {
       // Friday 9 Oct 2026: the week started Monday 5 Oct.
       await w.addEntry(at: DateTime(2026, 10, 5, 9), protein: 50);

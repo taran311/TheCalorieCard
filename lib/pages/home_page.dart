@@ -1013,7 +1013,7 @@ class _HomePageState extends State<HomePage>
       // Achievements are re-checked next time.
     }
     // Update your best streak now, so card designs unlock without having
-    // to open Hiscores first.
+    // to open High scores first.
     try {
       await LeaderboardService.refreshMine(_activeUserId);
     } catch (_) {}

@@ -456,7 +456,7 @@ class DayTotalChip extends StatelessWidget {
     final onBudget = day.onBudget(fallbackBudget);
     final budget = day.budget(fallbackBudget);
     // A finished day shows what was left on the card when it closed (pot
-    // top-ups included), the same figure Hiscores judge it by.
+    // top-ups included), the same figure High scores judge it by.
     final closing = day.finished ? day.closingBalance : null;
     final left = closing ?? (budget == null ? null : budget - spent);
     return Row(

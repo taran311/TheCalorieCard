@@ -393,7 +393,7 @@ final List<GameMeal> kGameMeals = [
 /// What's stored on `users/{uid}`:
 ///   games: {
 ///     xp: 1240,                     all-time XP
-///     month: '2026-10', month_xp: 310     (Hiscores)
+///     month: '2026-10', month_xp: 310     (High scores)
 ///     daily: {day: '2026-10-11', guesses: [250, 90], score: 171}
 ///                                   (the Daily Calorie Quiz)
 ///     meal_day: '2026-10-11', meal_rounds: 2    (rounds that earned XP)

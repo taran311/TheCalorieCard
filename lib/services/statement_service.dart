@@ -72,7 +72,7 @@ class DaySummary {
   /// The day's budget: its own goal if saved, else [fallback].
   double? budget(double? fallback) => dayGoal ?? fallback;
 
-  /// The one definition of "on budget", shared with Hiscores and
+  /// The one definition of "on budget", shared with High scores and
   /// Challenges: a finished day is on budget if the card closed in credit
   /// (so pot top-ups count). Otherwise it's spending against that day's
   /// goal (or [fallback], today's goal). Null when there's nothing to judge.
@@ -164,7 +164,7 @@ class StatementService {
   /// Builds a statement for the last [days] days (including today).
   ///
   /// Each day's `daily_logs` snapshot is read too (unless [withLogs] is
-  /// false), so finished days are judged the way Hiscores judge them.
+  /// false), so finished days are judged the way High scores judge them.
   static Future<Statement> load(String userId,
       {int days = 7, bool withLogs = true}) {
     final today = BalanceService.startOfDay(BalanceService.now());

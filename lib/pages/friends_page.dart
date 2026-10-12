@@ -65,6 +65,16 @@ class _FriendsPageState extends State<FriendsPage> {
   String? _myUsername;
   bool _meKnown = false;
 
+  /// Whether you have any friends, and the groups you're in (names), for
+  /// putting Groups first when that's all you have, and for spotting a
+  /// new group with the same name as one you're already in.
+  bool _hasFriends = false;
+  List<String> _groupNames = const [];
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _groupsSub;
+
+  /// "You, Sam and Jess" per group, fetched once per member list.
+  final Map<String, Future<String>> _memberLines = {};
+
   /// Whether "Pick a username" has been waved away on this device. Null
   /// until read, so the prompt doesn't flash up and vanish.
   bool? _usernamePromptDismissed;
@@ -109,10 +119,23 @@ class _FriendsPageState extends State<FriendsPage> {
         setState(() {
           _myUsername = UsernameService.usernameFrom(doc.data());
           _meKnown = true;
+          _hasFriends =
+              ((doc.data()?['friends'] as List?) ?? const []).isNotEmpty;
         });
       }, onError: (Object _) {
         if (mounted) setState(() => _meKnown = true);
       });
+      _groupsSub = FirebaseFirestore.instance
+          .collection('friend_groups')
+          .where('members', arrayContains: _uid)
+          .snapshots()
+          .listen((snap) {
+        if (!mounted) return;
+        setState(() => _groupNames = [
+              for (final d in snap.docs)
+                if (d.data()['name'] is String) d.data()['name'] as String
+            ]);
+      }, onError: (Object _) {});
     }
   }
 
@@ -188,6 +211,7 @@ class _FriendsPageState extends State<FriendsPage> {
   @override
   void dispose() {
     _meSub?.cancel();
+    _groupsSub?.cancel();
     _isSubmitting.dispose();
     _addError.dispose();
     _emailController.dispose();
@@ -504,7 +528,7 @@ class _FriendsPageState extends State<FriendsPage> {
       builder: (dialogContext) => AlertDialog(
         title: Text('Remove $name?'),
         content: const Text(
-            "You'll stop seeing each other's cards and hiscores, and "
+            "You'll stop seeing each other's cards and high scores, and "
             "they'll be taken out of any groups you made."),
         actions: [
           TextButton(
@@ -751,7 +775,7 @@ class _FriendsPageState extends State<FriendsPage> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => _NewGroupSheet(uid: _uid),
+      builder: (_) => _NewGroupSheet(uid: _uid, existingNames: _groupNames),
     );
     if (created == true) _snack('Group created');
   }
@@ -781,6 +805,44 @@ class _FriendsPageState extends State<FriendsPage> {
         text,
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 14, color: AppColors.muted),
+      ),
+    );
+  }
+
+  /// No friends yet: what they're for, and the two ways to add one, right
+  /// here rather than in a corner of the screen.
+  Widget _noFriendsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
+      decoration: AppDecor.card,
+      child: Column(
+        children: [
+          Text(
+            'No friends added yet. Add people to compare high scores, send '
+            'challenges and cheer each other on.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: AppColors.muted, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _showAddFriendSheet,
+                icon: const Icon(Icons.person_add, size: 20),
+                label: const Text('Add a friend'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _onShareMyLink,
+                icon: const Icon(Icons.ios_share_rounded, size: 20),
+                label: const Text('Share my link'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -836,8 +898,8 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
-  /// Hiscores, Challenges and Games as one row of small
-  /// tiles, so your friends come first on the page.
+  /// High scores, Challenges and Games as one row of small tiles, at the top
+  /// of the page: they work whether or not you've added friends yet.
   Widget _shortcutTiles() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -847,10 +909,9 @@ class _FriendsPageState extends State<FriendsPage> {
           children: [
             Expanded(
               child: _ShortcutTile(
-                label: 'Hiscores',
-                icon: const Icon(Icons.leaderboard,
-                    color: Colors.white, size: 24),
-                highlighted: true,
+                label: 'High scores',
+                icon: Icon(Icons.leaderboard,
+                    color: AppText.primary, size: 24),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const HiscoresPage(fromFriends: true),
@@ -1103,10 +1164,7 @@ class _FriendsPageState extends State<FriendsPage> {
             id.toString()
         ];
 
-        if (friendIds.isEmpty) {
-          return _emptyNote('No friends yet. Tap + to add someone by '
-              'username or email, or share your link.');
-        }
+        if (friendIds.isEmpty) return _noFriendsCard();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1283,8 +1341,8 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
-  /// "Your friends" with Share my link, and, once, a friendly nudge to
-  /// pick a username if you haven't.
+  /// "Your friends" with Share my link and Add friend, and, once, a
+  /// friendly nudge to pick a username if you haven't.
   Widget _friendsHeader() {
     final showPrompt = _meKnown &&
         _myUsername == null &&
@@ -1295,10 +1353,20 @@ class _FriendsPageState extends State<FriendsPage> {
         Row(
           children: [
             Expanded(child: Text('Your friends', style: _sectionStyle)),
-            TextButton.icon(
+            IconButton(
               onPressed: _onShareMyLink,
-              icon: const Icon(Icons.ios_share_rounded, size: 20),
-              label: const Text('Share my link'),
+              icon: Icon(Icons.ios_share_rounded,
+                  size: 22, color: AppText.primary),
+              tooltip: 'Share my link',
+            ),
+            const SizedBox(width: 4),
+            FilledButton.tonalIcon(
+              onPressed: _showAddFriendSheet,
+              icon: const Icon(Icons.person_add, size: 20),
+              label: const Text('Add friend'),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
             ),
           ],
         ),
@@ -1386,6 +1454,59 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
+  static const _groupColors = [
+    AppColors.primaryDark,
+    AppColors.violet600,
+    AppColors.emerald600,
+    AppColors.amber700,
+    AppColors.rose600,
+    AppColors.indigo800,
+  ];
+
+  /// The same colour for a group every time (picked from its id).
+  static Color _groupColor(String groupId) {
+    var h = 0;
+    for (final c in groupId.codeUnits) {
+      h = (h * 31 + c) & 0x7fffffff;
+    }
+    return _groupColors[h % _groupColors.length];
+  }
+
+  /// "Lunch Club" → "LC", "SoberGophers" → "SG", "Family" → "F".
+  static String _groupInitials(String name) {
+    final words = name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+    if (words.length >= 2) {
+      return (words.first.initial + words.elementAt(1).initial).toUpperCase();
+    }
+    final word = words.isEmpty ? '?' : words.first;
+    final caps = RegExp('[A-Z]').allMatches(word).map((m) => m[0]!).toList();
+    if (caps.length >= 2) return caps.take(2).join();
+    return word.initial.toUpperCase();
+  }
+
+  /// "You, Sam and Jess" or "You, Sam, Jess and 2 more".
+  Future<String> _memberLine(String groupId, List<String> memberIds) {
+    return _memberLines.putIfAbsent('$groupId|${memberIds.join(',')}',
+        () async {
+      final others = memberIds.where((id) => id != _uid).toList();
+      final shown = others.take(3).toList();
+      final names = <String>[];
+      for (final id in shown) {
+        try {
+          names.add(FriendsService.nameFromUser((await _friendDoc(id)).data()));
+        } catch (_) {}
+      }
+      final rest = others.length - names.length;
+      final all = [
+        if (memberIds.contains(_uid)) 'You',
+        ...names,
+        if (rest > 0) '$rest more',
+      ];
+      if (all.length <= 1) return all.join();
+      return '${all.sublist(0, all.length - 1).join(', ')} and ${all.last}';
+    });
+  }
+
   Widget _groupCard(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     final rawName = data['name'];
@@ -1409,14 +1530,19 @@ class _FriendsPageState extends State<FriendsPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
         child: Row(
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: const BoxDecoration(
-                gradient: AppColors.brandGradient,
-                shape: BoxShape.circle,
+            // Its own colour and initials, so two groups with the same
+            // name still look different.
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: _groupColor(doc.id),
+              child: Text(
+                _groupInitials(groupName),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-              child: const Icon(Icons.group, color: Colors.white, size: 22),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1430,9 +1556,15 @@ class _FriendsPageState extends State<FriendsPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
-                    style: _subStyle,
+                  FutureBuilder<String>(
+                    future: _memberLine(doc.id, memberIds),
+                    builder: (context, snap) => Text(
+                      snap.data ??
+                          '${memberIds.length} ${memberIds.length == 1 ? 'member' : 'members'}',
+                      style: _subStyle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -1446,7 +1578,6 @@ class _FriendsPageState extends State<FriendsPage> {
               ),
               tooltip: 'Group chat',
             ),
-            Icon(Icons.chevron_right, color: AppColors.gray400),
           ],
         ),
       ),
@@ -1462,38 +1593,24 @@ class _FriendsPageState extends State<FriendsPage> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.canvas,
-      appBar: AppBar(
-        title: const Text('Friends'),
-        actions: const [
-          ScreenHelpButton(tutorialIds: ['friends', 'chat', 'calorie_game']),
-          MessagesButton(),
-        ],
-      ),
-      // A plain scroll view (not a lazy list) so the sections' streams stay
-      // subscribed while scrolled off screen.
-      body: SingleChildScrollView(
-        // Room at the bottom for the add button and the Coach button.
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
-        child: Column(
+    // Keyed, so each keeps its state when the order swaps.
+    final friends = KeyedSubtree(
+      key: const ValueKey('friends'),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          FirstVisitHint(
-            screen: 'friends',
-            label: 'Friends',
-            tutorialIds: const ['friends', 'chat', 'calorie_game'],
-            onShow: () => showScreenHelp(context,
-                tutorialIds: const ['friends', 'chat', 'calorie_game']),
-          ),
-          _incomingRequestsSection(),
           _friendsHeader(),
           const SizedBox(height: 12),
           _friendsSection(),
           _sentRequestsSection(),
-          const SizedBox(height: 12),
-          _shortcutTiles(),
-          const SizedBox(height: 12),
+        ],
+      ),
+    );
+    final groups = KeyedSubtree(
+      key: const ValueKey('groups'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Row(
             children: [
               Expanded(child: Text('Groups', style: _sectionStyle)),
@@ -1507,13 +1624,48 @@ class _FriendsPageState extends State<FriendsPage> {
           const SizedBox(height: 8),
           _groupsSection(),
         ],
-        ),
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'friends-add',
-        tooltip: 'Add friend',
-        onPressed: _showAddFriendSheet,
-        child: const Icon(Icons.person_add),
+    );
+
+    return Scaffold(
+      backgroundColor: AppColors.canvas,
+      appBar: AppBar(
+        title: const Text('Friends'),
+        actions: const [
+          ScreenHelpButton(tutorialIds: ['friends', 'chat', 'calorie_game']),
+          MessagesButton(),
+        ],
+      ),
+      // A plain scroll view (not a lazy list) so the sections' streams stay
+      // subscribed while scrolled off screen.
+      body: SingleChildScrollView(
+        // Room at the bottom for the Coach button.
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FirstVisitHint(
+            screen: 'friends',
+            label: 'Friends',
+            tutorialIds: const ['friends', 'chat', 'calorie_game'],
+            onShow: () => showScreenHelp(context,
+                tutorialIds: const ['friends', 'chat', 'calorie_game']),
+          ),
+          _incomingRequestsSection(),
+          _shortcutTiles(),
+          const SizedBox(height: 12),
+          // Groups first when they're all you have so far.
+          if (_meKnown && !_hasFriends && _groupNames.isNotEmpty) ...[
+            groups,
+            const SizedBox(height: 12),
+            friends,
+          ] else ...[
+            friends,
+            const SizedBox(height: 12),
+            groups,
+          ],
+        ],
+        ),
       ),
     );
   }
@@ -1523,7 +1675,10 @@ class _FriendsPageState extends State<FriendsPage> {
 class _NewGroupSheet extends StatefulWidget {
   final String uid;
 
-  const _NewGroupSheet({required this.uid});
+  /// Names of the groups you're already in.
+  final List<String> existingNames;
+
+  const _NewGroupSheet({required this.uid, this.existingNames = const []});
 
   @override
   State<_NewGroupSheet> createState() => _NewGroupSheetState();
@@ -1543,6 +1698,12 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
   late Future<List<Friend>> _friends = FriendsService.load(widget.uid);
   bool _saving = false;
   String? _error;
+
+  bool get _sameName {
+    final name = _name.text.trim().toLowerCase();
+    return name.isNotEmpty &&
+        widget.existingNames.any((n) => n.trim().toLowerCase() == name);
+  }
 
   bool get _canCreate =>
       !_saving && _name.text.trim().isNotEmpty && _chosen.isNotEmpty;
@@ -1611,10 +1772,17 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                         controller: _name,
                         textCapitalization: TextCapitalization.words,
                         onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Group name',
                           hintText: 'e.g. Lunch Club',
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
+                          // Allowed, but easy to mix up.
+                          helperText: _sameName
+                              ? "You're already in a group called this. A "
+                                  'different name keeps them apart.'
+                              : null,
+                          helperMaxLines: 2,
+                          helperStyle: TextStyle(color: AppText.amber700),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -1807,7 +1975,7 @@ class FriendTodayStatus extends StatelessWidget {
   }
 }
 
-/// A small tile in the row under your friends (Hiscores and so on).
+/// A small tile in the row under your friends (High scores and so on).
 class _ShortcutTile extends StatelessWidget {
   final String label;
   final Widget icon;

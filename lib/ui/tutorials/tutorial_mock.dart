@@ -1163,7 +1163,7 @@ class MockApp extends StatelessWidget {
                           Icon(Icons.leaderboard, color: Colors.white),
                           SizedBox(width: 10),
                           Expanded(
-                            child: Text('Hiscores\nSee how you rank against friends',
+                            child: Text('High scores\nSee how you rank against friends',
                                 style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w700)),
@@ -1188,9 +1188,39 @@ class MockApp extends StatelessWidget {
                       ),
                     const SizedBox(height: 8),
                   ],
-                  Text('Your friends',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w800, color: AppColors.ink)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Your friends',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.ink)),
+                      ),
+                      _mark(
+                        'addFriend',
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: AppColors.indigo100,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.person_add,
+                                  size: 18, color: AppText.primaryDark),
+                              const SizedBox(width: 6),
+                              Text('Add friend',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppText.primaryDark)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   for (final f in s.friends)
                     _mark(
@@ -1243,22 +1273,6 @@ class MockApp extends StatelessWidget {
               ),
             ),
           ],
-        ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: _mark(
-            'addFriend',
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: AppColors.primaryDark,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(Icons.person_add, color: Colors.white),
-            ),
-          ),
         ),
       ],
     );

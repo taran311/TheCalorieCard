@@ -94,7 +94,7 @@ const _tabs = <_TabSpec>[
 /// Signed-in layout.
 ///
 /// * Phone: page + bottom bar (Card, Recipes, the round Coach button,
-///   Friends, Profile). Hiscores and Chat live inside Friends, Statement
+///   Friends, Profile). High scores and Chat live inside Friends, Statement
 ///   inside Profile.
 /// * Tablet / desktop: navigation sidebar, the page in a centred column and,
 ///   on wide screens, a live "Today" panel on the right.
@@ -259,7 +259,7 @@ class _MainShellState extends State<MainShell> {
   }
 
   /// Coach is somewhere you dip into, so it always gets a back arrow. On
-  /// phones, Hiscores, Statement and Chat have no button of their own in
+  /// phones, High scores, Statement and Chat have no button of their own in
   /// the bottom bar, so they get one too.
   bool _showsBack(ShellTab tab) =>
       tab == ShellTab.coach ||
@@ -311,7 +311,7 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
-  /// "Add friends" from Hiscores: switch to the Friends tab (back at its
+  /// "Add friends" from High scores: switch to the Friends tab (back at its
   /// first page) rather than stacking a second Friends page.
   void _openFriends() {
     _navKeys[ShellTab.friends]?.currentState?.popUntil((r) => r.isFirst);

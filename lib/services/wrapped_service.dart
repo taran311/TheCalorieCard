@@ -20,7 +20,7 @@ class MonthWrap {
   final int daysLogged; // days with any food
   final int finishedDays;
   final int onBudgetDays;
-  /// Longest streak this month, with the same rules as Hiscores (Streak
+  /// Longest streak this month, with the same rules as High scores (Streak
   /// Freezes cover a missed day).
   final int bestStreak;
   final double totalCalories;
@@ -144,7 +144,7 @@ class WrappedService {
         if (left != null && left >= 0) onBudget++;
       }
     }
-    // Rest days are skipped, as on the streak pill and hiscores.
+    // Rest days are skipped, as on the streak pill and high scores.
     final restKeys = <String>{
       for (var i = 0; i < logs.length; i++)
         if (RestDays.isRest(logs[i].data())) BalanceService.dateKey(days[i])

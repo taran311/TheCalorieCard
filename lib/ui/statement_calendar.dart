@@ -5,7 +5,7 @@ import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
 
 /// How a calendar day is marked. Worked out from [DaySummary.onBudget], the
-/// same rule as the statement and Hiscores.
+/// same rule as the statement and High scores.
 enum CalendarMark { none, onBudget, over, rest }
 
 class CalendarDay {

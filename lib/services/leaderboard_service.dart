@@ -8,7 +8,7 @@ import 'package:namer_app/services/games_service.dart';
 import 'package:namer_app/services/rest_days.dart';
 import 'package:namer_app/services/streak.dart';
 
-/// Everything the hiscores need for one person.
+/// Everything the high scores need for one person.
 class PlayerStats {
   final String userId;
   final String name;
@@ -178,7 +178,7 @@ class LeaderboardService {
 
     if (isMe) {
       MyStreak.set(userId, streakResult);
-      // Longest streak unlocks card designs; not worth failing hiscores over.
+      // Longest streak unlocks card designs; not worth failing high scores over.
       CardDesignService.recordStreak(userId, streak).catchError((_) {});
     }
     final sense = CalorieSense.thisMonth(userDoc.data());
@@ -200,7 +200,7 @@ class LeaderboardService {
 }
 
 /// Your own streak, shared by the home screen. Refreshed when you finish a
-/// day or open Hiscores, and at most once a day otherwise.
+/// day or open High scores, and at most once a day otherwise.
 class MyStreak {
   MyStreak._();
 

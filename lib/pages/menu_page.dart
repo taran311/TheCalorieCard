@@ -543,7 +543,7 @@ class _MenuPageState extends State<MenuPage> {
                     _menuRow(
                       icon: Icons.leaderboard,
                       iconColor: AppText.rose600,
-                      title: 'Hiscores',
+                      title: 'High scores',
                       subtitle: 'See how you rank against friends',
                       onTap: () {
                         final open = widget.onOpenHiscores;

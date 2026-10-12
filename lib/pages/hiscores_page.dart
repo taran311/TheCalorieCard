@@ -114,8 +114,8 @@ class _HiscoresPageState extends State<HiscoresPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Hiscores')),
-        body: const Center(child: Text('Sign in to see hiscores.')),
+        appBar: AppBar(title: const Text('High scores')),
+        body: const Center(child: Text('Sign in to see high scores.')),
       );
     }
 
@@ -123,7 +123,7 @@ class _HiscoresPageState extends State<HiscoresPage> {
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
         leading: ShellBack.button(context),
-        title: const Text('Hiscores'),
+        title: const Text('High scores'),
         actions: [
           IconButton(
             tooltip: 'Challenges',
@@ -183,7 +183,7 @@ class _HiscoresPageState extends State<HiscoresPage> {
                     padding: const EdgeInsets.fromLTRB(24, 80, 24, 96),
                     children: [
                       Text(
-                        "Couldn't load hiscores.\nPull down to try again.",
+                        "Couldn't load high scores.\nPull down to try again.",
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.muted),
                       ),

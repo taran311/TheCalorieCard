@@ -3,10 +3,10 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/games_service.dart';
 
 /// "Guess the price": how well you can estimate calories before the lookup
-/// comes back. Scores feed the Calorie Sense hiscore.
+/// comes back. Scores feed the Calorie Sense high score.
 ///
 /// Only a monthly running total is stored, on your `users` document (which
-/// friends can already read for hiscores):
+/// friends can already read for high scores):
 ///   calorie_sense: {month: '2026-10', total: 812, count: 10}
 class CalorieSense {
   CalorieSense._();

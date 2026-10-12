@@ -426,7 +426,7 @@ final List<Tutorial> tutorials = [
       TStep(
         title: 'Friends',
         body: "See how each other's day is going, cheer each other on and "
-            'compete on the hiscores.',
+            'compete on the high scores.',
         target: 'nav_friends',
         act: TAct.tap,
         apply: (s) => s.screen = MockScreen.friends,
@@ -434,7 +434,7 @@ final List<Tutorial> tutorials = [
       ),
       TStep(
         title: 'Add a friend',
-        body: 'Tap the + button.',
+        body: 'Tap Add friend.',
         target: 'addFriend',
         act: TAct.tap,
         apply: (s) => s.showAddFriend = true,
@@ -479,7 +479,7 @@ final List<Tutorial> tutorials = [
         target: 'friend_Jess',
       ),
       const TStep(
-        title: 'Hiscores',
+        title: 'High scores',
         body: "See who's most on budget this month, and start a challenge.",
         target: 'hiscores',
       ),

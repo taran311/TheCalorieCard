@@ -217,7 +217,7 @@ class ChallengeService {
   }
 
   /// Each member's score so far in [c], best first.
-  /// Day-based scores use the same `daily_logs` history as the hiscores.
+  /// Day-based scores use the same `daily_logs` history as the high scores.
   static Future<List<ChallengeScore>> scores(Challenge c) async {
     final days = daysSoFar(c);
     final results = await Future.wait(c.memberIds.map((uid) async {

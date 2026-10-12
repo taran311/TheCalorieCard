@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Gives a top-level screen (Coach, and on phones Hiscores, Statement and
+/// Gives a top-level screen (Coach, and on phones High scores, Statement and
 /// Chat) a back arrow that returns to the screen you came from.
 ///
 /// The app shell puts one of these around each tab. Pages call

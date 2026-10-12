@@ -698,7 +698,7 @@ void main() {
       expect(wrap.toShareText(), contains('October'));
     });
 
-    test('best streak uses Streak Freezes, like Hiscores', () async {
+    test('best streak uses Streak Freezes, like High scores', () async {
       // 1-7 Oct finished (earns a freeze), 8th missed, 9th-12th finished.
       w.now = DateTime(2026, 10, 20, 12);
       for (var d = 1; d <= 12; d++) {
