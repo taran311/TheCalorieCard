@@ -11,10 +11,10 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 class AuthService {
   AuthService._();
 
-  /// "Continue with Facebook" stays hidden until the Meta app is published
-  /// (before then only the app's own admins can use it). Change to true
-  /// once it says Published in the Meta developer dashboard.
-  static const facebookLive = false;
+  /// "Continue with Facebook" is shown to everyone now the Meta app is
+  /// published. Set to false to hide it again (it can still be tried with
+  /// `?facebook=1`).
+  static const facebookLive = true;
 
   /// For trying Facebook sign-in before it's live: open the site with
   /// `?facebook=1` on the end of the address.
