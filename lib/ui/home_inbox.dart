@@ -793,10 +793,18 @@ class _InboxCard extends StatelessWidget {
       );
     }
 
+    // A soft tint and edge in the item's own colour, so inbox items read
+    // as "something for you" and never blend in with the meal cards.
+    final dark = AppColors.dark;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2),
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      decoration: AppDecor.card,
+      decoration: AppDecor.card.copyWith(
+        color: Color.alphaBlend(
+            color.withValues(alpha: dark ? 0.16 : 0.07), AppColors.surface),
+        border: Border.all(
+            color: color.withValues(alpha: dark ? 0.55 : 0.35), width: 1.2),
+      ),
       child: body,
     );
   }
