@@ -39,6 +39,23 @@ void main() {
     expect(s.left, start - 380, reason: 'apple swiped away');
   });
 
+  test('voice tutorial: "and" between foods gives one item each', () {
+    final t = tutorials.firstWhere((t) => t.id == 'voice');
+    final s = TutorialState();
+    final start = s.left;
+    for (final step in t.steps.take(4)) {
+      step.complete(s);
+    }
+    expect(s.listening, isFalse);
+    expect(s.chips, ['chicken wrap', 'an apple', 'a latte']);
+    for (final step in t.steps.skip(4)) {
+      step.complete(s);
+    }
+    expect(s.chips, isEmpty);
+    expect(s.screen, MockScreen.home);
+    expect(s.left, start - 572);
+  });
+
   test('going-over tutorial ends 320 over', () {
     final t = tutorials.firstWhere((t) => t.id == 'over');
     final s = TutorialState();

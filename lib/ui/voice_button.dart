@@ -22,6 +22,10 @@ class VoiceButton extends StatefulWidget {
   /// Called once listening ends and the text is in place.
   final VoidCallback? onDone;
 
+  /// Called after [onDone] with what was said (tidied), when anything was
+  /// heard: e.g. to turn spoken foods straight into items.
+  final ValueChanged<String>? onHeard;
+
   final String tooltip;
   final double iconSize;
 
@@ -34,6 +38,7 @@ class VoiceButton extends StatefulWidget {
     this.tidy,
     this.joiner = ' ',
     this.onDone,
+    this.onHeard,
     this.tooltip = 'Speak instead of typing',
     this.iconSize = 24,
     this.enabled = true,
@@ -46,6 +51,10 @@ class VoiceButton extends StatefulWidget {
 class _VoiceButtonState extends State<VoiceButton> {
   web.SpeechSession? _session;
   String _before = '';
+
+  /// The latest words heard, and whether they've been tidied (final).
+  String _heard = '';
+  bool _tidied = false;
 
   bool get _listening => _session != null;
 
@@ -82,20 +91,33 @@ class _VoiceButtonState extends State<VoiceButton> {
   void _start() {
     final messenger = ScaffoldMessenger.maybeOf(context);
     _before = widget.controller.text.trimRight();
+    _heard = '';
+    _tidied = false;
     final session = web.startSpeech(
       onText: (text, done) {
         if (!mounted) return;
         final tidy = widget.tidy;
-        _write(done && tidy != null ? tidy(text) : text);
+        _heard = done && tidy != null ? tidy(text) : text;
+        _tidied = done || tidy == null;
+        _write(_heard);
       },
       onEnd: (error) {
         if (!mounted) return;
+        // Stopped before the browser called it final: tidy what we have.
+        final tidy = widget.tidy;
+        if (!_tidied && tidy != null && _heard.isNotEmpty) {
+          _heard = tidy(_heard);
+          _tidied = true;
+          _write(_heard);
+        }
         setState(() => _session = null);
         final message = VoiceText.errorMessage(error);
         if (message != null) {
           messenger?.showSnackBar(SnackBar(content: Text(message)));
         }
         widget.onDone?.call();
+        final heard = _heard.trim();
+        if (heard.isNotEmpty) widget.onHeard?.call(heard);
       },
     );
     if (session == null) {

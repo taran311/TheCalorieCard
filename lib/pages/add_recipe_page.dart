@@ -1159,6 +1159,10 @@ class _AddRecipePageState extends State<AddRecipePage> {
                   onDone: () {
                     if (mounted) setState(() {});
                   },
+                  // "50g of onions 50g of tomatoes" → two ingredients.
+                  onHeard: (_) {
+                    if (mounted) _takeFreeText(all: true);
+                  },
                 ),
                 IconButton(
                   tooltip: 'Add to list',

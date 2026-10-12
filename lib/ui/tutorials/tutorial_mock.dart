@@ -122,6 +122,10 @@ class TutorialState {
   String typed = '';
   final List<MockFood> found = [];
 
+  /// Voice: the mic is listening, and the foods it turned into items.
+  bool listening = false;
+  final List<String> chips = [];
+
   // Coach
   final List<MockMessage> coach = [];
   String coachTyped = '';
@@ -624,7 +628,10 @@ class MockApp extends StatelessWidget {
 
   Widget _addFood() {
     final total = s.found.fold(0, (sum, f) => sum + f.kcal);
-    final lookUp = s.typed.isNotEmpty && s.found.isEmpty;
+    final typedCount =
+        s.typed.split(',').where((x) => x.trim().isNotEmpty).length;
+    final toLookUp = s.chips.length + typedCount;
+    final lookUp = toLookUp > 0 && s.found.isEmpty;
     return Column(
       children: [
         _header('Add to ${s.meal}', back: true),
@@ -635,7 +642,79 @@ class MockApp extends StatelessWidget {
               Text("Type everything you had. We'll work out the calories.",
                   style: TextStyle(color: AppColors.muted)),
               const SizedBox(height: 12),
-              _mark('input', _fakeField(s.typed, 'e.g. 2 eggs, toast, coffee')),
+              Stack(
+                children: [
+                  _mark(
+                      'input',
+                      _fakeField(
+                          // While speaking, show the latest words.
+                          s.typed.length > 30
+                              ? '…${s.typed.substring(s.typed.length - 29)}'
+                              : s.typed,
+                          s.listening ? 'Listening…' : 'e.g. 2 eggs, toast, coffee',
+                          right: 44)),
+                  Positioned(
+                    right: 4,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: _mark(
+                        'mic',
+                        Container(
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: s.listening
+                                ? AppColors.red50
+                                : Colors.transparent,
+                          ),
+                          child: Icon(
+                            s.listening
+                                ? Icons.stop_circle_rounded
+                                : Icons.mic_none_rounded,
+                            color:
+                                s.listening ? AppText.red600 : AppText.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (s.chips.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _mark(
+                  'chips',
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final c in s.chips)
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.indigo50,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(c,
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.ink)),
+                              const SizedBox(width: 4),
+                              Icon(Icons.close,
+                                  size: 16, color: AppColors.gray600),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               if (s.found.isNotEmpty) ...[
                 Text('Ready to add',
@@ -674,7 +753,7 @@ class MockApp extends StatelessWidget {
                 _fakeButton(
                   icon: lookUp ? Icons.search : Icons.check,
                   label: lookUp
-                      ? 'Look up ${s.typed.split(',').where((x) => x.trim().isNotEmpty).length} items'
+                      ? 'Look up $toLookUp items'
                       : s.found.isEmpty
                           ? 'Add to ${s.meal}'
                           : 'Add $total kcal to ${s.meal}',
@@ -1636,9 +1715,10 @@ class MockApp extends StatelessWidget {
                 fontSize: 12)),
       );
 
-  static Widget _fakeField(String text, String hint) => Container(
+  static Widget _fakeField(String text, String hint, {double right = 14}) =>
+      Container(
         height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: EdgeInsets.only(left: 14, right: right),
         alignment: Alignment.centerLeft,
         decoration: BoxDecoration(
           color: AppColors.surface,

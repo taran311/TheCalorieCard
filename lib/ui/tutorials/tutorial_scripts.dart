@@ -13,6 +13,8 @@ const _eggs = MockFood('Scrambled eggs', '2 large', 'Breakfast', 156,
     protein: 13, carbs: 1, fat: 10);
 const _toast = MockFood('Wholemeal toast with butter', '1 slice', 'Breakfast',
     128, protein: 4, carbs: 14, fat: 6);
+const _latte = MockFood('Latte', '1 regular', 'Lunch', 120,
+    protein: 8, carbs: 12, fat: 4);
 const _pizza = MockFood('Margherita pizza', '1/2 large', 'Dinner', 900,
     protein: 36, carbs: 110, fat: 32);
 const _brownie = MockFood('Chocolate brownie', '1 slice', 'Dinner', 518,
@@ -128,6 +130,97 @@ final List<Tutorial> tutorials = [
         },
         then: (s) => s.toast = null,
         focus: 'card',
+      ),
+      _finished,
+    ],
+  ),
+
+  // ------------------------------------------------------------- by voice
+  Tutorial(
+    id: 'voice',
+    emoji: '🎤',
+    title: 'Add food by voice',
+    subtitle: 'Say what you ate, with "and" between foods',
+    steps: [
+      TStep(
+        title: 'Open Add food',
+        body: 'Tap "Add to Lunch", as you would to type.',
+        target: 'add_Lunch',
+        act: TAct.tap,
+        apply: (s) {
+          s.meal = 'Lunch';
+          s.screen = MockScreen.addFood;
+        },
+        focus: 'mic',
+      ),
+      TStep(
+        title: 'Tap the mic',
+        body: 'It sits in the food box. The first time, your browser asks '
+            'to use the microphone: tap Allow. Works in Chrome, Edge and '
+            'Safari.',
+        target: 'mic',
+        act: TAct.tap,
+        apply: (s) => s.listening = true,
+        focus: 'input',
+      ),
+      TStep(
+        title: 'Say "and" between foods',
+        body: 'Talk like you would to a friend, with "and" between each '
+            'food: "chicken wrap and an apple and a latte". Amounts work '
+            'too: "50g of oats and 200ml of milk".',
+        target: 'input',
+        act: TAct.type,
+        text: 'chicken wrap and an apple and a latte',
+        onType: (s, t) => s.typed = t,
+        focus: 'mic',
+      ),
+      TStep(
+        title: 'Stop when you\'re done',
+        body: 'Pause, or tap stop. Every food becomes its own item.',
+        target: 'mic',
+        act: TAct.tap,
+        apply: (s) {
+          s.listening = false;
+          s.typed = '';
+          s.chips
+            ..clear()
+            ..addAll(['chicken wrap', 'an apple', 'a latte']);
+        },
+        focus: 'chips',
+      ),
+      const TStep(
+        title: 'Check what it heard',
+        body: 'Tap ✕ to remove anything it misheard, or type a fix. If two '
+            'foods end up stuck together, it\'s because there was no "and" '
+            'between them: say it next time.',
+        target: 'chips',
+      ),
+      TStep(
+        title: 'Look them up',
+        body: 'Each food is worked out separately.',
+        target: 'mainBtn',
+        act: TAct.tap,
+        apply: (s) {
+          s.chips.clear();
+          s.found
+            ..clear()
+            ..addAll([_wrap, _apple, _latte]);
+        },
+        focus: 'mainBtn',
+      ),
+      TStep(
+        title: 'Add them to your card',
+        body: 'Same as typing from here: check the numbers, then add.',
+        target: 'mainBtn',
+        act: TAct.tap,
+        apply: (s) {
+          s.foods.addAll(s.found.map((f) => f.inMeal('Lunch')));
+          s.found.clear();
+          s.screen = MockScreen.home;
+          s.toast = 'Added 3 items to Lunch';
+        },
+        then: (s) => s.toast = null,
+        focus: 'section_Lunch',
       ),
       _finished,
     ],

@@ -1478,8 +1478,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       suffixIcon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Say it: "two eggs and toast" lands in the box
-                          // as "two eggs, toast" to check before adding.
+                          // Say it: "two eggs and toast" or "50g of oats
+                          // 200ml of milk" becomes one item each, ready to
+                          // check (and fix or remove) before looking up.
                           VoiceButton(
                             controller: _controller,
                             tidy: VoiceText.foodsFromSpeech,
@@ -1487,6 +1488,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                             tooltip: 'Say what you ate',
                             onDone: () {
                               if (mounted) setState(() {});
+                            },
+                            onHeard: (_) {
+                              if (mounted) _takeItemsFromInput(all: true);
                             },
                           ),
                           IconButton(
