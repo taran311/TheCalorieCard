@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
 import 'package:namer_app/pages/games_hub_page.dart';
 import 'package:namer_app/services/calorie_game.dart';
@@ -1377,10 +1378,69 @@ class _FriendsPageState extends State<FriendsPage> {
             ),
           ],
         ),
+        if (_myUsername != null) _myUsernameLine(_myUsername!),
         if (showPrompt) ...[
           const SizedBox(height: 8),
           _usernamePrompt(),
         ],
+      ],
+    );
+  }
+
+  /// "You're @taran", so you know what to tell friends: tap to copy, or
+  /// change it.
+  Widget _myUsernameLine(String username) {
+    return Row(
+      children: [
+        Flexible(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () async {
+              await Clipboard.setData(ClipboardData(text: '@$username'));
+              _snack('Copied @$username');
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(
+                    text: "You're ",
+                    style: TextStyle(color: AppColors.gray600),
+                  ),
+                  TextSpan(
+                    text: '@$username',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppText.primaryDark,
+                    ),
+                  ),
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Icon(Icons.copy_rounded,
+                          size: 15, color: AppColors.gray400),
+                    ),
+                  ),
+                ]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: () async {
+            final picked =
+                await showUsernameSheet(context, current: username);
+            if (!mounted || picked == null || picked == usernameSkipped) {
+              return;
+            }
+            _snack('Saved. Friends can add you as @$picked.');
+          },
+          style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+          child: const Text('Change'),
+        ),
       ],
     );
   }
