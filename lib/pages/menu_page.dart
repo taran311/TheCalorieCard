@@ -13,6 +13,7 @@ import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/pages/auth_page.dart';
+import 'package:namer_app/pages/food_check_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
 import 'package:namer_app/pages/statement_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
@@ -607,6 +608,14 @@ class _MenuPageState extends State<MenuPage> {
                         title: 'Gift codes',
                         subtitle: 'Give a friend lifetime Premium',
                         onTap: () => _open(const GiftCodesPage()),
+                      ),
+                    if (_giftAdmin)
+                      _menuRow(
+                        icon: Icons.fact_check_outlined,
+                        iconColor: AppText.emerald600,
+                        title: 'Food check',
+                        subtitle: 'Test lookups against known values',
+                        onTap: () => _open(const FoodCheckPage()),
                       ),
                   ]),
                   const SizedBox(height: 24),
