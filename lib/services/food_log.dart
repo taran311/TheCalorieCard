@@ -81,6 +81,11 @@ class FoodLog {
     return servingLabel(value, grams: false);
   }
 
+  /// When set (to yesterday), foods and recipes logged go on that day
+  /// instead of today, and today's card isn't charged. The Card screen sets
+  /// it while you add something you forgot yesterday, and clears it after.
+  static DateTime? logDay;
+
   /// Logs [multiplier] servings of a recipe to today and charges the card.
   static Future<LoggedFoods> logRecipe({
     required String recipeId,
@@ -104,7 +109,7 @@ class FoodLog {
     final servingSize =
         (recipe['serving_size'] as String?) ?? 'Per 1 Serving';
 
-    final ids = await BalanceService.logEntries(uid, [
+    final ids = await BalanceService.logEntries(uid, day: logDay, [
       {
         'food_description': 'Recipe: ${recipe['name'] ?? ''}',
         ...amount.toEntryFields(),
@@ -160,7 +165,7 @@ class FoodLog {
             'food_estimate': true,
         }
     ];
-    final ids = await BalanceService.logEntries(uid, entries);
+    final ids = await BalanceService.logEntries(uid, entries, day: logDay);
     Analytics.track('food_logged');
     await _afterLogging(
       uid,

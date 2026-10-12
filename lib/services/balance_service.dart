@@ -501,10 +501,14 @@ class BalanceService {
   /// Each entry needs `food_description` and its macros (see
   /// [Macros.toEntryFields]); `user_id` and `time_added` are filled in.
   /// Returns the new document ids.
+  /// [day]: log to an earlier day instead (yesterday, for something
+  /// forgotten). Its food goes on that day and today's card isn't charged.
   static Future<List<String>> logEntries(
-      String userId, List<Map<String, dynamic>> entries) =>
+      String userId, List<Map<String, dynamic>> entries, {DateTime? day}) =>
       SaveGuard.track(() async {
     if (entries.isEmpty) return const [];
+    final current = now();
+    final past = day != null && dateKey(day) != dateKey(current);
 
     var total = Macros.zero;
     for (final e in entries) {
@@ -523,7 +527,11 @@ class BalanceService {
 
     final batch = _db.batch();
     final ids = <String>[];
-    final time = now();
+    // On an earlier day: that day, at this time of day.
+    final time = past
+        ? DateTime(day!.year, day.month, day.day, current.hour,
+            current.minute, current.second)
+        : current;
     for (final e in entries) {
       final ref = _db.collection('user_food').doc();
       ids.add(ref.id);
@@ -534,7 +542,7 @@ class BalanceService {
         'created_at': FieldValue.serverTimestamp(),
       });
     }
-    if (userDoc != null) {
+    if (userDoc != null && !past) {
       batch.update(userDoc.reference, spendUpdate(total));
     }
     await batch.commit();

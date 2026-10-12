@@ -18,6 +18,7 @@ import 'package:namer_app/services/card_design_service.dart';
 import 'package:namer_app/services/even_out.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/late_close.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
@@ -326,11 +327,18 @@ class _HomePageState extends State<HomePage>
   /// Your own card (not a friend's): the only one we ever write to.
   bool get _isOwnCard => !widget.readOnly && widget.userIdOverride == null;
 
-  /// Food can be added or removed only on today's card, and only until the
-  /// day is finished. Past days are a statement: read-only. A rest day
-  /// ("frozen" card) is read-only too, until it's unfrozen.
+  /// Food can be added or removed on today's card until the day is
+  /// finished, and on yesterday's until midnight (forgot something? It
+  /// stays closed if it was). Older days are a statement: read-only. A rest
+  /// day ("frozen" card) is read-only too, until it's unfrozen.
   bool get _canEditSelectedDay =>
-      _isOwnCard && _isSelectedDateToday && !_isDayFinished && !_isRestDay;
+      _isOwnCard &&
+      !_isRestDay &&
+      ((_isSelectedDateToday && !_isDayFinished) || _isSelectedDateYesterday);
+
+  /// Today's extras (usuals, pacing, copy from yesterday, close / rest
+  /// day) only make sense on today's card.
+  bool get _canEditToday => _canEditSelectedDay && _isSelectedDateToday;
 
   /// The selected day is a rest day (`daily_logs.rest_day`): the card is
   /// "frozen", nothing is tracked and the streak is paused.
@@ -535,6 +543,13 @@ class _HomePageState extends State<HomePage>
       // balance once it's in the past.
       await _upsertDailyLogForDate(_selectedLogDate);
       await _fetchDailyLogForDate(_selectedLogDate);
+    } else if (_isOwnCard && _isSelectedDateYesterday) {
+      // Fixed something on yesterday: its saved totals and closing balance
+      // follow (today's card isn't touched).
+      try {
+        await LateClose.syncDay(_activeUserId, _selectedLogDate);
+      } catch (_) {}
+      await _fetchDailyLogForDate(_selectedLogDate);
     }
     if (!mounted) return;
     setState(() {
@@ -725,6 +740,9 @@ class _HomePageState extends State<HomePage>
 
   bool get _isSelectedDateToday =>
       _isSameDay(_selectedLogDate, BalanceService.now());
+
+  bool get _isSelectedDateYesterday =>
+      LateClose.isYesterday(_selectedLogDate);
 
   Future<void> _fetchDailyLogForDate(DateTime date) async {
     final token = ++_dailyLogLoadToken;
@@ -1149,15 +1167,15 @@ class _HomePageState extends State<HomePage>
   }
 
   /// "🏖️ Rest day" (like freezing a bank card): explains it, then marks
-  /// today as a rest day. Two a week (Monday–Sunday); once they're used up
-  /// the sheet says so instead.
+  /// today as a rest day. Four a calendar month; once they're used up the
+  /// sheet says so instead.
   Future<void> _startRestDay() async {
     if (_restBusy || !_isOwnCard || !_isSelectedDateToday) return;
     if (_isDayFinished || _isRestDay) return;
     setState(() => _restBusy = true);
     int? left;
     try {
-      left = await RestDays.leftThisWeek(_activeUserId);
+      left = await RestDays.leftThisMonth(_activeUserId);
     } catch (_) {
       left = null;
     }
@@ -1186,8 +1204,8 @@ class _HomePageState extends State<HomePage>
       MyStreak.load(_activeUserId, force: true);
       _snack('Rest day on. Your streak is paused, not broken.');
     } on RestDayLimitReached {
-      _snack("You've used both rest days this week. "
-          'They come back on Monday.');
+      _snack("You've used all ${RestDays.maxPerMonth} rest days this "
+          'month. They come back on the 1st.');
     } catch (_) {
       _snack("Couldn't start your rest day. Please try again.");
     } finally {
@@ -1220,7 +1238,7 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  /// Explains a rest day before starting one ([left] this week). Returns
+  /// Explains a rest day before starting one ([left] this month). Returns
   /// true to go ahead.
   Future<bool?> _showRestDaySheet(int left) {
     final usedUp = left <= 0;
@@ -1238,7 +1256,7 @@ class _HomePageState extends State<HomePage>
             children: [
               Text(
                 usedUp
-                    ? '🏖️ No rest days left this week'
+                    ? '🏖️ No rest days left this month'
                     : '🏖️ Take a rest day?',
                 style: TextStyle(
                   fontSize: 20,
@@ -1249,12 +1267,13 @@ class _HomePageState extends State<HomePage>
               const SizedBox(height: 8),
               Text(
                 usedUp
-                    ? "You've taken both of this week's rest days (Monday to "
-                        'Sunday). They come back on Monday. Until then, '
-                        'track today as normal.'
+                    ? "You've taken all ${RestDays.maxPerMonth} of this "
+                        "month's rest days. They come back on the 1st. Until "
+                        'then, track today as normal.'
                     : "Rest days are for holidays and celebrations. You won't "
                         'track today, and your streak is paused, not broken. '
-                        'You can take ${RestDays.maxPerWeek} a week.',
+                        'You can take ${RestDays.maxPerMonth} a month, '
+                        'together or spread out.',
                 style: TextStyle(
                     fontSize: 15, color: AppColors.gray700, height: 1.4),
               ),
@@ -1271,8 +1290,7 @@ class _HomePageState extends State<HomePage>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$left of ${RestDays.maxPerWeek} left this week '
-                        '(Monday to Sunday)',
+                        '$left of ${RestDays.maxPerMonth} left this month',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: AppColors.sky700,
@@ -1703,7 +1721,7 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _copyYesterday(
       String meal, List<Map<String, dynamic>> entries) async {
-    if (_copyingYesterday || !_canEditSelectedDay || entries.isEmpty) return;
+    if (_copyingYesterday || !_canEditToday || entries.isEmpty) return;
     setState(() => _copyingYesterday = true);
     try {
       final logged = await FoodLog.logFoods(
@@ -1779,12 +1797,19 @@ class _HomePageState extends State<HomePage>
   Future<void> _openAddFood(String meal) async {
     if (!_canEditSelectedDay) return;
     _useMeal(meal);
+    // Adding something forgotten yesterday: it goes on yesterday.
+    FoodLog.logDay = _isSelectedDateToday ? null : _selectedLogDate;
     // On phones, open above the bottom bar so the Coach button doesn't
     // cover the page's buttons.
-    final saved = await Navigator.of(context, rootNavigator: _isPhone)
-        .push<Object?>(
-      MaterialPageRoute(builder: (_) => const AddFoodPage()),
-    );
+    final Object? saved;
+    try {
+      saved = await Navigator.of(context, rootNavigator: _isPhone)
+          .push<Object?>(
+        MaterialPageRoute(builder: (_) => const AddFoodPage()),
+      );
+    } finally {
+      FoodLog.logDay = null;
+    }
     if (!mounted) return;
     // Logging signals a refresh on its own; this covers the rest. Older
     // versions of the page popped `true`; now it says what was logged.
@@ -1802,9 +1827,14 @@ class _HomePageState extends State<HomePage>
   Future<void> _openRecipePicker(String meal) async {
     if (!_canEditSelectedDay) return;
     _useMeal(meal);
-    await Navigator.of(context, rootNavigator: _isPhone).push<Object?>(
-      MaterialPageRoute(builder: (_) => const _RecipePickerPage()),
-    );
+    FoodLog.logDay = _isSelectedDateToday ? null : _selectedLogDate;
+    try {
+      await Navigator.of(context, rootNavigator: _isPhone).push<Object?>(
+        MaterialPageRoute(builder: (_) => const _RecipePickerPage()),
+      );
+    } finally {
+      FoodLog.logDay = null;
+    }
     if (mounted) await (_refreshing ?? _refreshAfterChange());
   }
 
@@ -1827,7 +1857,7 @@ class _HomePageState extends State<HomePage>
 
   /// One tap on a usual: log it to the Add food meal, with Undo.
   Future<void> _logUsual(UsualFood usual) async {
-    if (_loggingUsual || !_canEditSelectedDay) return;
+    if (_loggingUsual || !_canEditToday) return;
     final meal = _addMeal;
     setState(() => _loggingUsual = true);
     try {
@@ -2236,7 +2266,7 @@ class _HomePageState extends State<HomePage>
     } else {
       text = 'Nothing yet.';
     }
-    final yesterday = _canEditSelectedDay
+    final yesterday = _canEditToday
         ? _yesterdayFor(meal)
         : const <Map<String, dynamic>>[];
     final yesterdayKcal = BalanceService.totalOf(yesterday).calories.round();
@@ -2534,8 +2564,8 @@ class _HomePageState extends State<HomePage>
             child: FilledButton.icon(
               onPressed: () => _openAddFood(meal),
               icon: const Icon(Icons.add_rounded),
-              label: const Text(
-                'Add food',
+              label: Text(
+                _isSelectedDateToday ? 'Add food' : 'Add to yesterday',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
@@ -2780,8 +2810,8 @@ class _HomePageState extends State<HomePage>
     final ownHome = _isOwnCard && !widget.showBanner;
     final overBy = _liveBalance == null ? 0 : -_liveBalance!;
     final canAdd = _canEditSelectedDay;
-    final pacing = canAdd ? _buildPacing() : null;
-    final usuals = canAdd ? _buildUsuals() : null;
+    final pacing = _canEditToday ? _buildPacing() : null;
+    final usuals = _canEditToday ? _buildUsuals() : null;
     final visibleFood = _foodDocs.any((d) => !_pendingRemoval.contains(d.id));
 
     return Scaffold(
@@ -2922,6 +2952,7 @@ class _HomePageState extends State<HomePage>
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                         child: _PastDayNotice(
+                          yesterday: _isSelectedDateYesterday && !_isRestDay,
                           onToday: () => _changeDay(BalanceService.now()),
                         ),
                       ),
@@ -2944,7 +2975,7 @@ class _HomePageState extends State<HomePage>
                         ),
                     // Done for the day? Close it here (or swipe the card).
                     // Or freeze it: a rest day.
-                    if (canAdd)
+                    if (_canEditToday)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                         child: _buildDayActions(visibleFood),
@@ -3056,7 +3087,10 @@ class _RestDayStrip extends StatelessWidget {
 class _PastDayNotice extends StatelessWidget {
   final VoidCallback onToday;
 
-  const _PastDayNotice({required this.onToday});
+  /// Yesterday can still be fixed (until midnight).
+  final bool yesterday;
+
+  const _PastDayNotice({required this.onToday, this.yesterday = false});
 
   @override
   Widget build(BuildContext context) {
@@ -3068,11 +3102,15 @@ class _PastDayNotice extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.lock_clock, color: AppText.primary, size: 20),
+          Icon(yesterday ? Icons.edit_calendar_outlined : Icons.lock_clock,
+              color: AppText.primary, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Past days are read-only. Food you add goes on today.',
+              yesterday
+                  ? 'Forgot something? You can add to or fix yesterday '
+                      "until midnight. Today's card isn't changed."
+                  : 'Past days are read-only. Food you add goes on today.',
               style: TextStyle(color: AppColors.ink, fontSize: 13),
             ),
           ),

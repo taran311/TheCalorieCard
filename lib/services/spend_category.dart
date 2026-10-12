@@ -8,6 +8,7 @@ enum SpendCategory {
   homeCooked('Home cooked', Icons.soup_kitchen_outlined, Color(0xFF10B981)),
   takeaway('Takeaway & eating out', Icons.delivery_dining, Color(0xFFF97316)),
   drinks('Drinks', Icons.local_cafe_outlined, Color(0xFF0EA5E9)),
+  alcohol('Alcohol', Icons.local_bar_outlined, Color(0xFFA855F7)),
   snacks('Snacks & sweets', Icons.cookie_outlined, Color(0xFFEC4899)),
   fruitVeg('Fruit & veg', Icons.eco_outlined, Color(0xFF84CC16)),
   meals('Meals & other', Icons.restaurant_outlined, Color(0xFF6366F1));
@@ -27,14 +28,41 @@ enum SpendCategory {
     'whopper', 'zinger', 'happy meal', 'chicken nuggets', 'mcnuggets',
   ];
 
+  static const _alcohol = [
+    'beer', 'lager', 'ale', 'pale ale', 'ipa', 'stout', 'porter', 'guinness',
+    'cider', 'wine', 'prosecco', 'champagne', 'cava', 'spritz', 'aperol',
+    'pimms', 'sangria', 'vodka', 'gin', 'rum', 'whisky', 'whiskey',
+    'bourbon', 'scotch', 'tequila', 'brandy', 'cognac', 'sambuca', 'jager',
+    'jagerbomb', 'baileys', 'liqueur', 'sherry', 'martini', 'negroni',
+    'mojito', 'margarita', 'daiquiri', 'cosmopolitan', 'pina colada',
+    'bloody mary', 'cocktail', 'shandy', 'alcopop', 'hard seltzer',
+    'white claw', 'smirnoff ice', 'wkd', 'bacardi', 'kopparberg',
+    'rekorderlig', 'stella', 'peroni', 'corona', 'heineken', 'carling',
+    'budweiser', 'moretti', 'cobra', 'kronenbourg', 'fosters', 'coors',
+    'madri', 'desperados', 'strongbow', 'thatchers', 'magners', 'brewdog',
+    'g and t', 'g&t',
+  ];
+
+  /// Alcohol-free versions: drinks, not alcohol.
+  static const _alcoholFree = [
+    'alcohol free', 'non alcoholic', 'zero alcohol', '0 0', 'ginger beer',
+    'ginger ale', 'root beer',
+  ];
+
+  /// Foods that borrow a drink's name: neither alcohol nor a drink.
+  static const _namedAfterDrink = [
+    'wine gum', 'rum and raisin', 'beer battered', 'beer batter',
+    'wine vinegar', 'cider vinegar', 'wine sauce', 'wine gravy',
+    'tequila lime', 'cola bottle',
+  ];
+
   static const _drinks = [
     'coffee', 'latte', 'cappuccino', 'americano', 'flat white', 'espresso',
     'mocha', 'macchiato', 'frappuccino', 'tea', 'hot chocolate', 'cola',
     'coke', 'pepsi', 'sprite', 'fanta', 'lemonade', 'juice', 'smoothie',
-    'milkshake', 'shake', 'beer', 'lager', 'pale ale', 'cider', 'wine', 'prosecco',
-    'champagne', 'vodka', 'gin', 'rum', 'whisky', 'whiskey', 'tequila',
-    'cocktail', 'red bull', 'monster', 'lucozade', 'energy drink', 'squash',
-    'water', 'kombucha', 'oat milk', 'glass of milk', 'pint',
+    'milkshake', 'shake', 'red bull', 'monster', 'lucozade', 'energy drink',
+    'squash', 'water', 'kombucha', 'oat milk', 'glass of milk', 'pint',
+    'seltzer', 'tonic', 'ginger beer', 'ginger ale', 'root beer',
   ];
 
   static const _snacks = [
@@ -43,6 +71,7 @@ enum SpendCategory {
     'protein bar', 'cereal bar', 'flapjack', 'popcorn', 'pringles', 'kitkat',
     'snickers', 'mars', 'twix', 'haribo', 'dairy milk', 'croissant',
     'pastry', 'cheesecake', 'pudding', 'dessert', 'nuts', 'peanuts',
+    'wine gum', 'cola bottle', 'gummies', 'jelly babies', 'skittles',
   ];
 
   static const _fruitVeg = [
@@ -79,8 +108,15 @@ enum SpendCategory {
     if (lower.startsWith('recipe:')) return SpendCategory.homeCooked;
     final text = ' ${lower.replaceAll(RegExp(r"[^a-z0-9&]+"), ' ')} ';
     if (_hasAny(text, _takeaway)) return SpendCategory.takeaway;
+    final borrowed = _hasAny(text, _namedAfterDrink);
+    if (!borrowed && _hasAny(text, _alcohol)) {
+      // "Alcohol free lager", "Heineken 0.0": a drink, not alcohol.
+      return _hasAny(text, _alcoholFree)
+          ? SpendCategory.drinks
+          : SpendCategory.alcohol;
+    }
     // "chocolate milkshake" is a drink; "chocolate bar" a snack.
-    if (_hasAny(text, _drinks)) return SpendCategory.drinks;
+    if (!borrowed && _hasAny(text, _drinks)) return SpendCategory.drinks;
     if (_hasAny(text, _snacks)) return SpendCategory.snacks;
     if (_hasAny(text, _fruitVeg)) return SpendCategory.fruitVeg;
     return SpendCategory.meals;

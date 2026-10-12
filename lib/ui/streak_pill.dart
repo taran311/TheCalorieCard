@@ -238,7 +238,7 @@ Future<void> showStreakSheet(BuildContext context, StreakResult s) {
               'Going on holiday or celebrating? Tap "🏖️ Rest day" under '
               "your food on the Card screen. You won't track that day, and "
               'your streak is paused, not broken. It doesn\'t use a Streak '
-              'Freeze. You can take ${RestDays.maxPerWeek} a week.',
+              'Freeze. You can take ${RestDays.maxPerMonth} a month.',
               style: TextStyle(color: AppColors.gray700, height: 1.35),
             ),
             if (restedDays.isNotEmpty) ...[

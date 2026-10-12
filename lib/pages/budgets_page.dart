@@ -38,7 +38,8 @@ class _BudgetsPageState extends State<BudgetsPage> {
   static const _examples = {
     SpendCategory.homeCooked: 'Recipes you log from Recipes',
     SpendCategory.takeaway: "McDonald's, Greggs, Domino's, chippies and the like",
-    SpendCategory.drinks: 'Coffees, fizzy drinks, juice and alcohol',
+    SpendCategory.drinks: 'Coffees, fizzy drinks, juice and smoothies',
+    SpendCategory.alcohol: 'Beer, wine, spirits, cocktails and hard seltzers',
     SpendCategory.snacks: 'Crisps, chocolate, biscuits, cake and sweets',
     SpendCategory.fruitVeg: 'Fruit, salad and veg',
     SpendCategory.meals: 'Everything else',

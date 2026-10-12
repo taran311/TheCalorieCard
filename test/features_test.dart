@@ -654,6 +654,29 @@ void main() {
       expect(c('Two cookies'), SpendCategory.snacks);
     });
 
+    test('alcohol gets its own category', () {
+      SpendCategory c(String d) => SpendCategory.fromDescription(d);
+      expect(c('White Claw seltzer'), SpendCategory.alcohol);
+      expect(c('White Claw Black Cherry 330ml'), SpendCategory.alcohol);
+      expect(c('Pint of lager'), SpendCategory.alcohol);
+      expect(c('2 large glasses of red wine'), SpendCategory.alcohol);
+      expect(c('Gin and slimline tonic'), SpendCategory.alcohol);
+      expect(c('Guinness'), SpendCategory.alcohol);
+      expect(c('Espresso martini'), SpendCategory.alcohol);
+      expect(c('Rum and coke'), SpendCategory.alcohol);
+      // Not alcohol:
+      expect(c('Alcohol free lager'), SpendCategory.drinks);
+      expect(c('Heineken 0.0'), SpendCategory.drinks);
+      expect(c('Ginger beer'), SpendCategory.drinks);
+      expect(c('Sparkling water seltzer'), SpendCategory.drinks);
+      expect(c('Wine gums'), SpendCategory.snacks);
+      expect(c('Beer battered tofu'), SpendCategory.meals);
+      expect(c('Ginger tofu'), SpendCategory.meals); // not "gin"
+      expect(c('Kale salad'), SpendCategory.fruitVeg); // not "ale"
+      expect(c('Ginger shot'), isNot(SpendCategory.alcohol));
+      expect(c('Tequila lime tortilla chips'), SpendCategory.snacks);
+    });
+
     test('breakdown adds up and sorts biggest first', () {
       final rows = SpendInsights.breakdown([
         (description: 'Oat latte', isRecipe: false, calories: 150),

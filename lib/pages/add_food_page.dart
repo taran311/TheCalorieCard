@@ -1496,7 +1496,11 @@ class _AddFoodPageState extends State<AddFoodPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Flexible(
-                child: Text('Add to $meal', overflow: TextOverflow.ellipsis),
+                child: Text(
+                    FoodLog.logDay == null
+                        ? 'Add to $meal'
+                        : "Add to yesterday's $meal",
+                    overflow: TextOverflow.ellipsis),
               ),
               const Icon(Icons.arrow_drop_down),
             ],

@@ -1,33 +1,34 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
 
-/// Thrown by [RestDays.start] when this week's rest days are used up.
+/// Thrown by [RestDays.start] when this month's rest days are used up.
 class RestDayLimitReached implements Exception {
   const RestDayLimitReached();
 
   @override
-  String toString() => "You've used both rest days this week.";
+  String toString() => "You've used all your rest days this month.";
 }
 
 /// Rest days: "freeze the card" for a holiday or a celebration.
 ///
 /// Today is marked with `rest_day: true` on its `daily_logs/{uid}_{date}`
 /// doc. While it's on, food can't be added, and streaks skip the day (see
-/// Streaks.compute): paused, not broken. Up to [maxPerWeek] per
-/// Monday–Sunday week, and only today can be started or ended.
+/// Streaks.compute): paused, not broken. Up to [maxPerMonth] per calendar
+/// month, taken together (a long weekend away) or spread out. Only today
+/// can be started or ended.
 class RestDays {
   RestDays._();
 
-  static const maxPerWeek = 2;
+  /// About one a week on average, without making routine weekend skips
+  /// free (which would hide the days people most often overeat).
+  static const maxPerMonth = 4;
 
   /// True if a `daily_logs` doc's data marks a rest day.
   static bool isRest(Map<String, dynamic>? log) => log?['rest_day'] == true;
 
-  /// The Monday that starts [day]'s week (midnight).
-  static DateTime weekStart(DateTime day) {
-    final d = BalanceService.startOfDay(day);
-    return BalanceService.addDays(d, -(d.weekday - 1));
-  }
+  /// "2026-10" for any day in October 2026.
+  static String monthKey(DateTime day) =>
+      BalanceService.dateKey(day).substring(0, 7);
 
   /// Date keys of the `daily_logs` docs in [logs] that are rest days.
   static Set<String> keysFrom(Iterable<Map<String, dynamic>?> logs) => {
@@ -42,36 +43,36 @@ class RestDays {
           .collection('daily_logs')
           .doc('${uid}_${BalanceService.dateKey(day)}');
 
-  /// Rest days taken in the Monday–Sunday week [day] falls in (default:
-  /// this week), as date keys.
-  static Future<Set<String>> takenInWeek(String uid, {DateTime? day}) async {
-    final monday = weekStart(day ?? BalanceService.now());
-    final snaps = await Future.wait([
-      for (var i = 0; i < 7; i++)
-        _ref(uid, BalanceService.addDays(monday, i)).get(),
-    ]);
+  /// Rest days taken in the calendar month [day] falls in (default: this
+  /// month), as date keys.
+  static Future<Set<String>> takenInMonth(String uid, {DateTime? day}) async {
+    final month = monthKey(day ?? BalanceService.now());
+    final snap = await BalanceService.db
+        .collection('daily_logs')
+        .where('user_id', isEqualTo: uid)
+        .where('rest_day', isEqualTo: true)
+        .get();
     return {
-      for (var i = 0; i < 7; i++)
-        if (isRest(snaps[i].data()))
-          BalanceService.dateKey(BalanceService.addDays(monday, i)),
+      for (final key in keysFrom(snap.docs.map((d) => d.data())))
+        if (key.startsWith(month)) key,
     };
   }
 
-  /// How many more rest days can be taken this week. Today counts as
+  /// How many more rest days can be taken this month. Today counts as
   /// taken if it already is one.
-  static Future<int> leftThisWeek(String uid) async {
-    final taken = await takenInWeek(uid);
-    final left = maxPerWeek - taken.length;
+  static Future<int> leftThisMonth(String uid) async {
+    final taken = await takenInMonth(uid);
+    final left = maxPerMonth - taken.length;
     return left < 0 ? 0 : left;
   }
 
-  /// Makes today a rest day. Throws [RestDayLimitReached] if this week's
+  /// Makes today a rest day. Throws [RestDayLimitReached] if this month's
   /// are used up (doing it again on a day that already is one is fine).
   static Future<void> start(String uid) async {
     final today = BalanceService.startOfDay(BalanceService.now());
     final key = BalanceService.dateKey(today);
-    final taken = await takenInWeek(uid, day: today);
-    if (!taken.contains(key) && taken.length >= maxPerWeek) {
+    final taken = await takenInMonth(uid, day: today);
+    if (!taken.contains(key) && taken.length >= maxPerMonth) {
       throw const RestDayLimitReached();
     }
     await _write(uid, today, true);
