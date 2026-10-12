@@ -365,7 +365,8 @@ class _FriendGroupPageState extends State<FriendGroupPage> {
               children: [
                 Row(
                   children: [
-                    ProgressAvatar(name: name, day: day, size: 48),
+                    ProgressAvatar(
+                        name: name, day: day, size: 48, uid: memberId),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(

@@ -1,5 +1,6 @@
 import 'package:namer_app/services/analytics.dart';
 import 'package:namer_app/services/app_update.dart';
+import 'package:namer_app/ui/user_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -792,14 +793,18 @@ class _Sidebar extends StatelessWidget {
               mainAxisAlignment:
                   extended ? MainAxisAlignment.start : MainAxisAlignment.center,
               children: [
-                CircleAvatar(
-                  radius: 17,
-                  backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                  child: Text(
-                    name.isEmpty ? '?' : name[0].toUpperCase(),
-                    style: TextStyle(
-                      color: AppText.primary,
-                      fontWeight: FontWeight.w700,
+                UidAvatar(
+                  uid: FirebaseAuth.instance.currentUser?.uid ?? '',
+                  size: 34,
+                  fallback: CircleAvatar(
+                    radius: 17,
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                    child: Text(
+                      name.isEmpty ? '?' : name[0].toUpperCase(),
+                      style: TextStyle(
+                        color: AppText.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),

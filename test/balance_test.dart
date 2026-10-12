@@ -214,6 +214,26 @@ void main() {
       expect((await w.foodRows()).single['food_portion'], 'Per 1.5 Servings');
     });
 
+    test('a recipe logged at 1.5 servings opens at ×1.5', () async {
+      await FoodLog.logRecipe(
+          userId: uid,
+          recipeId: 'r1',
+          recipe: chilli,
+          meal: 'Dinner',
+          multiplier: 1.5);
+      final row = (await w.foodRows()).single;
+      expect(FoodLog.multiplierOf(row), 1.5);
+      expect(FoodLog.baseOf(row).calories, near(600));
+
+      // Changing it to 2 servings is 2 of the recipe, not 2 × 1.5.
+      await FoodLog.updateEntry(row['id'] as String,
+          entry: row, multiplier: 2, userId: uid);
+      final after = (await w.foodRows()).single;
+      expect(after['food_calories'], near(1200));
+      expect(after['food_portion'], 'Per 2 Servings');
+      expect((await w.card())['calories'], near(2000 - 1200));
+    });
+
     test('gram-based recipes scale too (225 g of a 450 g recipe)', () async {
       await FoodLog.logRecipe(
           userId: uid,

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:namer_app/services/avatar_service.dart';
+import 'package:namer_app/ui/user_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
@@ -100,9 +102,13 @@ class _FriendsPageState extends State<FriendsPage> {
       _friendDocs.putIfAbsent(id, () {
         final read =
             FirebaseFirestore.instance.collection('users').doc(id).get();
-        read.then<void>((_) {}, onError: (Object _) {
-          _friendDocs.remove(id);
-        });
+        read.then<void>(
+          // Their avatar comes with it, so it isn't read twice.
+          (doc) => Avatars.remember(id, doc.data()),
+          onError: (Object _) {
+            _friendDocs.remove(id);
+          },
+        );
         return read;
       });
 
@@ -1236,7 +1242,7 @@ class _FriendsPageState extends State<FriendsPage> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            ProgressAvatar(name: name, day: day),
+                            ProgressAvatar(name: name, day: day, uid: id),
                             const SizedBox(height: 6),
                             Text(
                               name.split(' ').first,
@@ -1272,7 +1278,7 @@ class _FriendsPageState extends State<FriendsPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
         child: Row(
           children: [
-            _avatar(name),
+            UidAvatar(uid: friendId, size: 44, fallback: _avatar(name)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -2220,7 +2226,11 @@ class _FriendDaySheetState extends State<_FriendDaySheet> {
             children: [
               Row(
                 children: [
-                  ProgressAvatar(name: widget.name, day: day, size: 60),
+                  ProgressAvatar(
+                      name: widget.name,
+                      day: day,
+                      size: 60,
+                      uid: widget.friendId),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(

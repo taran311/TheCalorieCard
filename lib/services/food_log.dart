@@ -94,12 +94,13 @@ class FoodLog {
     }
     final uid = _uid(userId);
 
-    final amount = Macros(
+    final one = Macros(
       calories: BalanceService.number(recipe['total_calories']) ?? 0,
       protein: BalanceService.number(recipe['total_protein']) ?? 0,
       carbs: BalanceService.number(recipe['total_carbs']) ?? 0,
       fat: BalanceService.number(recipe['total_fat']) ?? 0,
-    ).scaled(multiplier);
+    );
+    final amount = one.scaled(multiplier);
     final servingSize =
         (recipe['serving_size'] as String?) ?? 'Per 1 Serving';
 
@@ -111,6 +112,13 @@ class FoodLog {
         'foodCategory': meal,
         'recipe_id': recipeId,
         'is_recipe': true,
+        // So editing it later starts from the servings logged.
+        'food_serving_size': servingSize,
+        if ((multiplier - 1).abs() > 1e-9) ...{
+          'food_base': one.toEntryFields(),
+          'food_portion_base': portionLabel(servingSize, 1),
+          'food_multiplier': multiplier,
+        },
       }
     ]);
 
@@ -146,6 +154,7 @@ class FoodLog {
             fat: BalanceService.number(item['fat']) ?? 0,
           ).toEntryFields(),
           'foodCategory': meal,
+          ..._portionFields(item),
           if (item['source'] != null) 'food_source': '${item['source']}',
           if (item['needs_review'] == true || item['source'] == 'ai')
             'food_estimate': true,
@@ -164,6 +173,29 @@ class FoodLog {
           0, (s, e) => s + (BalanceService.number(e['food_calories']) ?? 0)),
       meal,
     );
+  }
+
+  /// For an item logged at a multiple of what was looked up ("×2.5"): the
+  /// single portion and the multiple, so editing it later starts from
+  /// ×2.5 rather than treating 2.5 portions as one.
+  static Map<String, dynamic> _portionFields(Map<String, dynamic> item) {
+    final m = BalanceService.number(item['multiplier']);
+    final base = item['base'];
+    if (m == null || !m.isFinite || m <= 0 || (m - 1).abs() < 1e-9) {
+      return const {};
+    }
+    if (base is! Map) return const {};
+    return {
+      'food_base': Macros(
+        calories: BalanceService.number(base['calories']) ?? 0,
+        protein: BalanceService.number(base['protein']) ?? 0,
+        carbs: BalanceService.number(base['carbs']) ?? 0,
+        fat: BalanceService.number(base['fat']) ?? 0,
+      ).toEntryFields(),
+      'food_portion_base':
+          (item['base_portion'] ?? item['portion'] ?? '').toString(),
+      'food_multiplier': m,
+    };
   }
 
   /// Takes back what was just logged (the Undo on "Added …").
@@ -191,8 +223,8 @@ class FoodLog {
   }) async {
     final uid = _uid(userId);
     final base = baseOf(entry);
-    final basePortion =
-        '${entry['food_portion_base'] ?? entry['food_portion'] ?? ''}';
+    final basePortion = basePortionOf(entry);
+    final servingSize = entry['food_serving_size'];
     Macros? macros;
     final fields = <String, dynamic>{};
 
@@ -211,11 +243,13 @@ class FoodLog {
         'food_base': base.toEntryFields(),
         'food_portion_base': basePortion,
         'food_multiplier': multiplier,
-        'food_portion': multiplier == 1
-            ? basePortion
-            : basePortion.isEmpty
-                ? '×${formatAmount(multiplier)}'
-                : '${formatAmount(multiplier)} × $basePortion',
+        'food_portion': servingSize is String
+            ? portionLabel(servingSize, multiplier)
+            : multiplier == 1
+                ? basePortion
+                : basePortion.isEmpty
+                    ? '×${formatAmount(multiplier)}'
+                    : '${formatAmount(multiplier)} × $basePortion',
       });
     }
     if (calories != null) {
@@ -259,17 +293,49 @@ class FoodLog {
     notifyChanged();
   }
 
-  /// The food as first logged (before any portion edits).
+  /// One portion of the food (before any multiple: "2.5 × 1 slice" is
+  /// 2.5 of this).
   static Macros baseOf(Map<String, dynamic> entry) {
     final b = entry['food_base'];
     if (b is Map) return Macros.fromEntry(Map<String, dynamic>.from(b));
+    final old = _olderMultiple(entry);
+    if (old != null) return Macros.fromEntry(entry).scaled(1 / old.multiplier);
     return Macros.fromEntry(entry);
   }
 
-  /// The portion multiplier applied since it was logged (1 if never edited).
+  /// How many portions it is (1 if just one).
   static double multiplierOf(Map<String, dynamic> entry) {
     final m = BalanceService.number(entry['food_multiplier']);
-    return m != null && m > 0 ? m : 1;
+    if (m != null && m > 0) return m;
+    return _olderMultiple(entry)?.multiplier ?? 1;
+  }
+
+  /// The single portion's label ("1 slice" for "2.5 × 1 slice").
+  static String basePortionOf(Map<String, dynamic> entry) {
+    final stored = entry['food_portion_base'];
+    if (stored != null) return '$stored';
+    final old = _olderMultiple(entry);
+    if (old != null) return old.portion;
+    return '${entry['food_portion'] ?? ''}';
+  }
+
+  static final _timesPortion =
+      RegExp(r'^\s*(\d+(?:\.\d+)?)\s*×\s*(.*)$');
+
+  /// Foods logged at a multiple before the multiple was saved with them:
+  /// their portion still reads "2.5 × 1 slice", so the multiple can be
+  /// worked out from that.
+  static ({double multiplier, String portion})? _olderMultiple(
+      Map<String, dynamic> entry) {
+    if (entry['food_multiplier'] != null || entry['food_base'] != null) {
+      return null;
+    }
+    final match = _timesPortion.firstMatch('${entry['food_portion'] ?? ''}');
+    final m = match == null ? null : double.tryParse(match.group(1)!);
+    if (m == null || !m.isFinite || m <= 0 || (m - 1).abs() < 1e-9) {
+      return null;
+    }
+    return (multiplier: m, portion: match!.group(2)!.trim());
   }
 
   /// Removes a logged food and refunds the card if it was today's.

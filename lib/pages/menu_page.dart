@@ -26,6 +26,9 @@ import 'package:namer_app/pages/wrapped_page.dart';
 import 'package:namer_app/pages/games_hub_page.dart';
 import 'package:namer_app/pages/gift_codes_page.dart';
 import 'package:namer_app/services/app_update.dart';
+import 'package:namer_app/services/avatar_service.dart';
+import 'package:namer_app/ui/avatar_picker.dart';
+import 'package:namer_app/ui/user_avatar.dart';
 import 'package:namer_app/services/balance_service.dart';
 
 /// The Profile tab: your card's extras, progress and account.
@@ -367,28 +370,62 @@ class _MenuPageState extends State<MenuPage> {
   }
 
   /// Avatar initial, name and email at the top of the page.
-  Widget _profileHeader(String name, String email) {
+  Widget _profileHeader(
+      String name, String email, Map<String, dynamic>? avatar) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final initial = Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.5),
+          width: 2,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          name.initial.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
     return Row(
       children: [
-        Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.2),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.5),
-              width: 2,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              name.initial.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+        // Tap to choose an avatar: a photo or a ready-made one.
+        Semantics(
+          button: true,
+          label: 'Change your avatar',
+          child: GestureDetector(
+            onTap: uid == null
+                ? null
+                : () => showAvatarPicker(context,
+                    uid: uid, name: name, current: avatar),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                UserAvatar(avatar: avatar, size: 64, fallback: initial),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.primary, width: 1.5),
+                    ),
+                    child: const Icon(Icons.edit,
+                        size: 13, color: AppColors.primary),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -461,7 +498,8 @@ class _MenuPageState extends State<MenuPage> {
                       final name = chosen.isNotEmpty
                           ? chosen
                           : (holder.isEmpty ? 'You' : holder);
-                      return _profileHeader(name, email);
+                      return _profileHeader(
+                          name, email, Avatars.fromUser(snap.data?.data()));
                     },
                   ),
                   _goalChip(),

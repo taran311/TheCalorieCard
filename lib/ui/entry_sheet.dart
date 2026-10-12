@@ -167,7 +167,11 @@ class _EntrySheetState extends State<_EntrySheet> {
 
   late double _multiplier = _startMultiplier;
   late String _meal = _startMeal;
-  final _customController = TextEditingController();
+  /// A multiple that isn't one of the buttons (×2.5) shows here.
+  late final _customController = TextEditingController(
+      text: _portions.any((m) => _same(m, _startMultiplier))
+          ? ''
+          : FoodLog.formatAmount(_startMultiplier));
   final _caloriesController = TextEditingController();
   late final _noteController =
       TextEditingController(text: FoodLog.noteOf(widget.entry));
@@ -483,7 +487,7 @@ class _EntrySheetState extends State<_EntrySheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            '×1 is the amount you first logged.',
+            '×1 is one portion, as it was looked up.',
             style: TextStyle(fontSize: 12, color: AppColors.muted),
           ),
           const SizedBox(height: 18),

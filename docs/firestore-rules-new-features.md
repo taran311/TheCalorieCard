@@ -397,3 +397,30 @@ match /usernames/{handle} {
 - `daily_logs/{uid}_{date}.rest_day` (owner writes).
 - `user_food/{id}.food_note` (owner updates).
 - `calorie_games/{id}.push_sent` is written only by the server.
+
+## Deleting chats and messages
+
+- **Delete chat** (for you only) writes `cleared_at.{uid}`,
+  `deleted_at.{uid}` and `unread_count.{uid}` on
+  `conversations/{id}`. **Delete for me** on a single message adds its id
+  to `hidden_messages.{uid}` (an array). Any participant may write their
+  own keys. If your conversation rules list allowed keys, add
+  `deleted_at` and `hidden_messages` next to `cleared_at`.
+- **Delete for everyone** deletes the message doc, and only the sender
+  can do it. It then sets `last_message` to "Message deleted" if it was
+  the latest.
+
+```
+match /conversations/{cid}/messages/{mid} {
+  // ...your existing read/create/update rules...
+  allow delete: if signedIn() && resource.data.sender_id == me();
+}
+```
+
+## Avatars
+
+- `users/{uid}.avatar` (owner writes): `{preset: 'avocado'}` or
+  `{photo: <256px JPEG, base64, under 150KB>}`; missing means the
+  initial-letter avatar. Friends and chat partners read it from the
+  `users` doc they already read for names. If your users rules list the
+  fields an owner may write, add `avatar`.

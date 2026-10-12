@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/user_avatar.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/friend_activity.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -96,12 +97,35 @@ class ProgressAvatar extends StatelessWidget {
   final FriendDay? day;
   final double size;
 
+  /// Shows their chosen avatar (if any) instead of their initial.
+  final String? uid;
+
   const ProgressAvatar({
     super.key,
     required this.name,
     required this.day,
     this.size = 52,
+    this.uid,
   });
+
+  Widget _face() {
+    final radius = size / 2 - (size / 13) - 3;
+    final initial = CircleAvatar(
+      radius: radius,
+      backgroundColor: AppColors.indigo50,
+      child: Text(
+        name.initial.toUpperCase(),
+        style: TextStyle(
+          color: AppText.primaryDark,
+          fontSize: size / 3,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+    final id = uid;
+    if (id == null || id.isEmpty) return initial;
+    return UidAvatar(uid: id, size: radius * 2, fallback: initial);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -126,20 +150,7 @@ class ProgressAvatar extends StatelessWidget {
                   over ? AppColors.red : AppColors.primary),
             ),
           ),
-          Center(
-            child: CircleAvatar(
-              radius: size / 2 - ring - 3,
-              backgroundColor: AppColors.indigo50,
-              child: Text(
-                name.initial.toUpperCase(),
-                style: TextStyle(
-                  color: AppText.primaryDark,
-                  fontSize: size / 3,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
+          Center(child: _face()),
           if (d?.finished == true)
             Positioned(
               right: -2,

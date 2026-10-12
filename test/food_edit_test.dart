@@ -138,6 +138,62 @@ void main() {
     expect(FoodLog.noteOf(await entry(id)).length, FoodLog.maxNoteLength);
   });
 
+  test('a food logged at ×2.5 opens at ×2.5, and ×1 is one portion',
+      () async {
+    final logged = await FoodLog.logFoods(userId: uid, meal: 'Lunch', items: [
+      {
+        'name': 'Toast',
+        'portion': '2.5 × 1 slice',
+        'base_portion': '1 slice',
+        'multiplier': 2.5,
+        'calories': 250,
+        'protein': 10,
+        'carbs': 45,
+        'fat': 2.5,
+        'base': {'calories': 100, 'protein': 4, 'carbs': 18, 'fat': 1},
+      }
+    ]);
+    final id = logged.ids.single;
+    var e = await entry(id);
+    expect(e['food_calories'], near(250));
+    expect(FoodLog.multiplierOf(e), 2.5);
+    expect(FoodLog.baseOf(e).calories, near(100));
+    expect((await w.card())['calories'], near(1750));
+
+    // Down to one slice: one portion, not a 2.5-slice "portion".
+    await FoodLog.updateEntry(id, entry: e, multiplier: 1, userId: uid);
+    e = await entry(id);
+    expect(e['food_calories'], near(100));
+    expect(e['food_portion'], '1 slice');
+    expect((await w.card())['calories'], near(1900));
+  });
+
+  test('older foods logged at a multiple work it out from the portion',
+      () async {
+    // Saved before the multiple was kept: only "2.5 × 1 slice" says so.
+    final id = await w.addEntry(at: w.now, calories: 250);
+    await w.db.collection('user_food').doc(id).update({
+      'food_portion': '2.5 × 1 slice',
+      'food_protein': 10,
+    });
+    var e = await entry(id);
+    expect(FoodLog.multiplierOf(e), 2.5);
+    expect(FoodLog.baseOf(e).calories, near(100));
+    expect(FoodLog.basePortionOf(e), '1 slice');
+
+    await FoodLog.updateEntry(id, entry: e, multiplier: 2, userId: uid);
+    e = await entry(id);
+    expect(e['food_calories'], near(200));
+    expect(e['food_portion'], '2 × 1 slice');
+  });
+
+  test('a plain portion is ×1', () async {
+    final id = (await logToast()).ids.single;
+    final e = await entry(id);
+    expect(FoodLog.multiplierOf(e), 1);
+    expect(e.containsKey('food_multiplier'), isFalse);
+  });
+
   test('a zero or negative portion is refused', () async {
     final id = (await logToast()).ids.single;
     expect(

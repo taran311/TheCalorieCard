@@ -8,6 +8,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
+import 'package:namer_app/ui/user_avatar.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 /// The navigator chat screens open on.
@@ -68,6 +69,22 @@ String? _otherParticipant(Map<String, dynamic> data, String myUid) {
     if (id is String && id != myUid) return id;
   }
   return null;
+}
+
+/// The other person in a one-to-one chat, from its id ("{uid}_{uid}").
+String? _otherInDirectChat(String conversationId, String? myUid) {
+  if (myUid == null || conversationId.startsWith('group_')) return null;
+  for (final id in conversationId.split('_')) {
+    if (id.isNotEmpty && id != myUid) return id;
+  }
+  return null;
+}
+
+/// Their avatar in a direct chat; groups (no [uid]) keep [fallback].
+Widget _chatAvatar(String? uid,
+    {required double size, required Widget fallback}) {
+  if (uid == null) return fallback;
+  return UidAvatar(uid: uid, size: size, fallback: fallback);
 }
 
 class MessagesPage extends StatefulWidget {
@@ -144,7 +161,13 @@ class _MessagesPageState extends State<MessagesPage> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (snapshot.data!.docs.isEmpty) {
+          // Chats you deleted stay off the list until someone writes again.
+          final conversations = [
+            for (final d in snapshot.data!.docs)
+              if (!ChatService.hiddenFromList(d.data(), currentUserId)) d
+          ];
+
+          if (conversations.isEmpty) {
             return Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
@@ -178,7 +201,6 @@ class _MessagesPageState extends State<MessagesPage> {
           }
 
           // Sort conversations by last_message_time
-          final conversations = snapshot.data!.docs.toList();
           conversations.sort((a, b) {
             final aTime = a.data()['last_message_time'] as Timestamp?;
             final bTime = b.data()['last_message_time'] as Timestamp?;
@@ -280,16 +302,83 @@ class _MessagesPageState extends State<MessagesPage> {
     bool isGroup,
     int unreadCount,
   ) {
+    // Swipe left (or long-press / right-click) to delete it from your list,
+    // like removing a food.
+    return Dismissible(
+      key: ValueKey('chat_$conversationId'),
+      direction: DismissDirection.endToStart,
+      // The list updates itself once it's deleted, so the tile never
+      // dismisses on its own (and stays put if the delete fails).
+      confirmDismiss: (_) async {
+        await _deleteChat(context, conversationId);
+        return false;
+      },
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: AppColors.red,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.delete_outline, color: Colors.white),
+            SizedBox(width: 6),
+            Text('Delete',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
+      child: GestureDetector(
+        onSecondaryTap: () => _deleteChat(context, conversationId),
+        child: _conversationCard(context, conversationId, conversationName,
+            lastMessage, lastMessageTime, isGroup, unreadCount),
+      ),
+    );
+  }
+
+  /// "Delete chat?" then takes it off your list (for you only).
+  Future<void> _deleteChat(BuildContext context, String conversationId) async {
+    final uid = _uid;
+    if (uid == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (!await confirmDeleteChat(context)) return;
+    try {
+      await ChatService.deleteForMe(uid, conversationId);
+      messenger?.showSnackBar(const SnackBar(content: Text('Chat deleted')));
+    } catch (_) {
+      messenger?.showSnackBar(const SnackBar(
+          content: Text("Couldn't delete the chat. Please try again.")));
+    }
+  }
+
+  Widget _conversationCard(
+    BuildContext context,
+    String conversationId,
+    String conversationName,
+    String lastMessage,
+    Timestamp? lastMessageTime,
+    bool isGroup,
+    int unreadCount,
+  ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       clipBehavior: Clip.antiAlias,
       child: ListTile(
+        onLongPress: () => _deleteChat(context, conversationId),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        leading: CircleAvatar(
-          backgroundColor: AppColors.primary,
-          child: Icon(
-            isGroup ? Icons.group : Icons.person,
-            color: Colors.white,
+        leading: _chatAvatar(
+          isGroup ? null : _otherInDirectChat(conversationId, _uid),
+          size: 40,
+          fallback: CircleAvatar(
+            backgroundColor: AppColors.primary,
+            child: Icon(
+              isGroup ? Icons.group : Icons.person,
+              color: Colors.white,
+            ),
           ),
         ),
         title: Row(
@@ -784,6 +873,90 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
   }
 
+  /// Takes the chat off your Messages list (for you only) and closes it.
+  Future<void> _deleteChat() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    if (!await confirmDeleteChat(context)) return;
+    try {
+      await ChatService.deleteForMe(uid, widget.conversationId);
+      messenger.showSnackBar(const SnackBar(content: Text('Chat deleted')));
+      if (navigator.canPop()) navigator.pop();
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text("Couldn't delete the chat. Please try again.")));
+    }
+  }
+
+  /// Long-press (or right-click) a message: copy it, hide it for you, or
+  /// delete your own for everyone.
+  Future<void> _messageOptions(
+      String messageId, Map<String, dynamic> data, bool isMe) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final text = (data['message'] ?? '').toString();
+    final plain = data['type'] == null && text.isNotEmpty;
+    final messenger = ScaffoldMessenger.of(context);
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (plain)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: const Text('Copy'),
+                onTap: () => Navigator.pop(sheetContext, 'copy'),
+              ),
+            ListTile(
+              leading: const Icon(Icons.visibility_off_outlined),
+              title: const Text('Delete for me'),
+              subtitle: const Text('Everyone else still sees it'),
+              onTap: () => Navigator.pop(sheetContext, 'me'),
+            ),
+            if (isMe)
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: AppText.red600),
+                title: Text('Delete for everyone',
+                    style: TextStyle(color: AppText.red600)),
+                onTap: () => Navigator.pop(sheetContext, 'everyone'),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    try {
+      switch (choice) {
+        case 'copy':
+          await Clipboard.setData(ClipboardData(text: text));
+          messenger.showSnackBar(const SnackBar(content: Text('Copied')));
+        case 'me':
+          await ChatService.hideMessageForMe(
+              uid, widget.conversationId, messageId);
+        case 'everyone':
+          if (!mounted) return;
+          final sure = await confirmDeleteForEveryone(context);
+          if (!sure) return;
+          await ChatService.deleteForEveryone(
+            uid: uid,
+            conversationId: widget.conversationId,
+            messageId: messageId,
+            text: text,
+          );
+          messenger.showSnackBar(
+              const SnackBar(content: Text('Message deleted')));
+      }
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text("Couldn't do that. Please try again.")));
+    }
+  }
+
   Future<void> _resetUnreadCount() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -1003,13 +1176,20 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       appBar: AppBar(
         title: Row(
           children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.white.withValues(alpha: 0.25),
-              child: Icon(
-                widget.isGroup ? Icons.group : Icons.person,
-                size: 18,
-                color: Colors.white,
+            _chatAvatar(
+              widget.isGroup
+                  ? null
+                  : _otherInDirectChat(widget.conversationId,
+                      FirebaseAuth.instance.currentUser?.uid),
+              size: 32,
+              fallback: CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.white.withValues(alpha: 0.25),
+                child: Icon(
+                  widget.isGroup ? Icons.group : Icons.person,
+                  size: 18,
+                  color: Colors.white,
+                ),
               ),
             ),
             const SizedBox(width: 10),
@@ -1036,9 +1216,11 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             tooltip: 'More',
             onSelected: (v) {
               if (v == 'clear') _clearChat();
+              if (v == 'delete') _deleteChat();
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'clear', child: Text('Clear chat')),
+              PopupMenuItem(value: 'delete', child: Text('Delete chat')),
             ],
           ),
         ],
@@ -1075,10 +1257,14 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                     // for you (everyone else still has them).
                     final cleared = ChatService.clearedAt(
                         conversationSnapshot.data?.data(), currentUserId ?? '');
+                    // And single messages you deleted for yourself.
+                    final hidden = ChatService.hiddenMessages(
+                        conversationSnapshot.data?.data(), currentUserId ?? '');
                     final docs = [
                       for (final d in snapshot.data!.docs)
                         if (ChatService.showsAfterClear(
-                            d.data()['timestamp'] as Timestamp?, cleared))
+                                d.data()['timestamp'] as Timestamp?, cleared) &&
+                            !hidden.contains(d.id))
                           d
                     ];
 
@@ -1132,6 +1318,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                                 _MessageBubble(
                                   data: data,
                                   isMe: isMe,
+                                  onOptions: () => _messageOptions(
+                                      docs[index].id, data, isMe),
                                   isGroup: widget.isGroup,
                                   continued: continued,
                                   maxWidth: maxBubble,
@@ -1303,9 +1491,13 @@ class _MessageBubble extends StatelessWidget {
   final String timeLabel;
   final List<Widget> status;
 
+  /// Long-press or right-click: copy or delete.
+  final VoidCallback onOptions;
+
   const _MessageBubble({
     required this.data,
     required this.isMe,
+    required this.onOptions,
     required this.isGroup,
     required this.continued,
     required this.maxWidth,
@@ -1337,7 +1529,10 @@ class _MessageBubble extends StatelessWidget {
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+      child: GestureDetector(
+        onLongPress: onOptions,
+        onSecondaryTap: onOptions,
+        child: Container(
         margin: EdgeInsets.only(top: continued ? 2 : 8),
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
         constraints: BoxConstraints(maxWidth: maxWidth),
@@ -1394,6 +1589,7 @@ class _MessageBubble extends StatelessWidget {
             meta,
           ],
         ),
+      ),
       ),
     );
   }
@@ -1561,6 +1757,55 @@ Future<bool> confirmClearChat(BuildContext context) async {
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, true),
           child: const Text('Clear'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+/// "Delete chat?" Returns true to go ahead.
+Future<bool> confirmDeleteChat(BuildContext context) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Delete chat?'),
+      content: const Text(
+          'It goes from your Messages, for you only. Everyone else still '
+          'has it. If someone sends a new message, the chat comes back with '
+          'just the new messages.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+/// "Delete for everyone?" Returns true to go ahead.
+Future<bool> confirmDeleteForEveryone(BuildContext context) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Delete for everyone?'),
+      content: const Text(
+          "The message is removed from the chat for everyone. This can't be "
+          'undone.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Delete'),
         ),
       ],
     ),

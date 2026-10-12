@@ -149,4 +149,67 @@ class ChatService {
   /// [cleared]. A message still sending (no time yet) always shows.
   static bool showsAfterClear(Timestamp? sent, DateTime? cleared) =>
       cleared == null || sent == null || sent.toDate().isAfter(cleared);
+
+  /// "Delete chat" for [uid] only: clears it and takes it off their
+  /// Messages list. It comes back if someone sends a new message (with only
+  /// the new messages showing). Everyone else keeps the chat.
+  static Future<void> deleteForMe(String uid, String conversationId) async {
+    final ref = BalanceService.db.collection('conversations').doc(conversationId);
+    if (!(await ref.get()).exists) return;
+    await ref.update({
+      'cleared_at.$uid': FieldValue.serverTimestamp(),
+      'deleted_at.$uid': FieldValue.serverTimestamp(),
+      'unread_count.$uid': 0,
+    });
+  }
+
+  /// Whether [uid] deleted this chat and nothing has been sent since. A
+  /// delete still on its way to the server (no time yet) counts.
+  static bool hiddenFromList(Map<String, dynamic>? conversation, String uid) {
+    final deleted = conversation?['deleted_at'];
+    if (deleted is! Map || !deleted.containsKey(uid)) return false;
+    final at = deleted[uid];
+    if (at is! Timestamp) return true;
+    final last = conversation?['last_message_time'];
+    return last is! Timestamp || !last.toDate().isAfter(at.toDate());
+  }
+
+  /// Hides one message for [uid] only.
+  static Future<void> hideMessageForMe(
+      String uid, String conversationId, String messageId) {
+    return BalanceService.db
+        .collection('conversations')
+        .doc(conversationId)
+        .update({
+      'hidden_messages.$uid': FieldValue.arrayUnion([messageId]),
+    });
+  }
+
+  /// Messages [uid] has hidden in this chat.
+  static Set<String> hiddenMessages(
+      Map<String, dynamic>? conversation, String uid) {
+    final hidden = conversation?['hidden_messages'];
+    final list = hidden is Map ? hidden[uid] : null;
+    return {if (list is List) for (final id in list) '$id'};
+  }
+
+  /// Deletes your own message for everyone. If it was the chat's latest
+  /// message, the preview on the Messages list says so instead.
+  static Future<void> deleteForEveryone({
+    required String uid,
+    required String conversationId,
+    required String messageId,
+    required String text,
+  }) async {
+    final ref = BalanceService.db.collection('conversations').doc(conversationId);
+    await ref.collection('messages').doc(messageId).delete();
+    try {
+      final convo = (await ref.get()).data();
+      if (convo?['last_sender_id'] == uid && convo?['last_message'] == text) {
+        await ref.update({'last_message': 'Message deleted'});
+      }
+    } catch (_) {
+      // Only the preview: the message itself is gone.
+    }
+  }
 }
