@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/auth_services.dart';
 import 'package:namer_app/pages/email_verification_page.dart';
 import 'package:namer_app/pages/get_started_page.dart';
 import 'package:namer_app/pages/main_shell.dart';
@@ -77,9 +78,9 @@ class _AuthPageState extends State<AuthPage> {
           // currentUser is refreshed by reload(), so prefer it: the stream
           // may still hold the copy from before the email was verified.
           final fresh = FirebaseAuth.instance.currentUser;
-          final verified = fresh != null && fresh.uid == user.uid
-              ? fresh.emailVerified
-              : user.emailVerified;
+          // Google and Facebook accounts skip "verify your email".
+          final verified = AuthService.isTrusted(
+              fresh != null && fresh.uid == user.uid ? fresh : user);
           if (!verified) {
             return EmailVerificationPage(
               email: user.email ?? '',

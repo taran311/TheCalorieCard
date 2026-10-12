@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/email_action_page.dart';
 import 'package:namer_app/services/app_update.dart';
+import 'package:namer_app/services/auth_services.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/web_platform.dart' as web;
 import 'package:namer_app/ui/adaptive_frame.dart';
@@ -17,6 +18,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await ThemeController.instance.load();
+  // ?facebook=1 shows Facebook sign-in before it's live (for testing).
+  AuthService.readUrlFlags();
   // A gift link (?gift=…): remembered until they're signed in to claim it.
   await PendingGift.captureFromUrl();
   // Just refreshed to a new version (?refresh=…): tidy the address bar.

@@ -32,6 +32,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _loading = false;
   bool _googleLoading = false;
+  bool _facebookLoading = false;
   String? _emailError;
   String? _passwordError;
   AuthProblem? _problem;
@@ -90,8 +91,31 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _facebook() async {
+    if (_loading || _googleLoading || _facebookLoading) return;
+    final categories = Provider.of<CategoryService>(context, listen: false);
+    setState(() {
+      _facebookLoading = true;
+      _problem = null;
+    });
+    try {
+      final cred = await AuthService.signInWithFacebook();
+      if (cred?.additionalUserInfo?.isNewUser == true) {
+        categories.resetToDefault();
+      }
+      // Signed in: AuthPage takes over. Cancelled: back to the form.
+      if (cred == null && mounted) setState(() => _facebookLoading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _facebookLoading = false;
+        _problem = authProblemFor(e, flow: 'signin');
+      });
+    }
+  }
+
   Future<void> _google() async {
-    if (_loading || _googleLoading) return;
+    if (_loading || _googleLoading || _facebookLoading) return;
     final categories = Provider.of<CategoryService>(context, listen: false);
     setState(() {
       _googleLoading = true;
@@ -115,7 +139,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final busy = _loading || _googleLoading;
+    final busy = _loading || _googleLoading || _facebookLoading;
     return AuthScaffold(
       title: 'Sign in',
       subtitle: 'Pick up where you left off with today\'s balance.',
@@ -148,6 +172,13 @@ class _LoginPageState extends State<LoginPage> {
               loading: _googleLoading,
               onPressed: busy ? null : _google,
             ),
+            if (AuthService.showFacebook) ...[
+              const SizedBox(height: 10),
+              FacebookButton(
+                loading: _facebookLoading,
+                onPressed: busy ? null : _facebook,
+              ),
+            ],
             const SizedBox(height: 20),
             const AuthDivider(text: 'or'),
             const SizedBox(height: 20),
@@ -195,7 +226,7 @@ class _LoginPageState extends State<LoginPage> {
             AuthButton(
               label: 'Sign in',
               loading: _loading,
-              onPressed: _googleLoading ? null : _signIn,
+              onPressed: _googleLoading || _facebookLoading ? null : _signIn,
             ),
           ],
         ),

@@ -645,6 +645,59 @@ class GoogleButton extends StatelessWidget {
   }
 }
 
+/// Full-width "Continue with Facebook", under the Google button.
+class FacebookButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final bool loading;
+
+  const FacebookButton(
+      {super.key, required this.onPressed, this.loading = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: OutlinedButton(
+        onPressed: loading ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AuthColors.text,
+          side: BorderSide(color: AuthColors.border, width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        child: loading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: AuthColors.action,
+                ),
+              )
+            : const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.facebook, size: 24, color: Color(0xFF1877F2)),
+                  SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      'Continue with Facebook',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
 /// A simple "G" in Google's blue, so the button is recognisable without
 /// shipping an image.
 class _GoogleMark extends StatelessWidget {
@@ -925,8 +978,8 @@ AuthProblem authProblemFor(Object error, {required String flow}) {
           'site and try again.');
     case 'account-exists-with-different-credential':
       return const AuthProblem(
-          'This email already has a Calorie Card account. Sign in with your '
-          'email and password instead.');
+          'This email already has a Calorie Card account. Sign in the way '
+          'you did before (Google, Facebook or email and password).');
     case 'operation-not-allowed':
       return const AuthProblem(
           "That way of signing in isn't switched on yet. Use your email "
