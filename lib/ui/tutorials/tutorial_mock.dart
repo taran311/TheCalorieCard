@@ -108,8 +108,8 @@ class TutorialState {
   final List<MockFood> foods = [
     const MockFood('Porridge with banana', '1 bowl', 'Breakfast', 412,
         protein: 14, carbs: 70, fat: 8),
-    const MockFood('Flat white', '1 regular', 'Breakfast', 110,
-        protein: 7, carbs: 9, fat: 5),
+    const MockFood('Oat flat white', '1 regular', 'Breakfast', 110,
+        protein: 2, carbs: 14, fat: 5),
   ];
 
   bool cardFlipped = false;
@@ -138,8 +138,8 @@ class TutorialState {
   final List<MockRecipe> recipes = [
     const MockRecipe('Overnight oats', 1, [
       MockFood('Oats', '50g', 'Recipe', 190, protein: 7, carbs: 32, fat: 4),
-      MockFood('Greek yoghurt', '100g', 'Recipe', 97,
-          protein: 9, carbs: 4, fat: 5),
+      MockFood('Coconut yoghurt', '100g', 'Recipe', 97,
+          protein: 1, carbs: 6, fat: 8),
     ]),
   ];
   String draftName = '';
@@ -651,7 +651,7 @@ class MockApp extends StatelessWidget {
                           s.typed.length > 30
                               ? '…${s.typed.substring(s.typed.length - 29)}'
                               : s.typed,
-                          s.listening ? 'Listening…' : 'e.g. 2 eggs, toast, coffee',
+                          s.listening ? 'Listening…' : 'e.g. 2 crumpets, 40g oats, 1 oat latte',
                           right: 44)),
                   Positioned(
                     right: 4,
@@ -852,7 +852,7 @@ class MockApp extends StatelessWidget {
             children: [
               Expanded(
                 child: _mark('coachInput',
-                    _fakeField(s.coachTyped, 'Ask anything, or "add 2 eggs"')),
+                    _fakeField(s.coachTyped, 'Ask anything, or "add a banana"')),
               ),
               const SizedBox(width: 8),
               _mark('coachSend', _roundSend()),
@@ -1017,13 +1017,13 @@ class MockApp extends StatelessWidget {
                       color: AppColors.muted,
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
-              _mark('recipeName', _fakeField(s.draftName, 'e.g. Chicken curry')),
+              _mark('recipeName', _fakeField(s.draftName, 'e.g. Chickpea curry')),
               const SizedBox(height: 12),
               Text('This recipe makes 2 servings',
                   style: TextStyle(color: AppColors.muted)),
               const SizedBox(height: 12),
               _mark('ingInput',
-                  _fakeField(s.draftTyped, 'e.g. 200g chicken, 1 onion')),
+                  _fakeField(s.draftTyped, 'e.g. 200g tofu, 1 onion')),
               const SizedBox(height: 10),
               for (final f in s.draftIngredients)
                 Container(
@@ -1624,12 +1624,12 @@ class MockApp extends StatelessWidget {
                 Text('Food 1 of 5',
                     style: TextStyle(fontSize: 12, color: AppColors.gray600)),
                 const Text('🍫', style: TextStyle(fontSize: 48)),
-                Text('Mars bar',
+                Text('Dark chocolate (70%)',
                     style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
                         color: AppColors.ink)),
-                Text('1 bar (51g)', style: TextStyle(color: AppColors.gray600)),
+                Text('40g', style: TextStyle(color: AppColors.gray600)),
               ],
             ),
           ),

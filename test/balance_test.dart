@@ -96,7 +96,7 @@ void main() {
     test('several foods in one go are all charged', () async {
       await FoodLog.logFoods(userId: uid, meal: 'Lunch', items: [
         {'name': 'Rice', 'calories': 200, 'protein': 4, 'carbs': 44, 'fat': 0.5},
-        {'name': 'Chicken', 'calories': 165, 'protein': 31, 'carbs': 0, 'fat': 3.6},
+        {'name': 'Seitan', 'calories': 165, 'protein': 31, 'carbs': 4, 'fat': 2},
       ]);
       final card = await w.card();
       expect(card['calories'], near(2000 - 365));
@@ -345,7 +345,7 @@ void main() {
     test('recipe ingredient rows never count as food eaten', () async {
       await w.db.collection('user_food').add({
         'user_id': uid,
-        'food_description': 'Mince (ingredient)',
+        'food_description': 'Soya mince (ingredient)',
         'food_calories': 800,
         'foodCategory': BalanceService.recipeCategory,
         'recipe_id': 'r1',

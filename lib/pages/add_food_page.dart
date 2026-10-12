@@ -175,15 +175,22 @@ class _AddFoodPageState extends State<AddFoodPage> {
       };
 
   void _addRecent(CardTransaction tx) {
-    setState(() {
-      _calculatedItems.add({
+    setState(() => _calculatedItems.add(_itemFromHistory(tx)));
+  }
+
+  /// A past food as an item, with exactly the numbers it was logged with.
+  /// [source] 'yours' when it's the person's own numbers for a food they
+  /// typed again (see [FoodHistory.ownNumbersFor]).
+  Map<String, dynamic> _itemFromHistory(CardTransaction tx,
+          {String source = 'recent'}) =>
+      {
         'name': tx.description,
         'calories': tx.calories,
         'protein': tx.protein,
         'carbs': tx.carbs,
         'fat': tx.fat,
         'portion': tx.portion,
-        'source': 'recent',
+        'source': source,
         'needs_review': false,
         'multiplier': 1.0,
         'base': {
@@ -192,9 +199,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
           'carbs': tx.carbs,
           'fat': tx.fat,
         },
-      });
-    });
-  }
+      };
 
   /// A suggestion from your history tapped while typing: added straight
   /// to the list with its exact numbers, and the half-typed name cleared.
@@ -310,6 +315,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
         // Estimates, and numbers the person typed in themselves.
         canEditCalories: item['source'] == 'ai' ||
             item['source'] == 'manual' ||
+            item['source'] == 'yours' ||
             item['needs_review'] == true ||
             item['edited'] == true,
       ),
@@ -410,6 +416,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         if (source == 'recent')
                           badge('From your history', AppColors.sky700,
                               Icons.history),
+                        if (source == 'yours')
+                          badge('Your numbers from before', AppColors.sky700,
+                              Icons.history),
                         if (source == 'barcode')
                           badge('Scanned', AppText.emerald700,
                               Icons.qr_code_2),
@@ -484,11 +493,11 @@ class _AddFoodPageState extends State<AddFoodPage> {
       'portion': '5 strawberries',
     },
     {
-      'name': '50g Lindt Excellence Dark Chocolate Bar',
-      'calories': 270.0,
-      'protein': 3.5,
-      'carbs': 27.5,
-      'fat': 18.0,
+      'name': '50g Lindt 90% Dark Chocolate',
+      'calories': 296.0,
+      'protein': 5.0,
+      'carbs': 7.0,
+      'fat': 27.5,
       'portion': '50g',
     },
   ];
@@ -521,6 +530,32 @@ class _AddFoodPageState extends State<AddFoodPage> {
         0.0, (total, item) => total + (item['fat'] as num).toDouble());
   }
 
+  /// "Tip: add how much…" under the list, only when something in it has no
+  /// amount ("pasta"), since that's when the lookup has to guess a portion.
+  List<Widget> _buildAmountTip() {
+    if (_tutorialMode) return const [];
+    final vague = _ingredients.where((i) => !VoiceText.hasAmount(i)).toList();
+    if (vague.isEmpty) return const [];
+    final more = vague.length > 1 ? ' and ${vague.length - 1} more' : '';
+    return [
+      const SizedBox(height: 8),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lightbulb_outline, size: 16, color: AppColors.gray600),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Tip: add how much (like 150g or 1 medium) to '
+              '"${vague.first}"$more for a closer count.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.gray600),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
   /// The ⓘ: a demo right here, or the Add food and voice tutorials.
   void _showHelp() {
     final canDemo = !_tutorialMode && !_saving && !_hasAnything;
@@ -547,7 +582,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
     final tutorialIngredients = [
       'Banana',
       '5 Strawberries',
-      '50g Lindt Excellence Dark Chocolate Bar'
+      '50g Lindt 90% Dark Chocolate'
     ];
     _controller.text = '';
 
@@ -634,9 +669,29 @@ class _AddFoodPageState extends State<AddFoodPage> {
     if (_calculating || _saving) return;
     _takeItemsFromInput(all: true);
     if (_ingredients.isEmpty) return;
-    final queries = List<String>.from(_ingredients);
+
+    // Foods they've set their own numbers for before go straight in with
+    // those numbers; only the rest are looked up.
+    final yours = <Map<String, dynamic>>[];
+    final queries = <String>[];
+    for (final q in _ingredients) {
+      final tx = FoodHistory.ownNumbersFor(_history.foods, q);
+      if (tx != null) {
+        yours.add({..._itemFromHistory(tx, source: 'yours'), 'name': q});
+      } else {
+        queries.add(q);
+      }
+    }
+    if (queries.isEmpty) {
+      setState(() {
+        _calculatedItems.addAll(yours);
+        _ingredients.clear();
+      });
+      return;
+    }
 
     setState(() {
+      _calculatedItems.addAll(yours);
       _calculating = true;
       _pending = [for (final q in queries) _PendingItem(q)];
       _ingredients.clear();
@@ -1505,16 +1560,17 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     textInputAction: TextInputAction.done,
                     decoration: InputDecoration(
                       labelText: 'What did you eat?',
-                      hintText: 'e.g. 2 eggs, 1 slice toast, 330ml coke',
+                      hintText:
+                          'e.g. 2 crumpets, 40g Tesco porridge oats, 330ml Coke Zero',
                       border: const OutlineInputBorder(),
-                      helperText:
-                          'Separate foods with commas, or press Enter after each',
+                      helperText: 'Add grams and brands for the most accurate '
+                          'count. Separate foods with commas.',
                       helperMaxLines: 2,
                       suffixIcon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Say it: "two eggs and toast" or "50g of oats
-                          // 200ml of milk" becomes one item each, ready to
+                          // Say it: "two crumpets and a banana" or "50g of oats
+                          // 200ml of oat milk" becomes one item each, ready to
                           // check (and fix or remove) before looking up.
                           VoiceButton(
                             controller: _controller,
@@ -1574,6 +1630,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         );
                       }).toList(),
                     ),
+                    ..._buildAmountTip(),
                     if (_firstFailed != null)
                       Align(
                         alignment: Alignment.centerLeft,

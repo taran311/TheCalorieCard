@@ -196,10 +196,10 @@ void main() {
           description: 'Crisps');
       await w.addEntry(
           at: DateTime(2026, 10, 6, 19), calories: 900, meal: 'Dinner',
-          description: 'Big Mac meal');
+          description: "McDonald's McPlant meal");
       await w.addEntry(
           at: DateTime(2026, 10, 3, 19), calories: 1200, meal: 'Dinner',
-          description: 'Kebab'); // last week
+          description: "Domino's vegan pizza"); // last week
 
       expect(await BudgetService.loadProgress(uid, BudgetSettings.empty),
           isEmpty);

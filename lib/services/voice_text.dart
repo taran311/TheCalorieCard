@@ -1,9 +1,9 @@
 /// Tidies what speech recognition hears into the shape the Add food box
 /// expects: one food per comma.
 ///
-/// People say "two eggs and a slice of toast and a flat white", so "and",
+/// People say "two crumpets and a banana and an oat latte", so "and",
 /// "then", "plus" and "also" between foods become commas, but dishes that
-/// have "and" in their name ("fish and chips", "salt and vinegar") are
+/// have "and" in their name ("rice and peas", "salt and vinegar") are
 /// left alone. Reading out a list without "and" ("50g of onions 50g of
 /// tomatoes 30g of cabbage") is split where each new amount starts.
 class VoiceText {
@@ -13,6 +13,7 @@ class VoiceText {
   static const keepTogether = [
     'fish and chips',
     'salt and vinegar',
+    'rice and peas',
     'cheese and onion',
     'mac and cheese',
     'macaroni and cheese',
@@ -51,7 +52,7 @@ class VoiceText {
       RegExp(r'\s*(?:,\s*)?\b(?:and then|and also|and|then|plus|also)\b\s*',
           caseSensitive: false);
 
-  /// "two eggs and toast then a coffee" → "two eggs, toast, a coffee".
+  /// "two crumpets and toast then a coffee" → "two crumpets, toast, a coffee".
   static String foodsFromSpeech(String spoken) {
     var text = spoken.trim();
     if (text.isEmpty) return text;
@@ -118,11 +119,23 @@ class VoiceText {
   /// Small words that belong to whatever's around them.
   static const _filler = {'of', 'a', 'an', 'the', 'x'};
 
-  /// "with 2 eggs" or "on a plate": an amount after these isn't a new food.
+  /// "with 2 crumpets" or "on a plate": an amount after these isn't a new food.
   static const _linkers = {
     'with', 'without', 'of', 'on', 'in', 'into', 'for', 'from', 'to',
     'over', 'under', 'like', 'per',
   };
+
+  /// Whether a typed or spoken food says how much: "150g pasta", "2 crumpets",
+  /// "a banana", "bowl of cereal". "pasta" on its own doesn't, so the
+  /// lookup has to guess the portion.
+  static bool hasAmount(String food) {
+    final t = food.toLowerCase().trim();
+    if (t.isEmpty || RegExp(r'\d').hasMatch(t)) return true;
+    final words = t.split(RegExp(r"[^a-z']+")).where((w) => w.isNotEmpty);
+    if (words.isEmpty) return true;
+    if (words.first == 'a' || words.first == 'an') return true;
+    return words.any((w) => _numberWords.contains(w) || _units.contains(w));
+  }
 
   static final _numberToken =
       RegExp(r'^\d+(?:[.,]\d+)?(?:g|kg|ml|l|cl|oz|lb|lbs)?$', caseSensitive: false);

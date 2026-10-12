@@ -18,6 +18,11 @@ class CardTransaction {
   /// Logged as a whole recipe (counts as home cooked).
   final bool isRecipe;
 
+  /// The numbers are the person's own: they set the calories themselves
+  /// (added by hand, or fixed an estimate), so typing the same food again
+  /// uses these rather than a fresh lookup.
+  final bool ownNumbers;
+
   const CardTransaction({
     required this.id,
     required this.description,
@@ -29,6 +34,7 @@ class CardTransaction {
     required this.carbs,
     required this.fat,
     this.isRecipe = false,
+    this.ownNumbers = false,
   });
 
   /// Its "where it went" category (see [SpendCategory]).
@@ -214,6 +220,9 @@ class StatementService {
               carbs: _num(data['food_carbs']) ?? 0,
               fat: _num(data['food_fat']) ?? 0,
               isRecipe: data['is_recipe'] == true,
+              ownNumbers: data['food_edited'] == true ||
+                  data['food_source'] == 'manual' ||
+                  data['food_source'] == 'yours',
             ),
           );
     }

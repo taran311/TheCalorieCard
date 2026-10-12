@@ -253,7 +253,7 @@ void main() {
         // Only two foods: skipped.
         DaySummary(d10, [
           tx('Apple', 'Snacks', 95, d10.add(const Duration(hours: 15))),
-          tx('Pizza', 'Dinner', 900, d10.add(const Duration(hours: 20))),
+          tx('Vegan pizza', 'Dinner', 900, d10.add(const Duration(hours: 20))),
         ]),
         // Today never counts.
         DaySummary(DateTime(2026, 10, 11), [

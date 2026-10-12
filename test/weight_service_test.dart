@@ -194,7 +194,7 @@ void main() {
     test('CSV has the food log and weigh-ins, safely quoted', () async {
       await world.addEntry(
           at: DateTime(2026, 10, 8, 9),
-          description: 'Toast, butter',
+          description: 'Toast, jam',
           meal: 'Breakfast',
           calories: 250.04);
       await world.addEntry(
@@ -208,7 +208,7 @@ void main() {
       final lines = csv.split('\n');
       expect(lines[0], 'Food log');
       expect(lines[1], 'date,meal,food,portion,kcal,protein_g,carbs_g,fat_g');
-      expect(lines[2], '2026-10-08,Breakfast,"Toast, butter",,250,10,10,2');
+      expect(lines[2], '2026-10-08,Breakfast,"Toast, jam",,250,10,10,2');
       expect(lines[3], "2026-10-09,Lunch,'=SUM(A1),,100,10,10,2");
       expect(csv, contains('Weigh-ins\ndate,weight_kg\n${world.today},80.50'));
     });

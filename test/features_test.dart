@@ -36,7 +36,7 @@ void main() {
 
   const pizza = [
     {
-      'name': 'Pepperoni pizza',
+      'name': 'Vegan pizza',
       'calories': 1800,
       'protein': 75,
       'carbs': 210,
@@ -636,18 +636,18 @@ void main() {
     test('foods land in sensible categories', () {
       SpendCategory c(String d) => SpendCategory.fromDescription(d);
       expect(c('Recipe: Chilli'), SpendCategory.homeCooked);
-      expect(c('Big Mac meal'), SpendCategory.takeaway);
-      expect(c("Nando's half chicken"), SpendCategory.takeaway);
+      expect(c("McDonald's McPlant meal"), SpendCategory.takeaway);
+      expect(c("Nando's sweet potato wrap"), SpendCategory.takeaway);
       expect(c('Oat latte'), SpendCategory.drinks);
-      expect(c('Chocolate milkshake'), SpendCategory.drinks);
+      expect(c('Chocolate oat milkshake'), SpendCategory.drinks);
       expect(c('Green tea'), SpendCategory.drinks);
-      expect(c('Rump steak'), SpendCategory.meals); // not "tea"
+      expect(c('Steamed rice'), SpendCategory.meals); // not "tea"
       expect(c('Kale salad'), SpendCategory.fruitVeg); // not "ale"
-      expect(c('Dairy Milk bar'), SpendCategory.snacks);
+      expect(c('Dark chocolate bar'), SpendCategory.snacks);
       expect(c('Banana'), SpendCategory.fruitVeg);
-      expect(c('Chicken and rice'), SpendCategory.meals);
+      expect(c('Tofu and rice'), SpendCategory.meals);
       expect(c('Watermelon'), SpendCategory.fruitVeg); // not "water"
-      expect(c('Ginger chicken'), SpendCategory.meals); // not "gin"
+      expect(c('Ginger tofu'), SpendCategory.meals); // not "gin"
       expect(c('Strawberries'), SpendCategory.fruitVeg);
       expect(c('Vegan burger'), SpendCategory.meals); // not "veg"
       expect(c('Pretzel'), SpendCategory.meals); // not "Pret"
@@ -656,7 +656,7 @@ void main() {
 
     test('breakdown adds up and sorts biggest first', () {
       final rows = SpendInsights.breakdown([
-        (description: 'Latte', isRecipe: false, calories: 150),
+        (description: 'Oat latte', isRecipe: false, calories: 150),
         (description: 'Coke', isRecipe: false, calories: 140),
         (description: 'Chilli', isRecipe: true, calories: 600),
       ]);
@@ -673,7 +673,7 @@ void main() {
           calories: 300, protein: 10);
       await w.addEntry(at: DateTime(2026, 10, 2, 8), description: 'oats',
           calories: 300, protein: 10);
-      await w.addEntry(at: DateTime(2026, 10, 2, 13), description: 'Big Mac',
+      await w.addEntry(at: DateTime(2026, 10, 2, 13), description: 'McPlant',
           calories: 550, protein: 25);
       await w.addEntry(at: DateTime(2026, 9, 30, 8), description: 'Oats',
           calories: 300); // last month

@@ -138,7 +138,7 @@ class _BrandPanel extends StatelessWidget {
               const SizedBox(height: 40),
               const _Benefit(
                 icon: Icons.auto_awesome,
-                text: 'Type "2 eggs and toast". We work out the numbers.',
+                text: 'Type "beans on toast". We work out the numbers.',
               ),
               const _Benefit(
                 icon: Icons.account_balance_wallet_outlined,

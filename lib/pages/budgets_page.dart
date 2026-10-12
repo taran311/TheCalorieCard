@@ -37,7 +37,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
   /// What counts in each category, in plain words.
   static const _examples = {
     SpendCategory.homeCooked: 'Recipes you log from Recipes',
-    SpendCategory.takeaway: "McDonald's, Greggs, kebabs, Domino's and the like",
+    SpendCategory.takeaway: "McDonald's, Greggs, Domino's, chippies and the like",
     SpendCategory.drinks: 'Coffees, fizzy drinks, juice and alcohol',
     SpendCategory.snacks: 'Crisps, chocolate, biscuits, cake and sweets',
     SpendCategory.fruitVeg: 'Fruit, salad and veg',

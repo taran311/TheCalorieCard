@@ -133,24 +133,24 @@ void main() {
     test('search: name contains, any case, grouped by day newest first',
         () async {
       await w.addEntry(
-          at: DateTime(2026, 9, 3, 13), calories: 508, description: 'Big Mac');
+          at: DateTime(2026, 9, 3, 13), calories: 508, description: 'McPlant');
       await w.addEntry(
           at: DateTime(2026, 10, 8, 19),
           calories: 600,
           meal: 'Dinner',
-          description: 'big mac meal');
+          description: 'mcplant meal');
       await w.addEntry(
           at: DateTime(2026, 10, 8, 12), calories: 300, description: 'Salad');
       // Older than a year: not searched.
       await w.addEntry(
-          at: DateTime(2025, 10, 1, 12), calories: 500, description: 'Big Mac');
+          at: DateTime(2025, 10, 1, 12), calories: 500, description: 'McPlant');
 
       final s = await StatementService.load(uid, days: 365, withLogs: false);
-      final found = s.search('  BIG mac ');
+      final found = s.search('  MCplant ');
 
       expect(found.map((d) => BalanceService.dateKey(d.day)),
           ['2026-10-08', '2026-09-03']);
-      expect(found.first.transactions.single.description, 'big mac meal');
+      expect(found.first.transactions.single.description, 'mcplant meal');
       expect(found.last.transactions.single.calories, 508);
       expect(found.last.transactions.single.category, 'Lunch');
       expect(s.search('pizza'), isEmpty);

@@ -5,28 +5,28 @@ import 'package:namer_app/services/coach_service.dart';
 import 'package:namer_app/ui/tutorials/tutorial_mock.dart';
 import 'package:namer_app/ui/tutorials/tutorial_player.dart';
 
-const _wrap = MockFood('Chicken wrap', '1 wrap', 'Lunch', 380,
-    protein: 24, carbs: 40, fat: 12);
+const _wrap = MockFood('Falafel wrap', '1 wrap', 'Lunch', 380,
+    protein: 14, carbs: 50, fat: 14);
 const _apple = MockFood('Apple', '1 medium', 'Lunch', 72,
     protein: 0.4, carbs: 19, fat: 0.2);
-const _eggs = MockFood('Scrambled eggs', '2 large', 'Breakfast', 156,
-    protein: 13, carbs: 1, fat: 10);
-const _toast = MockFood('Wholemeal toast with butter', '1 slice', 'Breakfast',
+const _tofu = MockFood('Scrambled tofu', '100g', 'Breakfast', 156,
+    protein: 14, carbs: 3, fat: 10);
+const _toast = MockFood('Wholemeal toast with vegan spread', '1 slice', 'Breakfast',
     128, protein: 4, carbs: 14, fat: 6);
-const _latte = MockFood('Latte', '1 regular', 'Lunch', 120,
-    protein: 8, carbs: 12, fat: 4);
-const _pizza = MockFood('Margherita pizza', '1/2 large', 'Dinner', 900,
+const _latte = MockFood('Oat latte', '1 regular', 'Lunch', 120,
+    protein: 3, carbs: 16, fat: 5);
+const _pizza = MockFood('Vegan margherita pizza', '1/2 large', 'Dinner', 900,
     protein: 36, carbs: 110, fat: 32);
 const _brownie = MockFood('Chocolate brownie', '1 slice', 'Dinner', 518,
     protein: 6, carbs: 62, fat: 28);
-const _curry = MockFood('Chicken curry with rice', '1 plate', 'Dinner', 920,
-    protein: 48, carbs: 105, fat: 30);
+const _curry = MockFood('Chickpea curry with rice', '1 plate', 'Dinner', 920,
+    protein: 28, carbs: 140, fat: 26);
 const _ingredients = [
-  MockFood('Chicken breast', '300g', 'Recipe', 330,
-      protein: 69, carbs: 0, fat: 6),
+  MockFood('Firm tofu', '230g', 'Recipe', 330,
+      protein: 38, carbs: 6, fat: 19),
   MockFood('Red pepper', '1', 'Recipe', 31, protein: 1, carbs: 6, fat: 0.3),
-  MockFood('Egg noodles', '150g', 'Recipe', 207,
-      protein: 7, carbs: 40, fat: 2),
+  MockFood('Rice noodles', '150g', 'Recipe', 207,
+      protein: 3, carbs: 46, fat: 1),
   MockFood('Soy sauce', '1 tbsp', 'Recipe', 9, protein: 1, carbs: 1, fat: 0),
 ];
 
@@ -68,11 +68,11 @@ final List<Tutorial> tutorials = [
       ),
       TStep(
         title: 'Type what you had',
-        body: "Write it how you'd say it. Commas split it into separate "
-            'foods.',
+        body: "Write it how you'd say it. Grams and brands make it more "
+            'accurate, and commas split it into separate foods.',
         target: 'input',
         act: TAct.type,
-        text: 'chicken wrap, apple',
+        text: '1 falafel wrap, 1 apple',
         onType: (s, t) => s.typed = t,
         focus: 'mainBtn',
       ),
@@ -166,11 +166,11 @@ final List<Tutorial> tutorials = [
       TStep(
         title: 'Say "and" between foods',
         body: 'Talk like you would to a friend, with "and" between each '
-            'food: "chicken wrap and an apple and a latte". Amounts work '
-            'too: "50g of oats and 200ml of milk".',
+            'food: "falafel wrap and an apple and an oat latte". Amounts '
+            'work too: "50g of oats and 200ml of oat milk".',
         target: 'input',
         act: TAct.type,
-        text: 'chicken wrap and an apple and a latte',
+        text: 'falafel wrap and an apple and an oat latte',
         onType: (s, t) => s.typed = t,
         focus: 'mic',
       ),
@@ -184,7 +184,7 @@ final List<Tutorial> tutorials = [
           s.typed = '';
           s.chips
             ..clear()
-            ..addAll(['chicken wrap', 'an apple', 'a latte']);
+            ..addAll(['falafel wrap', 'an apple', 'an oat latte']);
         },
         focus: 'chips',
       ),
@@ -253,7 +253,7 @@ final List<Tutorial> tutorials = [
         body: 'Tell Coach what you had, in your own words.',
         target: 'coachInput',
         act: TAct.type,
-        text: 'add 2 eggs and toast to breakfast',
+        text: 'add scrambled tofu and toast to breakfast',
         onType: (s, t) => s.coachTyped = t,
         focus: 'coachSend',
       ),
@@ -272,7 +272,7 @@ final List<Tutorial> tutorials = [
           s.coachThinking = false;
           s.coach.add(const MockMessage(
               false, "Here you go, tap Add and it's on your card. 🍳"));
-          s.proposal = [_eggs, _toast];
+          s.proposal = [_tofu, _toast];
           s.proposalMeal = 'Breakfast';
           s.proposalStatus = ProposalStatus.ready;
         },
@@ -297,7 +297,7 @@ final List<Tutorial> tutorials = [
       ),
       TStep(
         title: 'Back on your card',
-        body: 'Breakfast now has the eggs and toast, and your balance is up '
+        body: 'Breakfast now has the tofu and toast, and your balance is up '
             'to date.',
         target: 'nav_card',
         act: TAct.tap,
@@ -341,7 +341,7 @@ final List<Tutorial> tutorials = [
         body: "Call it whatever you'll recognise.",
         target: 'recipeName',
         act: TAct.type,
-        text: 'Chicken stir fry',
+        text: 'Tofu stir fry',
         onType: (s, t) => s.draftName = t,
       ),
       TStep(
@@ -349,7 +349,7 @@ final List<Tutorial> tutorials = [
         body: 'Type everything in the whole recipe, with amounts.',
         target: 'ingInput',
         act: TAct.type,
-        text: '300g chicken, 1 pepper, 150g noodles, 1 tbsp soy sauce',
+        text: '230g tofu, 1 pepper, 150g noodles, 1 tbsp soy sauce',
         onType: (s, t) => s.draftTyped = t,
         focus: 'recipeMain',
       ),
@@ -378,7 +378,7 @@ final List<Tutorial> tutorials = [
           s.toast = 'Saved to My recipes';
         },
         then: (s) => s.toast = null,
-        focus: 'recipe_Chicken stir fry',
+        focus: 'recipe_Tofu stir fry',
       ),
       TStep(
         title: 'Back to your card',
@@ -407,7 +407,7 @@ final List<Tutorial> tutorials = [
         apply: (s) {
           s.showPicker = false;
           s.foods.add(s.recipes.last.serving('Dinner'));
-          s.toast = 'Added Chicken stir fry to Dinner';
+          s.toast = 'Added Tofu stir fry to Dinner';
         },
         then: (s) => s.toast = null,
         focus: 'section_Dinner',
@@ -586,8 +586,8 @@ final List<Tutorial> tutorials = [
       ),
       TStep(
         title: 'Make your guess',
-        body: 'You both get the same 5 foods. How many calories in a Mars '
-            'bar?',
+        body: 'You both get the same 5 foods. How many calories in 40g of '
+            'dark chocolate?',
         target: 'gameGuess',
         act: TAct.type,
         text: '250',
@@ -693,7 +693,7 @@ final List<Tutorial> tutorials = [
             false,
             "That's okay, one day never undoes your progress. 💜 "
             'Try about ${plan.perDay} kcal less a day ${plan.when}: an '
-            'Americano instead of a latte, or fruit instead of biscuits. '
+            'Americano instead of an oat latte, or fruit instead of biscuits. '
             'Or simply get back to normal tomorrow.',
           ));
         },

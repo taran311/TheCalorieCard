@@ -76,11 +76,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
       'portion': '1 banana',
     },
     {
-      'name': '20g honey',
-      'calories': 64.0,
-      'protein': 0.1,
-      'carbs': 17.3,
-      'fat': 0.0,
+      'name': '20g maple syrup',
+      'calories': 52.0,
+      'protein': 0.0,
+      'carbs': 13.4,
+      'fat': 0.1,
       'portion': '20g',
     },
   ];
@@ -237,7 +237,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       '100g oats',
       '200ml almond milk',
       '1 banana',
-      '20g honey'
+      '20g maple syrup'
     ];
     if (!mounted) return;
     _freeTextController.text = '';
@@ -414,7 +414,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                       onChanged: (_) => setState(() {}),
                       decoration: const InputDecoration(
                         labelText: 'Recipe name',
-                        hintText: 'e.g. Chicken curry',
+                        hintText: 'e.g. Chickpea curry',
                         border: OutlineInputBorder(),
                       ),
                       validator: (v) => (v == null || v.trim().isEmpty)
@@ -682,7 +682,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
   Widget _buildSelectedIngredients() {
     if (_ingredients.isEmpty) {
       return Text(
-        'No ingredients yet. Type them below, e.g. "200g chicken, 1 onion".',
+        'No ingredients yet. Type them below, e.g. "200g tofu, 1 onion".',
         style: TextStyle(color: AppColors.muted),
       );
     }
@@ -847,7 +847,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
     });
   }
 
-  /// "200g chicken breast" changed to 300 g reads "300g chicken breast",
+  /// "200g firm tofu" changed to 300 g reads "300g firm tofu",
   /// so the name never contradicts the amount. Only when the name starts
   /// with the old amount.
   String _renameForAmount(String name, String oldPortion, String newAmount) {
@@ -1157,7 +1157,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
           textInputAction: TextInputAction.done,
           decoration: InputDecoration(
             labelText: 'Add ingredients',
-            hintText: 'e.g. 200g chicken breast, 1 onion, 100g rice',
+            hintText: 'e.g. 200g firm tofu, 1 onion, 100g rice',
             border: const OutlineInputBorder(),
             helperText:
                 'Separate with commas or press Enter. Pasting a list works too.',

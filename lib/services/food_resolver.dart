@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:namer_app/services/proxy_client.dart';
 
-/// Result of turning a line of text ("2 eggs") into nutrition.
+/// Result of turning a line of text ("2 crumpets") into nutrition.
 class ResolvedFood {
   final String query;
   final String name;
@@ -197,7 +197,7 @@ class FoodResolver {
   }
 
   /// Asks the AI what's in a meal photo. Returns food descriptions with
-  /// portions ("150g grilled chicken breast") ready for [resolveAll].
+  /// portions ("150g grilled tofu") ready for [resolveAll].
   static Future<List<String>> foodsInPhoto(
       List<int> bytes, String mimeType) async {
     final response = await ProxyClient.post('/food/photo', {

@@ -21,10 +21,10 @@ void main() {
 
   test('parses actions and tidies the meal name', () {
     final a = CoachAction.fromJson(
-        {'type': 'log_food', 'meal': 'lunch', 'items': ['2 eggs', ' ']});
+        {'type': 'log_food', 'meal': 'lunch', 'items': ['2 crumpets', ' ']});
     expect(a, isNotNull);
     expect(a!.meal, 'Lunch');
-    expect(a.strings('items'), ['2 eggs']);
+    expect(a.strings('items'), ['2 crumpets']);
     expect(CoachAction.fromJson({'type': 'hack_the_planet'}), isNull);
     expect(CoachAction.fromJson('nope'), isNull);
     // No meal (or not a meal): the one for the time of day. The test clock
@@ -96,7 +96,7 @@ void main() {
       servingSize: 'Per 2 Servings',
       ingredients: const [
         RecipeIngredient(
-          name: 'Mince',
+          name: 'Soya mince',
           macros: Macros(calories: 800, protein: 80, carbs: 0, fat: 50),
         ),
       ],

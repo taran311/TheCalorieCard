@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 
-/// Something you have every day (a morning latte), queued each morning for
+/// Something you have every day (a morning oat latte), queued each morning for
 /// a one-tap confirm. Stored in `direct_debits`.
 class DirectDebit {
   final String id;

@@ -13,9 +13,11 @@ CardTransaction tx(
   String meal = 'Breakfast',
   required DateTime at,
   double calories = 100,
+  bool ownNumbers = false,
 }) =>
     CardTransaction(
       id: '$description-$at',
+      ownNumbers: ownNumbers,
       description: description,
       portion: portion,
       category: meal,
@@ -29,26 +31,26 @@ CardTransaction tx(
 void main() {
   group('splitItems', () {
     test('commas, semicolons and new lines separate foods', () {
-      expect(FoodResolver.splitItems('2 eggs, toast;coffee\n banana '),
-          ['2 eggs', 'toast', 'coffee', 'banana']);
+      expect(FoodResolver.splitItems('2 crumpets, toast;coffee\n banana '),
+          ['2 crumpets', 'toast', 'coffee', 'banana']);
       expect(FoodResolver.splitItems(' , ;\n'), isEmpty);
     });
 
     test('a comma between two digits is a decimal comma', () {
-      expect(FoodResolver.splitItems('1,5 kg potatoes, 2 eggs'),
-          ['1,5 kg potatoes', '2 eggs']);
+      expect(FoodResolver.splitItems('1,5 kg potatoes, 2 crumpets'),
+          ['1,5 kg potatoes', '2 crumpets']);
       expect(FoodResolver.splitItems('rice 1,5'), ['rice 1,5']);
       // After a number but followed by a space or letter: a separator.
-      expect(FoodResolver.splitItems('eggs 2, toast'), ['eggs 2', 'toast']);
-      expect(FoodResolver.splitItems('eggs 2,toast'), ['eggs 2', 'toast']);
-      expect(FoodResolver.splitItems('eggs,2 toast'), ['eggs', '2 toast']);
+      expect(FoodResolver.splitItems('crumpets 2, toast'), ['crumpets 2', 'toast']);
+      expect(FoodResolver.splitItems('crumpets 2,toast'), ['crumpets 2', 'toast']);
+      expect(FoodResolver.splitItems('crumpets,2 toast'), ['crumpets', '2 toast']);
     });
   });
 
   group('takeFinished (while typing)', () {
     test('keeps the food still being typed exactly as typed', () {
-      final t = FoodResolver.takeFinished('2 eggs, toa');
-      expect(t.done, ['2 eggs']);
+      final t = FoodResolver.takeFinished('2 crumpets, toa');
+      expect(t.done, ['2 crumpets']);
       expect(t.rest, 'toa');
       final none = FoodResolver.takeFinished('banana');
       expect(none.done, isEmpty);
@@ -123,6 +125,22 @@ void main() {
           reason: 'needs two letters');
       expect(FoodHistory.search(foods, 'oa'), hasLength(1));
       expect(FoodHistory.search(foods, 'pizza'), isEmpty);
+    });
+
+    test('your own numbers for a food typed again: same name, latest', () {
+      final mine = [
+        tx('My protein shake', at: day, calories: 180, ownNumbers: true),
+        tx('my  protein shake ',
+            at: day.add(const Duration(days: 1)),
+            calories: 210,
+            ownNumbers: true),
+        // Looked up, not set by them: not theirs to reuse.
+        tx('2 crumpets', at: day, calories: 150),
+      ];
+      expect(FoodHistory.ownNumbersFor(mine, 'MY PROTEIN SHAKE')?.calories,
+          210);
+      expect(FoodHistory.ownNumbersFor(mine, '2 crumpets'), isNull);
+      expect(FoodHistory.ownNumbersFor(mine, 'protein shake'), isNull);
     });
   });
 

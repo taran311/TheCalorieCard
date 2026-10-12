@@ -13,7 +13,7 @@ class VoiceButton extends StatefulWidget {
   final TextEditingController controller;
 
   /// Tidies the final words (e.g. [VoiceText.foodsFromSpeech] turns
-  /// "eggs and toast" into "eggs, toast"). Interim words show as heard.
+  /// "beans and toast" into "beans, toast"). Interim words show as heard.
   final String Function(String spoken)? tidy;
 
   /// Put between what was already typed and what's said (", " for foods).

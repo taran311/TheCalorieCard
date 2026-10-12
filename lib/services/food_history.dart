@@ -86,4 +86,20 @@ class FoodHistory {
     }
     return out;
   }
+
+  /// The person's own numbers for exactly this food, if they've set them
+  /// before ("my protein shake" fixed to 210 kcal): the latest such entry
+  /// with the same name, ignoring case and spacing. Null otherwise.
+  static CardTransaction? ownNumbersFor(
+      List<CardTransaction> foods, String query) {
+    String norm(String s) => s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    final q = norm(query);
+    if (q.isEmpty) return null;
+    CardTransaction? best;
+    for (final tx in foods) {
+      if (!tx.ownNumbers || tx.isRecipe || norm(tx.description) != q) continue;
+      if (best == null || tx.time.isAfter(best.time)) best = tx;
+    }
+    return best;
+  }
 }

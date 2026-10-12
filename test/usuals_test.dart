@@ -130,12 +130,12 @@ void main() {
           uid: TestWorld.otherUid,
           at: now.subtract(const Duration(days: 1)),
           meal: 'Breakfast',
-          description: 'Eggs');
+          description: 'Crumpets');
       await w.addEntry(
           uid: TestWorld.otherUid,
           at: now.subtract(const Duration(days: 2)),
           meal: 'Breakfast',
-          description: 'Eggs');
+          description: 'Crumpets');
 
       final usuals = await Usuals.load(TestWorld.uid, 'Breakfast');
       expect(usuals.map((u) => u.name), ['Porridge']);

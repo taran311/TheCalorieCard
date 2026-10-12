@@ -70,7 +70,7 @@ class _StatementSearchPageState extends State<StatementSearchPage> {
     if (q.isEmpty) {
       return _message(
         'Search everything you\'ve logged in the last 12 months, '
-        'e.g. "pizza" or "latte".',
+        'e.g. "toast" or "oat latte".',
         icon: Icons.search,
       );
     }
@@ -206,7 +206,7 @@ class _StatementSearchPageState extends State<StatementSearchPage> {
   }
 }
 
-/// "Big Mac · 508 kcal · Lunch · Tue 3 Sep".
+/// "Falafel wrap · 380 kcal · Lunch · Tue 3 Sep".
 class _ResultTile extends StatelessWidget {
   final CardTransaction tx;
   final VoidCallback onTap;

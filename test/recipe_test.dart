@@ -13,7 +13,7 @@ const uid = TestWorld.uid;
 Matcher near(num value) => closeTo(value, 0.0001);
 
 const mince = RecipeIngredient(
-  name: 'Beef mince',
+  name: 'Soya mince',
   macros: Macros(calories: 500, protein: 40, carbs: 0, fat: 35),
   portion: '200 g',
 );

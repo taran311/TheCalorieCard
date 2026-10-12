@@ -15,7 +15,7 @@ AchievementDay day(
   double protein = 100,
   double carbs = 150,
   double fat = 50,
-  List<String> foods = const ['Chicken and rice'],
+  List<String> foods = const ['Tofu and rice'],
   String meal = 'Lunch',
 }) =>
     AchievementDay(
@@ -153,7 +153,7 @@ void main() {
           'Carrot sticks',
           'Kale salad',
           'Strawberries',
-          'Chicken',
+          'Tofu',
         ]),
       ]);
       expect(p['five_a_day'], 5);
@@ -163,13 +163,13 @@ void main() {
       final p = progressOf([
         day(DateTime(2026, 10, 1), foods: const ['Porridge'], meal: 'Brekkie'),
         day(DateTime(2026, 10, 2), foods: const ['Recipe: Chilli']),
-        day(DateTime(2026, 10, 3), foods: const ['Big Mac meal']),
+        day(DateTime(2026, 10, 3), foods: const ["McDonald's McPlant meal"]),
         day(DateTime(2026, 10, 4), foods: const ['Recipe: Chilli', 'Apple']),
       ]);
       expect(p['breakfast_club'], 1);
       expect(p['home_chef'], 2);
-      expect(p['takeaway_free'], 2); // 1st-2nd, then 4th after the Big Mac
-      expect(p['variety'], 4); // porridge, chilli, big mac, apple
+      expect(p['takeaway_free'], 2); // 1st-2nd, then 4th after the McPlant
+      expect(p['variety'], 4); // porridge, chilli, mcplant, apple
     });
   });
 
@@ -227,7 +227,7 @@ void main() {
             'fats_goal': 60,
           },
           'food_entries': [
-            {'food_description': 'Chicken and rice', 'foodCategory': 'Lunch'}
+            {'food_description': 'Tofu and rice', 'foodCategory': 'Lunch'}
           ],
         });
 

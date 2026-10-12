@@ -32,7 +32,7 @@ void main() {
     }
     expect(s.left, start - 452);
     expect(s.foodsIn('Lunch').map((f) => f.name),
-        containsAll(['Chicken wrap', 'Apple']));
+        containsAll(['Falafel wrap', 'Apple']));
     for (final step in t.steps.skip(6)) {
       step.complete(s);
     }
@@ -47,7 +47,7 @@ void main() {
       step.complete(s);
     }
     expect(s.listening, isFalse);
-    expect(s.chips, ['chicken wrap', 'an apple', 'a latte']);
+    expect(s.chips, ['falafel wrap', 'an apple', 'an oat latte']);
     for (final step in t.steps.skip(4)) {
       step.complete(s);
     }
