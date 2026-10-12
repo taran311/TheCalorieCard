@@ -1,0 +1,61 @@
+// "Spread it over the week": going over one day takes a little off the
+// next few days' cards, gently and only when asked.
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/even_out.dart';
+
+import 'test_helpers.dart';
+
+void main() {
+  late TestWorld w;
+
+  setUp(() async {
+    w = TestWorld()..install(); // Friday 9 Oct 2026, 12:00
+    await w.addProfile();
+  });
+
+  tearDown(TestWorld.uninstall);
+
+  test('300 over on a Friday: 150 less on Saturday and Sunday', () async {
+    final plan =
+        await EvenOut.start(TestWorld.uid, overBy: 300, goal: 2000);
+    expect(plan, isNotNull);
+    expect(plan!.perDay, 150);
+    expect(plan.from, '2026-10-10');
+    expect(plan.until, '2026-10-11');
+    expect(plan.days, 2);
+
+    // Today's card isn't touched.
+    expect((await w.card())['calories'], 2000);
+
+    // Saturday starts lower.
+    w.now = DateTime(2026, 10, 10, 8);
+    await BalanceService.ensureDailyReset(TestWorld.uid);
+    expect((await w.card())['calories'], 1850);
+
+    // Monday is back to normal.
+    w.now = DateTime(2026, 10, 12, 8);
+    await BalanceService.ensureDailyReset(TestWorld.uid);
+    expect((await w.card())['calories'], 2000);
+  });
+
+  test('stopping gives today back', () async {
+    await EvenOut.start(TestWorld.uid, overBy: 300, goal: 2000);
+    w.now = DateTime(2026, 10, 10, 8);
+    await BalanceService.ensureDailyReset(TestWorld.uid);
+    expect(await EvenOut.stop(TestWorld.uid), 150);
+    expect((await w.card())['calories'], 2000);
+    final doc = await BalanceService.userDataDoc(TestWorld.uid);
+    expect(EvenOutPlan.fromData(doc!.data()), isNull);
+  });
+
+  test('gentle: at most 10% of the goal and never below 1,200', () {
+    final friday = DateTime(2026, 10, 9);
+    // 1,000 over across 2 days would be 500 a day: capped at 200.
+    expect(EvenOut.perDayFor(1000, 2000, friday), 200);
+    // A 1,300 budget can only go down to 1,200.
+    expect(EvenOut.perDayFor(1000, 1300, friday), 100);
+    expect(EvenOut.perDayFor(500, 1200, friday), 0);
+  });
+}

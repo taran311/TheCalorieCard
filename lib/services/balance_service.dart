@@ -319,11 +319,24 @@ class BalanceService {
     );
   }
 
+  /// "Spread it over the week" (`even_out` on user_data, see EvenOut):
+  /// kcal taken off today's card while a plan covers today, otherwise 0.
+  static double evenOutToday(Map<String, dynamic> data) {
+    final e = data['even_out'];
+    if (e is! Map) return 0;
+    final today = dateKey(now());
+    final from = '${e['from'] ?? ''}';
+    final until = '${e['until'] ?? ''}';
+    if (from.isEmpty || until.isEmpty) return 0;
+    if (today.compareTo(from) < 0 || today.compareTo(until) > 0) return 0;
+    return (number(e['per_day']) ?? 0).clamp(0, 200).toDouble();
+  }
+
   static Map<String, dynamic> _balanceFields(Macros goals, Macros eaten,
-      {double potTopUp = 0}) {
+      {double potTopUp = 0, double evenOut = 0}) {
     final left = goals - eaten;
     return {
-      'calories': left.calories + potTopUp,
+      'calories': left.calories + potTopUp - evenOut,
       'protein_balance': left.protein,
       'carbs_balance': left.carbs,
       'fats_balance': left.fat,
@@ -362,7 +375,8 @@ class BalanceService {
       }
       tx.update(doc.reference, {
         ..._balanceFields(goals, eaten,
-            potTopUp: isNewDay ? 0 : _potSpentToday(data)),
+            potTopUp: isNewDay ? 0 : _potSpentToday(data),
+            evenOut: evenOutToday(data)),
         if (pot != null) ...pot,
       });
       return true;
@@ -652,7 +666,8 @@ class BalanceService {
       'protein_goal': goals.protein,
       'carbs_goal': goals.carbs,
       'fats_goal': goals.fat,
-      ..._balanceFields(goals, eaten, potTopUp: _potSpentToday(data)),
+      ..._balanceFields(goals, eaten,
+          potTopUp: _potSpentToday(data), evenOut: evenOutToday(data)),
     });
   }
 

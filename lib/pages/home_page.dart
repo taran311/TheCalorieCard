@@ -14,6 +14,7 @@ import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/card_design_service.dart';
+import 'package:namer_app/services/even_out.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/friends_service.dart';
@@ -402,6 +403,10 @@ class _HomePageState extends State<HomePage>
 
   /// Today's live balance, as the card loaded it (null until it has).
   int? _liveBalance;
+
+  /// "Spread it over the week" (EvenOut): the plan, if one is set.
+  late final Stream<EvenOutPlan?> _evenOut = EvenOut.watch(_activeUserId);
+  bool _evenOutBusy = false;
 
   /// Foods swiped away whose Undo snackbar is still showing. They're hidden
   /// now and only deleted once the snackbar closes without Undo.
@@ -1012,6 +1017,128 @@ class _HomePageState extends State<HomePage>
     try {
       await LeaderboardService.refreshMine(_activeUserId);
     } catch (_) {}
+  }
+
+  /// "Spread it over the week": the next few days start a little lower.
+  Future<void> _spreadOverWeek(int overBy) async {
+    if (_evenOutBusy) return;
+    setState(() => _evenOutBusy = true);
+    try {
+      final plan = await EvenOut.start(_activeUserId,
+          overBy: overBy, goal: _goalsForSelectedDay.calories);
+      if (plan != null) {
+        _snack('Done. Your next ${plan.days} '
+            'day${plan.days == 1 ? '' : 's'} start ${plan.perDay} kcal lower. '
+            'Stop any time.');
+      }
+    } catch (_) {
+      _snack("Couldn't set that up. Please try again.");
+    } finally {
+      if (mounted) setState(() => _evenOutBusy = false);
+    }
+  }
+
+  Future<void> _stopEvenOut() async {
+    if (_evenOutBusy) return;
+    setState(() => _evenOutBusy = true);
+    try {
+      final back = await EvenOut.stop(_activeUserId);
+      if (back > 0 && mounted) await _refreshAfterChange();
+      _snack(back > 0
+          ? "Stopped. Today's $back kcal is back on your card."
+          : 'Stopped evening out.');
+    } catch (_) {
+      _snack("Couldn't stop it. Please try again.");
+    } finally {
+      if (mounted) setState(() => _evenOutBusy = false);
+    }
+  }
+
+  /// Under the "you're over" note: the button, or the plan just set.
+  Widget _evenOutFooter(int overBy) {
+    return StreamBuilder<EvenOutPlan?>(
+      stream: _evenOut,
+      builder: (context, snap) {
+        final plan = snap.data;
+        final now = BalanceService.now();
+        final today = BalanceService.dateKey(now);
+        if (plan != null && plan.setOn == today) {
+          return Row(
+            children: [
+              Icon(Icons.check_circle, size: 18, color: AppText.emerald600),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Spreading it: ${plan.perDay} kcal less a day for '
+                  '${plan.days} day${plan.days == 1 ? '' : 's'}, from '
+                  'tomorrow.',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.gray700),
+                ),
+              ),
+              TextButton(
+                onPressed: _evenOutBusy ? null : _stopEvenOut,
+                child: const Text('Undo'),
+              ),
+            ],
+          );
+        }
+        final goal = _goalsForSelectedDay.calories;
+        if (EvenOut.perDayFor(overBy, goal, now) <= 0) {
+          return const SizedBox.shrink();
+        }
+        return Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton.icon(
+            onPressed: _evenOutBusy ? null : () => _spreadOverWeek(overBy),
+            icon: const Icon(Icons.calendar_view_week_outlined, size: 18),
+            label: const Text('Spread it over the week'),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Under the spent line on days a plan covers: "Evening out: −80 kcal
+  /// today · 3 more days · Stop".
+  Widget _evenOutLine() {
+    return StreamBuilder<EvenOutPlan?>(
+      stream: _evenOut,
+      builder: (context, snap) {
+        final plan = snap.data;
+        final today = BalanceService.dateKey(BalanceService.now());
+        if (plan == null || !plan.activeOn(today)) {
+          return const SizedBox.shrink();
+        }
+        final more = plan.daysAfter(today);
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.autorenew, size: 15, color: AppColors.muted),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  'Evening out: −${plan.perDay} kcal today'
+                  '${more > 0 ? ' · $more more day${more == 1 ? '' : 's'}' : ' · last day'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                ),
+              ),
+              TextButton(
+                onPressed: _evenOutBusy ? null : _stopEvenOut,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: const Text('Stop'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _snack(String text) {
@@ -2679,6 +2806,7 @@ class _HomePageState extends State<HomePage>
                         padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                         child: spentLine,
                       ),
+                    if (_isOwnCard && _isSelectedDateToday) _evenOutLine(),
                     // What you've eaten of each macro (the card shows what's
                     // left). Wide screens have the Today panel instead.
                     if (spentLine != null &&
@@ -2735,15 +2863,16 @@ class _HomePageState extends State<HomePage>
                           overBy: overBy,
                           goal: _goalsForSelectedDay.calories,
                           today: BalanceService.now(),
+                          footer: _evenOutFooter(overBy),
                           onAsk: (question) {
                             if (!Premium.isPremium) {
                               showPremiumSheet(
                                 context,
-                                title: '"Even it out" plans are Premium',
-                                message: 'Coach spreads what you went over '
-                                    'across the rest of the week, a little '
-                                    'each day, so one big day never knocks '
-                                    'you off track.',
+                                title: 'Coach\'s swap ideas are Premium',
+                                message: 'Coach suggests easy swaps for the '
+                                    'next few days, so one big day never '
+                                    'knocks you off track. "Spread it over '
+                                    'the week" is free for everyone.',
                               );
                               return;
                             }

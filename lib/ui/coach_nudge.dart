@@ -108,17 +108,21 @@ class CoachNudge extends StatelessWidget {
   /// know about pages).
   final void Function(String question) onAsk;
 
+  /// Shown under the card (the "Spread it over the week" controls).
+  final Widget? footer;
+
   const CoachNudge({
     super.key,
     required this.overBy,
     required this.goal,
     required this.today,
     required this.onAsk,
+    this.footer,
   });
 
   @override
   Widget build(BuildContext context) {
-    return CoachNudgeCard(
+    final card = CoachNudgeCard(
       overBy: overBy,
       goal: goal,
       today: today,
@@ -127,6 +131,12 @@ class CoachNudge extends StatelessWidget {
         goal: goal,
         today: today,
       ).question),
+    );
+    final extra = footer;
+    if (extra == null) return card;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [card, const SizedBox(height: 8), extra],
     );
   }
 }

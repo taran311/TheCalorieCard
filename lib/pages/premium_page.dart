@@ -407,7 +407,7 @@ class _Comparison extends StatelessWidget {
     ('Calorie Coach', '${PremiumPrices.freeCoachPerDay} a day', 'Unlimited'),
     ('Coach adds and removes food for you', '–', '✓'),
     ('Photo logging', '–', '✓'),
-    ('"Even it out" plans when you go over', '–', '✓'),
+    ('"Even it out" swap ideas from Coach', '–', '✓'),
     ('Aurora card design (paid plans)', '–', '✓'),
     ('Wrapped for every past month', 'Last month', 'All'),
   ];
