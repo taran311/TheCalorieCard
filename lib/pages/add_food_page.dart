@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:namer_app/ui/voice_button.dart';
 import 'package:namer_app/services/voice_text.dart';
 import 'package:provider/provider.dart';
@@ -518,6 +519,17 @@ class _AddFoodPageState extends State<AddFoodPage> {
   double get _totalFat {
     return _calculatedItems.fold(
         0.0, (total, item) => total + (item['fat'] as num).toDouble());
+  }
+
+  /// The ⓘ: a demo right here, or the Add food and voice tutorials.
+  void _showHelp() {
+    final canDemo = !_tutorialMode && !_saving && !_hasAnything;
+    showScreenHelp(
+      context,
+      tutorialIds: const ['add_food', 'voice'],
+      onDemo: canDemo ? _runTutorial : null,
+      demoUnavailable: canDemo ? null : 'Clear your list first to see the demo here',
+    );
   }
 
   Future<void> _runTutorial() async {
@@ -1396,21 +1408,38 @@ class _AddFoodPageState extends State<AddFoodPage> {
   @override
   Widget build(BuildContext context) {
     final meal = Provider.of<CategoryService>(context).selectedCategory;
-    // The demo clears the page, so it's only offered when there's nothing
-    // to lose.
-    final canDemo = !_tutorialMode && !_saving && !_hasAnything;
     return Scaffold(
       appBar: AppBar(
-        title: Text('Add to $meal'),
+        // Tap to switch meal without leaving ("oh, this was dinner").
+        title: PopupMenuButton<String>(
+          tooltip: 'Change meal',
+          initialValue: meal,
+          enabled: !_tutorialMode && !_saving,
+          onSelected: (m) => Provider.of<CategoryService>(context, listen: false)
+              .setSelectedCategory(m),
+          itemBuilder: (_) => [
+            for (final m in FoodLog.meals)
+              CheckedPopupMenuItem<String>(
+                value: m,
+                checked: m == meal,
+                child: Text(m),
+              ),
+          ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text('Add to $meal', overflow: TextOverflow.ellipsis),
+              ),
+              const Icon(Icons.arrow_drop_down),
+            ],
+          ),
+        ),
         actions: [
-          Tooltip(
-            message: canDemo || _tutorialMode
-                ? 'Show me how'
-                : 'Show me how (clear your list first)',
-            child: IconButton(
-              onPressed: canDemo ? _runTutorial : null,
-              icon: const Icon(Icons.help_outline),
-            ),
+          IconButton(
+            tooltip: 'How this works',
+            onPressed: _tutorialMode ? null : _showHelp,
+            icon: const Icon(Icons.help_outline),
           ),
         ],
       ),
@@ -1455,6 +1484,12 @@ class _AddFoodPageState extends State<AddFoodPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  FirstVisitHint(
+                    screen: 'add_food',
+                    label: 'adding food',
+                    tutorialIds: const ['add_food', 'voice'],
+                    onShow: _showHelp,
+                  ),
                   Text(
                     "Type everything you had. We'll work out the calories.",
                     style: TextStyle(

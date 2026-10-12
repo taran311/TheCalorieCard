@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:namer_app/ui/voice_button.dart';
 import 'package:namer_app/services/voice_text.dart';
 import 'package:namer_app/services/food_resolver.dart';
@@ -167,6 +168,17 @@ class _AddRecipePageState extends State<AddRecipePage> {
     super.dispose();
   }
 
+  /// The ⓘ: a demo right here, or the recipe tutorial.
+  void _showHelp() {
+    final canDemo = !_tutorialMode && !_saving && !_hasAnyInput;
+    showScreenHelp(
+      context,
+      tutorialIds: const ['recipe'],
+      onDemo: canDemo ? _runTutorial : null,
+      demoUnavailable: canDemo ? null : 'Clear the form first to see the demo here',
+    );
+  }
+
   Future<void> _runTutorial() async {
     // The demo clears the form, so it only runs on an empty one (the
     // button is disabled otherwise).
@@ -319,7 +331,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
   @override
   Widget build(BuildContext context) {
-    final canDemo = !_tutorialMode && !_saving && !_hasAnyInput;
     // Back always comes through here, so nothing unsaved is lost by
     // accident (the check happens at the moment they try to leave).
     return PopScope(
@@ -333,14 +344,10 @@ class _AddRecipePageState extends State<AddRecipePage> {
         title: Text(widget.recipeId != null ? 'Edit recipe' : 'New recipe'),
         actions: [
           if (widget.recipeId == null)
-            Tooltip(
-              message: canDemo || _tutorialMode
-                  ? 'Show me how'
-                  : 'Show me how (clear the form first)',
-              child: IconButton(
-                onPressed: canDemo ? _runTutorial : null,
-                icon: const Icon(Icons.help_outline),
-              ),
+            IconButton(
+              tooltip: 'How this works',
+              onPressed: _tutorialMode ? null : _showHelp,
+              icon: const Icon(Icons.help_outline),
             ),
         ],
       ),
@@ -389,6 +396,13 @@ class _AddRecipePageState extends State<AddRecipePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.recipeId == null)
+                      FirstVisitHint(
+                        screen: 'new_recipe',
+                        label: 'recipes',
+                        tutorialIds: const ['recipe'],
+                        onShow: _showHelp,
+                      ),
                     Container(
                       decoration: AppDecor.card,
                       padding: const EdgeInsets.all(16),

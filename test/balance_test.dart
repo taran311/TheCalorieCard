@@ -131,6 +131,21 @@ void main() {
       expect((await w.card())['calories'], near(2000));
     });
 
+    test('undo puts the same food back and charges the card again', () async {
+      await logBanana();
+      final before = (await w.card())['calories'];
+      final id = (await w.foodRows()).single['id'] as String;
+      final removed = await FoodLog.removeForUndo(id, userId: uid);
+      expect(removed, isNotNull);
+      expect(await w.foodRows(), isEmpty);
+      expect((await w.card())['calories'], near(2000));
+
+      await FoodLog.restore(id, removed!, userId: uid);
+      final rows = await w.foodRows();
+      expect(rows.single['id'], id);
+      expect((await w.card())['calories'], near(before as num));
+    });
+
     test("you can't remove someone else's food", () async {
       final id = await w.addEntry(uid: TestWorld.otherUid, at: w.now);
       await expectLater(

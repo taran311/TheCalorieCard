@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/achievement_service.dart';
+import 'package:namer_app/services/save_guard.dart';
 
 /// Calories and macros for one food entry, or a total of several.
 class Macros {
@@ -487,7 +488,8 @@ class BalanceService {
   /// [Macros.toEntryFields]); `user_id` and `time_added` are filled in.
   /// Returns the new document ids.
   static Future<List<String>> logEntries(
-      String userId, List<Map<String, dynamic>> entries) async {
+      String userId, List<Map<String, dynamic>> entries) =>
+      SaveGuard.track(() async {
     if (entries.isEmpty) return const [];
 
     var total = Macros.zero;
@@ -523,36 +525,67 @@ class BalanceService {
     }
     await batch.commit();
     return ids;
-  }
+  });
 
   /// Removes a logged food and, if it was today's, refunds the card, all in
   /// one write. Returns the removed entry's macros, or null if it was
   /// already gone.
   static Future<Macros?> deleteEntry(String userId, String entryId) async {
-    final ref = _db.collection('user_food').doc(entryId);
-    final snap = await ref.get();
-    final data = snap.data();
-    if (!snap.exists || data == null) return null;
-    if (data['user_id'] != userId) {
-      throw StateError("Can't remove someone else's food");
-    }
-
-    final amount = Macros.fromEntry(data);
-    final today = isLogEntry(data) && isToday(entryDate(data));
-
-    // Rebuild first if it's a new day: the rebuild still sees this entry,
-    // and the refund below takes it back off exactly once.
-    if (today) await ensureDailyReset(userId);
-    final userDoc = today ? await userDataDoc(userId) : null;
-
-    final batch = _db.batch();
-    batch.delete(ref);
-    if (userDoc != null) {
-      batch.update(userDoc.reference, spendUpdate(amount.scaled(-1)));
-    }
-    await batch.commit();
-    return amount;
+    final data = await removeEntry(userId, entryId);
+    return data == null ? null : Macros.fromEntry(data);
   }
+
+  /// [deleteEntry], returning everything the entry held, so it can be put
+  /// back exactly ([restoreEntry]) if the removal is undone.
+  static Future<Map<String, dynamic>?> removeEntry(
+          String userId, String entryId) =>
+      SaveGuard.track(() async {
+        final ref = _db.collection('user_food').doc(entryId);
+        final snap = await ref.get();
+        final data = snap.data();
+        if (!snap.exists || data == null) return null;
+        if (data['user_id'] != userId) {
+          throw StateError("Can't remove someone else's food");
+        }
+
+        final amount = Macros.fromEntry(data);
+        final today = isLogEntry(data) && isToday(entryDate(data));
+
+        // Rebuild first if it's a new day: the rebuild still sees this
+        // entry, and the refund below takes it back off exactly once.
+        if (today) await ensureDailyReset(userId);
+        final userDoc = today ? await userDataDoc(userId) : null;
+
+        final batch = _db.batch();
+        batch.delete(ref);
+        if (userDoc != null) {
+          batch.update(userDoc.reference, spendUpdate(amount.scaled(-1)));
+        }
+        await batch.commit();
+        return data;
+      });
+
+  /// Puts back an entry removed by [removeEntry] (Undo): the same entry,
+  /// and today's card charged for it again.
+  static Future<void> restoreEntry(
+          String userId, String entryId, Map<String, dynamic> data) =>
+      SaveGuard.track(() async {
+        if (data['user_id'] != userId) {
+          throw StateError("Can't restore someone else's food");
+        }
+        final amount = Macros.fromEntry(data);
+        final today = isLogEntry(data) && isToday(entryDate(data));
+        // A new day rebuilds from the entries as they are now (without
+        // this one); the charge below then adds it exactly once.
+        if (today) await ensureDailyReset(userId);
+        final userDoc = today ? await userDataDoc(userId) : null;
+        final batch = _db.batch();
+        batch.set(_db.collection('user_food').doc(entryId), data);
+        if (userDoc != null) {
+          batch.update(userDoc.reference, spendUpdate(amount));
+        }
+        await batch.commit();
+      });
 
   /// Changes a logged food: [fields] are written to the entry, and if its
   /// macros change ([macros]) and it's today's, the card is charged or
@@ -563,7 +596,8 @@ class BalanceService {
     String entryId, {
     Macros? macros,
     Map<String, dynamic> fields = const {},
-  }) async {
+  }) =>
+      SaveGuard.track(() async {
     if (macros != null && !macros.isValid) {
       throw ArgumentError('Food amounts must be zero or more: $macros');
     }
@@ -592,7 +626,7 @@ class BalanceService {
     }
     await batch.commit();
     return before;
-  }
+  });
 
   /// Saves new goals and sets today's balance to goals minus what's already
   /// been eaten today.

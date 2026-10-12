@@ -1493,12 +1493,28 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  /// A food was swiped away: hide it now, offer Undo, and only delete it
-  /// once the snackbar has closed without Undo (so Undo never re-logs).
+  /// A food was swiped away. It's removed straight away (so a refresh a
+  /// moment later can't bring it back) and Undo puts the very same entry
+  /// back, charging the card again.
   void _onFoodSwiped(String docId, String name) {
     if (!_canEditSelectedDay) return;
     setState(() => _pendingRemoval.add(docId));
     final messenger = ScaffoldMessenger.of(context);
+    // One removal at a time, in the order they were swiped.
+    final removal = _removalChain.then((_) async {
+      try {
+        return await FoodLog.removeForUndo(docId);
+      } catch (_) {
+        if (mounted) {
+          setState(() => _pendingRemoval.remove(docId));
+          messenger.showSnackBar(const SnackBar(
+              content: Text("Couldn't remove that food. Please try again.")));
+        }
+        return null;
+      }
+    });
+    _removalChain = removal.then((_) {});
+
     messenger.hideCurrentSnackBar();
     final controller = messenger.showSnackBar(
       SnackBar(
@@ -1507,23 +1523,27 @@ class _HomePageState extends State<HomePage>
         action: SnackBarAction(label: 'Undo', onPressed: () {}),
       ),
     );
-    // Snackbars with an action can stay up in newer Flutter; this one must
-    // close on its own so the removal goes through.
+    // Snackbars with an action can stay up in newer Flutter; close it.
     var closed = false;
     Timer(const Duration(seconds: 5), () {
       if (!closed) messenger.hideCurrentSnackBar();
     });
-    controller.closed.then((reason) {
+    controller.closed.then((reason) async {
       closed = true;
-      if (reason == SnackBarClosedReason.action) {
-        if (mounted) setState(() => _pendingRemoval.remove(docId));
-        return;
+      final removed = await removal;
+      if (reason == SnackBarClosedReason.action && removed != null) {
+        try {
+          await FoodLog.restore(docId, removed);
+        } catch (_) {
+          messenger.showSnackBar(SnackBar(
+              content: Text("Couldn't put $name back. Add it again from "
+                  'your recents.')));
+        }
       }
-      // One removal at a time, in the order they were swiped.
-      _removalChain = _removalChain.then((_) async {
-        await _deleteFoodItem(docId, swiped: true);
-        if (mounted) setState(() => _pendingRemoval.remove(docId));
-      });
+      if (!mounted) return;
+      // Show the list as it now is before un-hiding the row.
+      await (_refreshing ?? _refreshAfterChange());
+      if (mounted) setState(() => _pendingRemoval.remove(docId));
     });
   }
 

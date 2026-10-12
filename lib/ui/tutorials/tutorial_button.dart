@@ -357,3 +357,230 @@ class _TutorialTile extends StatelessWidget {
     );
   }
 }
+
+// ============================================================================
+// Help on each screen
+// ============================================================================
+
+/// The ⓘ on a screen: straight into its tutorial when there's just one,
+/// otherwise a short list of only that screen's tutorials. [onDemo] adds a
+/// "Show me here" demo on the screen itself (Add food, New recipe); null
+/// [onDemo] with [demoUnavailable] shows why it can't run right now.
+Future<void> showScreenHelp(
+  BuildContext context, {
+  required List<String> tutorialIds,
+  VoidCallback? onDemo,
+  String? demoUnavailable,
+}) async {
+  TutorialProgress.load();
+  final list = [
+    for (final id in tutorialIds)
+      for (final t in tutorials)
+        if (t.id == id) t
+  ];
+  final demo = onDemo;
+  final hasDemo = demo != null || demoUnavailable != null;
+  if (!hasDemo && list.length == 1) {
+    final finished = await TutorialPlayer.open(context, list.single);
+    if (finished) TutorialProgress.markDone(list.single.id);
+    return;
+  }
+  if (!context.mounted) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          Text(
+            'How this works',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Watch on a practice card. Your real card is never touched.',
+            style: TextStyle(color: AppColors.muted),
+          ),
+          const SizedBox(height: 12),
+          if (hasDemo)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppDecor.radius),
+                  side: BorderSide(color: AppColors.border),
+                ),
+                leading: Icon(Icons.touch_app_outlined, color: AppText.primary),
+                title: const Text('Show me here',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(demo != null
+                    ? 'A quick demo on this screen'
+                    : demoUnavailable ?? ''),
+                enabled: demo != null,
+                onTap: demo == null
+                    ? null
+                    : () {
+                        Navigator.of(sheetContext).pop();
+                        demo();
+                      },
+              ),
+            ),
+          for (final t in list)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _TutorialTile(
+                tutorial: t,
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  final finished = await TutorialPlayer.open(context, t);
+                  if (finished) TutorialProgress.markDone(t.id);
+                },
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// The ⓘ button for an app bar.
+class ScreenHelpButton extends StatelessWidget {
+  final List<String> tutorialIds;
+  const ScreenHelpButton({super.key, required this.tutorialIds});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'How this works',
+      icon: const Icon(Icons.help_outline),
+      onPressed: () => showScreenHelp(context, tutorialIds: tutorialIds),
+    );
+  }
+}
+
+/// "New here? See how Friends works": shown the first time someone opens a
+/// screen, and never again once they tap Show me or ✕ (or have already
+/// finished one of its tutorials). Remembered on this device.
+class FirstVisitHint extends StatefulWidget {
+  /// Which screen ("friends"): one hint per screen.
+  final String screen;
+
+  /// "See how {label} works".
+  final String label;
+
+  /// Its tutorials: if any is already finished, no hint.
+  final List<String> tutorialIds;
+
+  final VoidCallback onShow;
+
+  const FirstVisitHint({
+    super.key,
+    required this.screen,
+    required this.label,
+    required this.tutorialIds,
+    required this.onShow,
+  });
+
+  @override
+  State<FirstVisitHint> createState() => _FirstVisitHintState();
+}
+
+class _FirstVisitHintState extends State<FirstVisitHint> {
+  /// Hidden until we know it hasn't been seen (no flash for regulars).
+  bool _show = false;
+
+  /// Seen this run (so a rebuild never brings it back).
+  static final Set<String> _seenThisRun = {};
+
+  String? get _key {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return uid == null ? null : 'hint_seen_${widget.screen}_$uid';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final key = _key;
+    if (key == null || _seenThisRun.contains(key)) return;
+    try {
+      await TutorialProgress.load();
+      if (widget.tutorialIds.any(TutorialProgress.done.contains)) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(key) == true) return;
+      if (mounted) setState(() => _show = true);
+    } catch (_) {
+      // No storage: skip the hint rather than show it every time.
+    }
+  }
+
+  Future<void> _dismiss() async {
+    final key = _key;
+    setState(() => _show = false);
+    if (key == null) return;
+    _seenThisRun.add(key);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(key, true);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_show) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+              AppColors.primary.withValues(alpha: AppColors.dark ? 0.16 : 0.07),
+              AppColors.surface),
+          borderRadius: BorderRadius.circular(AppDecor.radius),
+          border: Border.all(
+              color: AppColors.primary
+                  .withValues(alpha: AppColors.dark ? 0.55 : 0.35)),
+        ),
+        child: Row(
+          children: [
+            const Text('👋', style: TextStyle(fontSize: 20)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'New here? See how ${widget.label} works.',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                _dismiss();
+                widget.onShow();
+              },
+              child: const Text('Show me'),
+            ),
+            IconButton(
+              tooltip: 'No thanks',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.close, size: 18, color: AppColors.gray600),
+              onPressed: _dismiss,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

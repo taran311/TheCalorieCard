@@ -276,6 +276,22 @@ class FoodLog {
     notifyChanged();
   }
 
+  /// [remove], keeping what the entry held so Undo can put it back exactly
+  /// ([restore]). Null if it was already gone.
+  static Future<Map<String, dynamic>?> removeForUndo(String entryId,
+      {String? userId}) async {
+    final data = await BalanceService.removeEntry(_uid(userId), entryId);
+    notifyChanged();
+    return data;
+  }
+
+  /// Undo for [removeForUndo]: the same entry back, and the card charged.
+  static Future<void> restore(String entryId, Map<String, dynamic> data,
+      {String? userId}) async {
+    await BalanceService.restoreEntry(_uid(userId), entryId, data);
+    notifyChanged();
+  }
+
   static Future<void> _afterLogging(String uid,
       {int foods = 1, int scans = 0}) async {
     notifyChanged();

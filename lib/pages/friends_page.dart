@@ -14,6 +14,7 @@ import 'package:namer_app/services/username_service.dart';
 import 'package:namer_app/ui/add_friend_link.dart';
 import 'package:namer_app/ui/friend_today.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/ui/username_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1465,7 +1466,10 @@ class _FriendsPageState extends State<FriendsPage> {
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
         title: const Text('Friends'),
-        actions: const [MessagesButton()],
+        actions: const [
+          ScreenHelpButton(tutorialIds: ['friends', 'chat', 'calorie_game']),
+          MessagesButton(),
+        ],
       ),
       // A plain scroll view (not a lazy list) so the sections' streams stay
       // subscribed while scrolled off screen.
@@ -1475,6 +1479,13 @@ class _FriendsPageState extends State<FriendsPage> {
         child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          FirstVisitHint(
+            screen: 'friends',
+            label: 'Friends',
+            tutorialIds: const ['friends', 'chat', 'calorie_game'],
+            onShow: () => showScreenHelp(context,
+                tutorialIds: const ['friends', 'chat', 'calorie_game']),
+          ),
           _incomingRequestsSection(),
           _friendsHeader(),
           const SizedBox(height: 12),

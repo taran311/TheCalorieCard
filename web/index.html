@@ -142,6 +142,17 @@
     })();
   </script>
   <script>
+    // While food is still saving (logged, removed or changed), refreshing
+    // or closing asks "Leave site?" first, so the change isn't lost.
+    window.tccPendingSaves = 0;
+    window.addEventListener('beforeunload', function (e) {
+      if (window.tccPendingSaves > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+  </script>
+  <script>
     // "A new version is ready · Refresh": drops any old service worker,
     // then loads the page fresh (a new address, so no cache can answer).
     window.tccReload = function () {

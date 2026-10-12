@@ -38,3 +38,6 @@ SpeechSession? startSpeech({
 
 /// Nothing to reload outside a browser.
 void reloadToLatest() {}
+
+/// Nothing to warn about outside a browser.
+void setPendingSaves(int count) {}

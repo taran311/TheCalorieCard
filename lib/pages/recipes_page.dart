@@ -5,6 +5,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/recipe_service.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:namer_app/pages/add_recipe_page.dart';
 import 'package:namer_app/ui/log_recipe_sheet.dart';
 
@@ -963,6 +964,7 @@ class _RecipesPageState extends State<RecipesPage> {
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
         title: const Text('Recipes'),
+        actions: const [ScreenHelpButton(tutorialIds: ['recipe'])],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Row(
@@ -975,9 +977,25 @@ class _RecipesPageState extends State<RecipesPage> {
       ),
       body: SafeArea(
         top: false,
-        child: _selectedTabIndex == 0
-            ? _buildMyRecipesTab()
-            : _buildSharedRecipesTab(),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: FirstVisitHint(
+                screen: 'recipes',
+                label: 'recipes',
+                tutorialIds: const ['recipe'],
+                onShow: () =>
+                    showScreenHelp(context, tutorialIds: const ['recipe']),
+              ),
+            ),
+            Expanded(
+              child: _selectedTabIndex == 0
+                  ? _buildMyRecipesTab()
+                  : _buildSharedRecipesTab(),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'recipes-add',

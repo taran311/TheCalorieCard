@@ -11,6 +11,7 @@ import 'package:namer_app/pages/premium_page.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/coach_glyph.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:namer_app/ui/voice_button.dart';
 
 /// Calorie Coach: a friendly chat about your day, with ready-made
@@ -427,6 +428,7 @@ class _CoachPageState extends State<CoachPage> {
           ],
         ),
         actions: [
+          const ScreenHelpButton(tutorialIds: ['coach_food', 'over']),
           if (started)
             IconButton(
               tooltip: 'New chat',
@@ -449,6 +451,13 @@ class _CoachPageState extends State<CoachPage> {
                         controller: _scroll,
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                         children: [
+                          FirstVisitHint(
+                            screen: 'coach',
+                            label: 'Coach',
+                            tutorialIds: const ['coach_food', 'over'],
+                            onShow: () => showScreenHelp(context,
+                                tutorialIds: const ['coach_food', 'over']),
+                          ),
                           _Bubble(
                             text: CoachService.greeting(_context, name: _name),
                             fromUser: false,

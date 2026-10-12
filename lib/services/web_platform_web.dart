@@ -286,3 +286,11 @@ void reloadToLatest() {
     } catch (_) {}
   }
 }
+
+/// How many saves are still on their way (index.html asks "Leave site?"
+/// on refresh or close while this is above 0).
+void setPendingSaves(int count) {
+  try {
+    globalContext.setProperty('tccPendingSaves'.toJS, count.toJS);
+  } catch (_) {}
+}
