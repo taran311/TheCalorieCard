@@ -13,7 +13,8 @@ import 'package:namer_app/services/web_platform.dart' as web;
 /// has been logged today. Saved fields: `reminder_enabled`,
 /// `reminder_hour`, `tz_offset_minutes`, `fcm_tokens`, `reminder_prompted`,
 /// `game_notifications` (game alerts are on unless this is false, as long
-/// as there's a token to send to).
+/// as there's a token to send to) and `chat_notifications` (the same, for
+/// new messages from friends).
 class NotificationService {
   NotificationService._();
 
@@ -61,8 +62,14 @@ class NotificationService {
 
   /// [gameAlerts]: Guess the Calories turn alerts are on, which needs a
   /// saved token (so it's false until notifications were allowed once).
-  static Future<({bool enabled, int hour, bool prompted, bool gameAlerts})>
-      load() async {
+  static Future<
+      ({
+        bool enabled,
+        int hour,
+        bool prompted,
+        bool gameAlerts,
+        bool chatAlerts,
+      })> load() async {
     final uid = _uid;
     if (uid == null) {
       return (
@@ -70,6 +77,7 @@ class NotificationService {
         hour: defaultHour,
         prompted: false,
         gameAlerts: false,
+        chatAlerts: false,
       );
     }
     final data = (await _db.collection('users').doc(uid).get()).data();
@@ -80,6 +88,9 @@ class NotificationService {
       hour: hour is int && hour >= 0 && hour < 24 ? hour : defaultHour,
       prompted: data?['reminder_prompted'] == true,
       gameAlerts: data?['game_notifications'] != false &&
+          tokens is List &&
+          tokens.isNotEmpty,
+      chatAlerts: data?['chat_notifications'] != false &&
           tokens is List &&
           tokens.isNotEmpty,
     );
@@ -164,6 +175,41 @@ class NotificationService {
     }
   }
 
+  /// Turns on notifications for new messages from friends on this device.
+  /// Returns a message to show if it couldn't, or null when it worked.
+  static Future<String?> enableChatAlerts() async {
+    final uid = _uid;
+    if (uid == null) return 'Sign in first.';
+    if (!supported) {
+      return "Notifications aren't available on this device yet.";
+    }
+    if (needsHomeScreen) return homeScreenGamesMessage;
+    try {
+      final r = await _permissionAndToken('message notifications');
+      final token = r.token;
+      if (token == null) return r.error;
+      await _db.collection('users').doc(uid).set({
+        'chat_notifications': true,
+        'tz_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
+        'fcm_tokens': FieldValue.arrayUnion([token]),
+      }, SetOptions(merge: true));
+      return null;
+    } catch (_) {
+      return "Couldn't turn on message notifications. Please try again.";
+    }
+  }
+
+  /// Turns message notifications on or off without asking for permission
+  /// (use [enableChatAlerts] to turn them on for the first time).
+  static Future<void> setChatAlerts(bool on) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _db
+        .collection('users')
+        .doc(uid)
+        .set({'chat_notifications': on}, SetOptions(merge: true));
+  }
+
   /// Turns game alerts on or off without asking for permission (use
   /// [enableGameAlerts] to turn them on for the first time).
   static Future<void> setGameAlerts(bool on) async {
@@ -213,7 +259,8 @@ class NotificationService {
       final ref = _db.collection('users').doc(uid);
       final data = (await ref.get()).data();
       if (data?['reminder_enabled'] != true &&
-          data?['game_notifications'] != true) {
+          data?['game_notifications'] != true &&
+          data?['chat_notifications'] != true) {
         return;
       }
       final update = <String, dynamic>{};

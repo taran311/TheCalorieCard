@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/proxy_client.dart';
 
 /// Sends messages into one-to-one chats from outside the chat screen
 /// (e.g. sharing your monthly Wrapped). Uses the same conversation ids and
@@ -66,6 +69,7 @@ class ChatService {
       'unread_count.$friendId': FieldValue.increment(1),
     });
     await batch.commit();
+    if (extra?['type'] != 'game') notifyOthers(ref.id);
   }
 
   /// Sends [text] into a friend group's chat (`conversations/group_{id}`),
@@ -118,6 +122,22 @@ class ChatService {
         if (p != uid) 'unread_count.$p': FieldValue.increment(1),
     });
     await batch.commit();
+    if (extra?['type'] != 'game') notifyOthers(ref.id);
+  }
+
+  /// Turn off in tests (there's no server).
+  static bool notifyEnabled = true;
+
+  /// Asks the server to tell the other people in the chat (a phone
+  /// notification, for those who've turned them on). It decides whether
+  /// to send, so a burst of messages is one notification. Never waits and
+  /// never fails the send.
+  static void notifyOthers(String conversationId) {
+    if (!notifyEnabled) return;
+    unawaited(ProxyClient.post(
+            '/notify/chat', {'conversationId': conversationId})
+        .timeout(const Duration(seconds: 30))
+        .then((_) {}, onError: (Object _) {}));
   }
 
   static Map<String, dynamic> _clean(Map<String, dynamic>? extra) => {

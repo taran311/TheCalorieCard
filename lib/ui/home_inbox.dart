@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:namer_app/pages/budgets_page.dart';
 import 'package:namer_app/pages/games_hub_page.dart';
+import 'package:namer_app/pages/messages_page.dart';
+import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/budget_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
@@ -102,6 +104,68 @@ class _HomeInboxState extends State<HomeInbox> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Yesterday closed ✓ It counts towards your streak.')));
     return null;
+  }
+
+  /// Chats with unread messages, for "Sam sent you a message".
+  StreamSubscription<dynamic>? _chatSub;
+  List<_UnreadChat> _unreadChats = const [];
+
+  /// Names for one-to-one chats (the other person's), looked up once.
+  final Map<String, String> _chatNames = {};
+
+  void _onChats(Iterable<({String id, Map<String, dynamic> data})> docs) {
+    final uid = widget.userId;
+    final chats = <_UnreadChat>[];
+    for (final d in docs) {
+      final counts = d.data['unread_count'];
+      final n = counts is Map ? counts[uid] : null;
+      if (n is! num || n <= 0) continue;
+      final isGroup = d.data['is_group'] == true;
+      String? otherId;
+      if (!isGroup) {
+        for (final p in (d.data['participant_ids'] as List? ?? const [])) {
+          if (p is String && p != uid) otherId = p;
+        }
+        if (otherId != null && !_chatNames.containsKey(otherId)) {
+          _chatNames[otherId] = '';
+          final id = otherId;
+          FriendsService.nameFor(id).then((name) {
+            if (mounted) setState(() => _chatNames[id] = name);
+          }, onError: (_) {});
+        }
+      }
+      chats.add(_UnreadChat(
+        id: d.id,
+        count: n.toInt(),
+        isGroup: isGroup,
+        groupName: '${d.data['conversation_name'] ?? 'Your group'}',
+        otherId: otherId,
+      ));
+    }
+    if (mounted) setState(() => _unreadChats = chats);
+  }
+
+  String _chatName(_UnreadChat c) {
+    if (c.isGroup) return c.groupName;
+    final name = _chatNames[c.otherId];
+    return name == null || name.isEmpty ? 'A friend' : name;
+  }
+
+  void _openChats() {
+    final chats = _unreadChats;
+    final nav = chatNavigator(context);
+    if (chats.length == 1) {
+      final c = chats.single;
+      nav.push(MaterialPageRoute(
+        builder: (_) => ChatDetailPage(
+          conversationId: c.id,
+          conversationName: _chatName(c),
+          isGroup: c.isGroup,
+        ),
+      ));
+    } else {
+      nav.push(MaterialPageRoute(builder: (_) => const MessagesPage()));
+    }
   }
 
   /// Games progress, for "Today's Calorie Quiz is ready".
@@ -266,6 +330,16 @@ class _HomeInboxState extends State<HomeInbox> {
       (v) => setState(() => _debits = v),
       onError: (_) {},
     );
+    _chatSub = BalanceService.db
+        .collection('conversations')
+        .where('participant_ids', arrayContains: widget.userId)
+        .snapshots()
+        .listen(
+      (snap) => _onChats([
+        for (final d in snap.docs) (id: d.id, data: d.data()),
+      ]),
+      onError: (_) {},
+    );
     _profileSub = BalanceService.db
         .collection('user_data')
         .where('user_id', isEqualTo: widget.userId)
@@ -288,6 +362,7 @@ class _HomeInboxState extends State<HomeInbox> {
     _debitSub?.cancel();
     _profileSub?.cancel();
     _gamesSub?.cancel();
+    _chatSub?.cancel();
     _clock?.cancel();
     _budgetDebounce?.cancel();
     _pages.dispose();
@@ -338,6 +413,35 @@ class _HomeInboxState extends State<HomeInbox> {
           _InboxAction('Not now', () => _hideToday('late_close')),
           _InboxAction(
               'Close yesterday', () => _run('late_close', _closeYesterday),
+              primary: true),
+        ],
+        stacked: narrow,
+      ));
+    }
+
+    // Unread messages: a friend's waiting for a reply. Gone once read.
+    if (_unreadChats.isNotEmpty) {
+      final total = _unreadChats.fold<int>(0, (s, c) => s + c.count);
+      final names = [for (final c in _unreadChats) _chatName(c)];
+      final from = names.length == 1
+          ? names.single
+          : names.length == 2
+              ? '${names[0]} and ${names[1]}'
+              : '${names[0]}, ${names[1]} and ${names.length - 2} more';
+      final single = _unreadChats.length == 1 && !_unreadChats.single.isGroup;
+      items.add(_InboxCard(
+        icon: Icons.chat_bubble,
+        color: AppColors.primary,
+        title: single
+            ? (total == 1
+                ? '$from sent you a message'
+                : '$from sent you $total messages')
+            : '$total unread message${total == 1 ? '' : 's'}',
+        subtitle: single ? 'Tap to read and reply.' : 'From $from.',
+        actions: [
+          _InboxAction(
+              _unreadChats.length == 1 ? 'Open chat' : 'Open messages',
+              _openChats,
               primary: true),
         ],
         stacked: narrow,
@@ -808,4 +912,20 @@ class _InboxCard extends StatelessWidget {
       child: body,
     );
   }
+}
+
+class _UnreadChat {
+  final String id;
+  final int count;
+  final bool isGroup;
+  final String groupName;
+  final String? otherId;
+
+  const _UnreadChat({
+    required this.id,
+    required this.count,
+    required this.isGroup,
+    required this.groupName,
+    required this.otherId,
+  });
 }

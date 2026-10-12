@@ -28,6 +28,8 @@ class _ReminderSheetState extends State<_ReminderSheet> {
   int _hour = NotificationService.defaultHour;
   bool _gameAlerts = false;
   bool _gameBusy = false;
+  bool _chatAlerts = false;
+  bool _chatBusy = false;
   String? _error;
 
   @override
@@ -44,6 +46,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
         _enabled = s.enabled;
         _hour = s.hour;
         _gameAlerts = s.gameAlerts;
+        _chatAlerts = s.chatAlerts;
       });
     } catch (_) {
       // Shown as off.
@@ -95,6 +98,29 @@ class _ReminderSheetState extends State<_ReminderSheet> {
       _gameBusy = false;
       _error = error;
       if (error == null) _gameAlerts = on;
+    });
+  }
+
+  Future<void> _toggleChatAlerts(bool on) async {
+    setState(() {
+      _chatBusy = true;
+      _error = null;
+    });
+    String? error;
+    try {
+      if (on) {
+        error = await NotificationService.enableChatAlerts();
+      } else {
+        await NotificationService.setChatAlerts(false);
+      }
+    } catch (_) {
+      error = "Couldn't save that. Please try again.";
+    }
+    if (!mounted) return;
+    setState(() {
+      _chatBusy = false;
+      _error = error;
+      if (error == null) _chatAlerts = on;
     });
   }
 
@@ -251,6 +277,34 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                 ),
                 subtitle: Text(
                   "A notification when it's your turn in a game",
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Material(
+              color: AppColors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDecor.radius),
+                side: BorderSide(color: AppColors.border),
+              ),
+              child: SwitchListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppDecor.radius),
+                ),
+                value: _chatAlerts,
+                onChanged: _chatBusy ? null : _toggleChatAlerts,
+                secondary:
+                    Icon(Icons.chat_bubble_outline, color: AppText.primary),
+                title: Text(
+                  'Messages from friends',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+                subtitle: Text(
+                  'A notification when a friend or group messages you',
                   style: TextStyle(color: AppColors.muted),
                 ),
               ),

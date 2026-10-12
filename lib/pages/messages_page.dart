@@ -1077,6 +1077,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         ...unreadCountUpdate,
       });
       await batch.commit();
+      // A phone notification for the others (the server decides).
+      ChatService.notifyOthers(widget.conversationId);
 
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
