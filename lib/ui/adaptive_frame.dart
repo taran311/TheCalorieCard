@@ -17,12 +17,17 @@ class AdaptiveFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: ShellPresence.mounted,
-      builder: (context, shells, _) {
+    return ListenableBuilder(
+      listenable: Listenable.merge(
+          [ShellPresence.mounted, ShellPresence.loading]),
+      builder: (context, _) {
+        final shells = ShellPresence.mounted.value;
+        final loading = ShellPresence.loading.value > 0;
         final width = MediaQuery.sizeOf(context).width;
-        // Framed = signed-out / onboarding pages on a big screen.
-        final framed = width >= Breakpoints.tablet && shells == 0;
+        // Framed = signed-out / onboarding pages on a big screen (not the
+        // loading screen, which fills the window like the web page's own).
+        final framed =
+            width >= Breakpoints.tablet && shells == 0 && !loading;
         final heroWidth = framed && width >= Breakpoints.desktop
             ? width / 2
             : 0.0;

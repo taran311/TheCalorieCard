@@ -230,6 +230,11 @@ class ShellPresence {
   ShellPresence._();
 
   static final ValueNotifier<int> mounted = ValueNotifier<int>(0);
+
+  /// The "Loading your card…" screen is showing. It fills the window on
+  /// big screens too: framed next to the brand panel, it looked like the
+  /// sign-in page flashing up on every refresh.
+  static final ValueNotifier<int> loading = ValueNotifier<int>(0);
 }
 
 /// Gives [child] a MediaQuery whose size matches the box it is drawn in.

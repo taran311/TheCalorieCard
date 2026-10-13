@@ -781,8 +781,32 @@ class LegalAgreement extends StatelessWidget {
 
 /// Shown while we find out whether someone is signed in: the brand, not a
 /// sign-in form that might flash past.
-class AuthSplash extends StatelessWidget {
+class AuthSplash extends StatefulWidget {
   const AuthSplash({super.key});
+
+  @override
+  State<AuthSplash> createState() => _AuthSplashState();
+}
+
+class _AuthSplashState extends State<AuthSplash> {
+  // Tells the frame to fill the window while this shows (see
+  // ShellPresence.loading). Changed after the frame, not during a build.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ShellPresence.loading.value = ShellPresence.loading.value + 1;
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final next = ShellPresence.loading.value - 1;
+      ShellPresence.loading.value = next < 0 ? 0 : next;
+    });
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
