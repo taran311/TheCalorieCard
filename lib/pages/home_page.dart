@@ -2639,6 +2639,18 @@ class _HomePageState extends State<HomePage>
   /// One-tap chips for what you usually have at this meal.
   Widget? _buildUsuals() {
     if (_usuals.isEmpty || _usualsMeal != _addMeal) return null;
+    // Already had it for this meal today? Don't suggest it again.
+    String key(Object? name) => '${name ?? ''}'.trim().toLowerCase();
+    final had = {
+      for (final d in _foodDocs)
+        if (FoodLog.mealOf(d.data()['foodCategory']) == _addMeal)
+          key(d.data()['food_description']),
+    };
+    final usuals = [
+      for (final u in _usuals)
+        if (!had.contains(key(u.name))) u
+    ];
+    if (usuals.isEmpty) return null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2655,10 +2667,10 @@ class _HomePageState extends State<HomePage>
           height: 48,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: _usuals.length,
+            itemCount: usuals.length,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, i) {
-              final usual = _usuals[i];
+              final usual = usuals[i];
               return Center(
                 child: ActionChip(
                   avatar: Icon(Icons.add, size: 16, color: AppText.primary),
