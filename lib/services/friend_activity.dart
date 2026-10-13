@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:namer_app/services/budget_rule.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/chat_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,7 +73,8 @@ class FriendDay {
   bool? get onTrack {
     final s = spent, b = budget;
     if (s == null || b == null || b <= 0) return null;
-    return s <= b;
+    // Within 5% over still counts (see BudgetRule).
+    return BudgetRule.onBudget(b - s, b);
   }
 
   bool get hasData => finished || fraction != null;

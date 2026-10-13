@@ -167,7 +167,8 @@ class TodayPanel extends StatelessWidget {
                           const BudgetLegend(),
                           const Spacer(),
                           Text(
-                            '${formatDays(statement.daysUnderBudget)} on budget',
+                            '${statement.daysUnderBudget} of '
+                            '${formatDays(statement.daysJudged)} on budget',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,

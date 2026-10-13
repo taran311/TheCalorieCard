@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:namer_app/services/budget_rule.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/card_design_service.dart';
@@ -139,11 +140,8 @@ class LeaderboardService {
       final data = doc.data();
       if (data == null || data['finished'] != true) continue;
       final key = (data['date_key'] ?? '').toString();
-      final balances = data['balances'];
-      final remaining =
-          balances is Map ? balances['calories'] : null;
-      final onBudget = remaining is num ? remaining >= 0 : false;
-      finished[key] = onBudget;
+      // Within 5% over still counts (see BudgetRule).
+      finished[key] = BudgetRule.fromLog(data) ?? false;
     }
 
     var daysLogged = 0;

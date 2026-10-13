@@ -323,7 +323,7 @@ class WeeklySpendChart extends StatelessWidget {
                         child: Tooltip(
                           message:
                               '${formatDayHeading(d.day)}: ${formatKcal(d.calories)} kcal'
-                              '${d.onBudget(statement.dailyBudget) == false ? ' · over budget' : ''}',
+                              '${d.onBudget(statement.dailyBudget) == false ? ' · over budget' : d.justOver(statement.dailyBudget) ? ' · just over, still on budget' : ''}',
                           child: Padding(
                             padding: EdgeInsets.symmetric(horizontal: gap),
                             child: Container(
@@ -454,11 +454,21 @@ class DayTotalChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final spent = day.calories;
     final onBudget = day.onBudget(fallbackBudget);
-    final budget = day.budget(fallbackBudget);
     // A finished day shows what was left on the card when it closed (pot
     // top-ups included), the same figure High scores judge it by.
-    final closing = day.finished ? day.closingBalance : null;
-    final left = closing ?? (budget == null ? null : budget - spent);
+    final left = day.left(fallbackBudget);
+    // Over by a little (within 5%): still on budget, shown in amber.
+    final justOver = day.justOver(fallbackBudget);
+    final Color tone = justOver
+        ? AppColors.amber600
+        : onBudget == true
+            ? AppColors.green
+            : AppColors.red;
+    final Color text = justOver
+        ? AppText.amber700
+        : onBudget == true
+            ? AppText.emerald700
+            : AppText.red600;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -471,18 +481,19 @@ class DayTotalChip extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: (onBudget ? AppColors.green : AppColors.red)
-                  .withValues(alpha: 0.12),
+              color: tone.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              onBudget
-                  ? '${formatKcal(left.abs())} left'
-                  : '${formatKcal(left.abs())} over',
+              justOver
+                  ? '${formatKcal(left.abs())} over · close enough'
+                  : left >= 0
+                      ? '${formatKcal(left)} left'
+                      : '${formatKcal(left.abs())} over',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: onBudget ? AppText.emerald700 : AppText.red600,
+                color: text,
               ),
             ),
           ),

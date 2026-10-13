@@ -337,6 +337,11 @@ class _HomePageState extends State<HomePage>
       !_isRestDay &&
       ((_isSelectedDateToday && !_isDayFinished) || _isSelectedDateYesterday);
 
+  /// Food can be removed from any of your own days, closed or not (a
+  /// mistake is a mistake). That day's saved totals follow; today's card is
+  /// only refunded for today's food.
+  bool get _canRemoveOnSelectedDay => _isOwnCard;
+
   /// Today's extras (usuals, pacing, copy from yesterday, close / rest
   /// day) only make sense on today's card.
   bool get _canEditToday => _canEditSelectedDay && _isSelectedDateToday;
@@ -544,9 +549,10 @@ class _HomePageState extends State<HomePage>
       // balance once it's in the past.
       await _upsertDailyLogForDate(_selectedLogDate);
       await _fetchDailyLogForDate(_selectedLogDate);
-    } else if (_isOwnCard && _isSelectedDateYesterday) {
-      // Fixed something on yesterday: its saved totals and closing balance
-      // follow (today's card isn't touched).
+    } else if (_isOwnCard) {
+      // Changed an earlier day (added to yesterday, or removed something):
+      // its saved totals and closing balance follow (today's card isn't
+      // touched).
       try {
         await LateClose.syncDay(_activeUserId, _selectedLogDate);
       } catch (_) {}
@@ -1550,6 +1556,7 @@ class _HomePageState extends State<HomePage>
       entryId: doc.id,
       entry: entry,
       canEdit: _canEditSelectedDay,
+      canDelete: _canRemoveOnSelectedDay,
       reactions: _foodReactions[doc.id] ?? const [],
     );
     if (result == null || !mounted) return;
@@ -1608,7 +1615,7 @@ class _HomePageState extends State<HomePage>
   /// closing, so they skip the editable-day check and the extra snackbar.
   Future<void> _deleteFoodItem(String docId, {bool swiped = false}) async {
     if (_isDeletingItem) return;
-    if (!swiped && !_canEditSelectedDay) return;
+    if (!swiped && !_canRemoveOnSelectedDay) return;
 
     if (mounted) {
       setState(() {
@@ -1646,7 +1653,7 @@ class _HomePageState extends State<HomePage>
   /// moment later can't bring it back) and Undo puts the very same entry
   /// back, charging the card again.
   void _onFoodSwiped(String docId, String name) {
-    if (!_canEditSelectedDay) return;
+    if (!_canRemoveOnSelectedDay) return;
     setState(() => _pendingRemoval.add(docId));
     final messenger = ScaffoldMessenger.of(context);
     // One removal at a time, in the order they were swiped.
@@ -2538,7 +2545,8 @@ class _HomePageState extends State<HomePage>
       ),
     );
 
-    if (!canEdit) return row;
+    // Swipe to remove works on any of your days.
+    if (!_canRemoveOnSelectedDay) return row;
     return Dismissible(
       key: ValueKey('food-${doc.id}'),
       direction: DismissDirection.endToStart,
@@ -3112,7 +3120,8 @@ class _PastDayNotice extends StatelessWidget {
               yesterday
                   ? 'Forgot something? You can add to or fix yesterday '
                       "until midnight. Today's card isn't changed."
-                  : 'Past days are read-only. Food you add goes on today.',
+                  : 'You can remove food from past days (swipe it away). '
+                      'Food you add goes on today.',
               style: TextStyle(color: AppColors.ink, fontSize: 13),
             ),
           ),

@@ -34,12 +34,15 @@ class EntrySheetResult {
 /// what it was, when, how much, where it came from and a note, with the
 /// actions underneath (change it, log it again, make it a direct debit,
 /// delete). [canEdit] is false on past, closed or rest days (view only);
-/// a note can still be added unless [canNote] is false.
+/// a note can still be added unless [canNote] is false. [canDelete]
+/// (default: same as [canEdit]) allows Delete on its own, so food can be
+/// removed from any day.
 Future<EntrySheetResult?> showEntrySheet(
   BuildContext context, {
   required String entryId,
   required Map<String, dynamic> entry,
   required bool canEdit,
+  bool? canDelete,
   bool canDirectDebit = true,
   bool canNote = true,
   List<Map<String, dynamic>> reactions = const [],
@@ -56,6 +59,7 @@ Future<EntrySheetResult?> showEntrySheet(
       entryId: entryId,
       entry: entry,
       canEdit: canEdit,
+      canDelete: canDelete ?? canEdit,
       canDirectDebit: canDirectDebit,
       canNote: canNote,
       reactions: reactions,
@@ -139,6 +143,7 @@ class _EntrySheet extends StatefulWidget {
   final String entryId;
   final Map<String, dynamic> entry;
   final bool canEdit;
+  final bool canDelete;
   final bool canDirectDebit;
   final bool canNote;
   final List<Map<String, dynamic>> reactions;
@@ -148,6 +153,7 @@ class _EntrySheet extends StatefulWidget {
     required this.entryId,
     required this.entry,
     required this.canEdit,
+    required this.canDelete,
     required this.canDirectDebit,
     required this.canNote,
     required this.reactions,
@@ -592,7 +598,7 @@ class _EntrySheetState extends State<_EntrySheet> {
                   ),
         ),
       // Delete is always last, and red.
-      if (canEdit)
+      if (widget.canDelete)
         _actionTile(
           icon: Icons.delete_outline,
           label: 'Delete',

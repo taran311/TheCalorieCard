@@ -224,8 +224,8 @@ class _StatementCalendarState extends State<StatementCalendar> {
         const SizedBox(height: 10),
         Text(
           [
-            '${formatDays(onBudget)} on budget',
-            '${formatDays(over)} over',
+            // "5 of 7 days on budget" says more than "5 days on budget".
+            '$onBudget of ${formatDays(onBudget + over)} on budget',
             '${formatDays(logged)} logged',
           ].join(' · '),
           textAlign: TextAlign.center,

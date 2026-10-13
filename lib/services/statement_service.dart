@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/budget_rule.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/spend_category.dart';
 
@@ -72,17 +73,34 @@ class DaySummary {
   /// The day's budget: its own goal if saved, else [fallback].
   double? budget(double? fallback) => dayGoal ?? fallback;
 
-  /// The one definition of "on budget", shared with High scores and
-  /// Challenges: a finished day is on budget if the card closed in credit
-  /// (so pot top-ups count). Otherwise it's spending against that day's
-  /// goal (or [fallback], today's goal). Null when there's nothing to judge.
+  /// "On budget" ([BudgetRule], shared with High scores and Challenges):
+  /// a finished day by what the card closed on (so pot top-ups count),
+  /// otherwise spending against that day's goal (or [fallback], today's
+  /// goal), with 5% leeway either way. Null when there's nothing to judge.
   bool? onBudget(double? fallback) {
     final closing = closingBalance;
-    if (finished && closing != null) return closing >= 0;
-    if (transactions.isEmpty) return null;
     final b = budget(fallback);
+    if (finished && closing != null) {
+      return BudgetRule.onBudget(closing, b);
+    }
+    if (transactions.isEmpty) return null;
     if (b == null) return null;
-    return calories <= b;
+    return BudgetRule.onBudget(b - calories, b);
+  }
+
+  /// What was left at the end (negative = over), the same figure
+  /// [onBudget] judges.
+  double? left(double? fallback) {
+    final closing = closingBalance;
+    if (finished && closing != null) return closing;
+    final b = budget(fallback);
+    return b == null ? null : b - calories;
+  }
+
+  /// Over, but within the 5% leeway: still on budget ("just over").
+  bool justOver(double? fallback) {
+    final l = left(fallback);
+    return l != null && BudgetRule.justOver(l, budget(fallback));
   }
 
   /// How far over budget the day went (a positive number), or null when it
@@ -112,13 +130,17 @@ class Statement {
 
   /// Days on budget ([DaySummary.onBudget]). Today only counts once you've
   /// finished it.
-  int get daysUnderBudget {
+  int get daysUnderBudget => _judged.where((d) => d.onBudget(dailyBudget) == true).length;
+
+  /// Days that can be judged at all (logged, and today only once finished),
+  /// for "5 of 6 days on budget".
+  int get daysJudged => _judged.length;
+
+  Iterable<DaySummary> get _judged {
     final today = BalanceService.dateKey(BalanceService.now());
-    return days
-        .where((d) =>
-            (d.finished || BalanceService.dateKey(d.day) != today) &&
-            d.onBudget(dailyBudget) == true)
-        .length;
+    return days.where((d) =>
+        (d.finished || BalanceService.dateKey(d.day) != today) &&
+        d.onBudget(dailyBudget) != null);
   }
 
   double get averageCalories {
@@ -292,6 +314,9 @@ class StatementService {
 class WeekNumbers {
   final int daysLogged;
   final int daysOnBudget;
+
+  /// Days that could be judged on budget or not ("5 of [daysJudged]").
+  final int daysJudged;
   final int finishedDays;
 
   /// Per day with food logged.
@@ -301,6 +326,7 @@ class WeekNumbers {
   const WeekNumbers({
     required this.daysLogged,
     required this.daysOnBudget,
+    this.daysJudged = 0,
     required this.finishedDays,
     required this.averageCalories,
     required this.averageProtein,
@@ -315,6 +341,7 @@ class WeekNumbers {
       daysLogged: logged.length,
       daysOnBudget:
           days.where((d) => d.onBudget(fallbackBudget) == true).length,
+      daysJudged: days.where((d) => d.onBudget(fallbackBudget) != null).length,
       finishedDays: days.where((d) => d.finished).length,
       averageCalories: avg((d) => d.calories),
       averageProtein: avg((d) => d.protein),
@@ -351,7 +378,7 @@ class WeekDigest {
     String days(int n) => n == 1 ? '1 day' : '$n days';
     return [
       '📈 My week on The Calorie Card',
-      '✅ ${days(t.daysOnBudget)} on budget '
+      '✅ ${t.daysJudged > 0 ? '${t.daysOnBudget} of ${days(t.daysJudged)}' : days(t.daysOnBudget)} on budget '
           '(${change(t.daysOnBudget, l.daysOnBudget)} on the week before)',
       '🏁 ${days(t.finishedDays)} finished '
           '(${change(t.finishedDays, l.finishedDays)})',

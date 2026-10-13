@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:namer_app/services/budget_rule.dart';
 import 'package:namer_app/services/balance_service.dart';
 
 enum ChallengeType {
@@ -252,11 +253,7 @@ class ChallengeService {
       final data = log.data();
       if (data == null || data['finished'] != true) continue;
       finished++;
-      final balances = data['balances'];
-      final left = balances is Map
-          ? BalanceService.number(balances['calories'])
-          : null;
-      if (left != null && left >= 0) onBudget++;
+      if (BudgetRule.fromLog(data) == true) onBudget++;
     }
     return ChallengeScore(uid, finished, onBudget);
   }

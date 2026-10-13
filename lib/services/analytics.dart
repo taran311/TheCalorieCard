@@ -15,7 +15,7 @@ class Analytics {
   /// Off in tests.
   static bool enabled = true;
 
-  static String? _activeDay;
+  static DateTime? _lastActive;
 
   static void track(String event) {
     if (!enabled) return;
@@ -30,12 +30,18 @@ class Analytics {
     } catch (_) {}
   }
 
-  /// Counts them as active today (the server counts each person once a
-  /// day; this just avoids asking more than once per day per visit).
+  /// Says they're using the app: counted once a day by the server, which
+  /// also keeps their "last seen" time. Sent at most every 10 minutes
+  /// (opening the app and coming back to it).
   static void active() {
-    final day = BalanceService.dateKey(DateTime.now());
-    if (_activeDay == day) return;
-    _activeDay = day;
+    final now = DateTime.now();
+    final last = _lastActive;
+    final newDay = last == null ||
+        BalanceService.dateKey(last) != BalanceService.dateKey(now);
+    if (!newDay && now.difference(last!) < const Duration(minutes: 10)) {
+      return;
+    }
+    _lastActive = now;
     track('active');
   }
 }

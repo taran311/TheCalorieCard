@@ -17,6 +17,7 @@ import 'package:namer_app/pages/food_check_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
 import 'package:namer_app/pages/statement_page.dart';
 import 'package:namer_app/pages/stats_page.dart';
+import 'package:namer_app/pages/people_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/card_design_page.dart';
@@ -682,6 +683,14 @@ class _MenuPageState extends State<MenuPage> {
                         title: 'Stats',
                         subtitle: 'Sign-ups, first foods and returns',
                         onTap: () => _open(const StatsPage()),
+                      ),
+                    if (_giftAdmin)
+                      _menuRow(
+                        icon: Icons.groups_outlined,
+                        iconColor: AppText.primary,
+                        title: 'People',
+                        subtitle: "Who's been on, and when",
+                        onTap: () => _open(const PeoplePage()),
                       ),
                   ]),
                   const SizedBox(height: 24),

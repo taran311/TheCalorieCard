@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/services/budget_rule.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/streak.dart';
@@ -499,7 +500,10 @@ class AchievementDay {
   /// On budget, having eaten at least half the goal (so not eating isn't
   /// rewarded).
   bool get isGood =>
-      calorieGoal > 0 && left != null && left! >= 0 && eaten >= calorieGoal * 0.5;
+      calorieGoal > 0 &&
+      left != null &&
+      BudgetRule.onBudget(left!, calorieGoal) &&
+      eaten >= calorieGoal * 0.5;
 
   bool get isOver => left != null && left! < 0;
 

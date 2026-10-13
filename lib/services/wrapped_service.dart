@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:namer_app/services/budget_rule.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/rest_days.dart';
 import 'package:namer_app/services/calorie_sense.dart';
@@ -138,10 +139,7 @@ class WrappedService {
       if (data != null && data['finished'] == true) {
         finished++;
         finishedKeys.add(BalanceService.dateKey(days[i]));
-        final balances = data['balances'];
-        final left =
-            balances is Map ? BalanceService.number(balances['calories']) : null;
-        if (left != null && left >= 0) onBudget++;
+        if (BudgetRule.fromLog(data) == true) onBudget++;
       }
     }
     // Rest days are skipped, as on the streak pill and high scores.
