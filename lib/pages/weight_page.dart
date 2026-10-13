@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/snack.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/goal_maths.dart';
@@ -263,8 +264,9 @@ class _WeightPageState extends State<WeightPage> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await WeightService.delete(uid, w.dateKey);
-      messenger.showSnackBar(SnackBar(
+      messenger.showTimedSnackBar(SnackBar(
         content: Text('Removed ${_shortDate(w.date)}'),
+        duration: const Duration(seconds: 5),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () => WeightService.log(uid, w.kg, on: w.date),

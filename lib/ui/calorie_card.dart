@@ -579,7 +579,8 @@ class CardMacro {
   String get short => name.isEmpty ? '' : name[0].toUpperCase();
 }
 
-/// Back of the card: what's left of each macro.
+/// Back of the card: each macro eaten against its goal ("120 / 150g"),
+/// with a bar for how much of it is used.
 class CalorieCardBack extends StatelessWidget {
   final List<CardMacro> macros;
   final String? footnote;
@@ -602,7 +603,7 @@ class CalorieCardBack extends StatelessWidget {
           Row(
             children: [
               const Text(
-                'Macros left',
+                'Macros',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 15,
@@ -681,11 +682,16 @@ class _MacroLine extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         SizedBox(
-          width: 74,
+          width: 96,
           child: Text(
-            over
-                ? '${macro.remaining.abs().round()}g over'
-                : '${macro.remaining.round()}g',
+            // Eaten out of the goal, so the day's totals are clear (on a
+            // past day too). Without a goal: what's left, as before.
+            goal != null && goal > 0
+                ? '${(goal - macro.remaining).round()} / ${goal.round()}g'
+                : over
+                    ? '${macro.remaining.abs().round()}g over'
+                    : '${macro.remaining.round()}g left',
+            maxLines: 1,
             textAlign: TextAlign.right,
             style: TextStyle(
               color: over ? CalorieCardColors.overBudget : Colors.white,

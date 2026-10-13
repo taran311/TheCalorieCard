@@ -766,6 +766,15 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
   final _input = TextEditingController();
   final _focus = FocusNode();
 
+  /// Puts the cursor in the guess box, once it's back on screen (it's
+  /// swapped out while the answer shows), so on a computer you can just
+  /// type the next guess and press Enter.
+  void _focusGuess() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
   late final Stream<CalorieGame?> _game =
       CalorieGameService.watch(widget.gameId);
 
@@ -881,7 +890,7 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
 
   void _next() {
     setState(() => _revealing = null);
-    _focus.requestFocus();
+    _focusGuess();
   }
 
   /// Opens the picker, saves your 5 foods, and the game moves straight on
@@ -1307,6 +1316,9 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
           child: SizedBox(
             width: 200,
             child: TextField(
+              // A fresh box for each food, so nothing typed for the last
+              // one can carry over.
+              key: ValueKey('guess_${game.id}_$index'),
               controller: _input,
               focusNode: _focus,
               autofocus: true,
@@ -1341,9 +1353,16 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
                     child: CircularProgressIndicator(
                         strokeWidth: 2.5, color: Colors.white),
                   )
-                : const Text(
-                    'Lock it in',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                : ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _input,
+                    builder: (context, value, _) {
+                      final n = int.tryParse(value.text.trim());
+                      return Text(
+                        n == null ? 'Lock it in' : 'Lock in $n kcal',
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w800),
+                      );
+                    },
                   ),
           ),
         ),

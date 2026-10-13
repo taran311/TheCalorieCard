@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/snack.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/premium_sheet.dart';
@@ -756,7 +757,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
     if (failed.isNotEmpty) {
       final first = failed.first;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showTimedSnackBar(
         SnackBar(
           duration: const Duration(seconds: 8),
           content: Text(

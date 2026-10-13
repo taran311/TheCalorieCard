@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/snack.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
@@ -24,10 +25,11 @@ Future<LoggedFoods?> showLogRecipeSheet(
   );
   if (logged != null && logged.count > 0) {
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
+    messenger.showTimedSnackBar(
       SnackBar(
         content: Text(
             'Logged ${recipe['name'] ?? 'recipe'} to ${logged.meal}'),
+        duration: const Duration(seconds: 5),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () async {

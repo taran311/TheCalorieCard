@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/snack.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/tutorials/tutorial_button.dart';
@@ -661,9 +662,10 @@ class _AddRecipePageState extends State<AddRecipePage> {
     });
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
+    messenger.showTimedSnackBar(
       SnackBar(
         content: Text('Removed ${removed.name}'),
+        duration: const Duration(seconds: 5),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {

@@ -118,8 +118,8 @@ final List<Tutorial> tutorials = [
       ),
       TStep(
         title: 'Flip for macros',
-        body: 'Tap the card to see how much protein, carbs and fat you '
-            'have left today.',
+        body: 'Tap the card to see the protein, carbs and fat you\'ve had '
+            'against your goals, like "120 / 150g".',
         target: 'card',
         act: TAct.tap,
         apply: (s) => s.cardFlipped = true,

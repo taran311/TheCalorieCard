@@ -5,6 +5,7 @@ import 'package:namer_app/services/analytics.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/snack.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 import 'package:namer_app/components/credit_card.dart';
@@ -1016,10 +1017,11 @@ class _HomePageState extends State<HomePage>
       if (unlocked.isNotEmpty && mounted) {
         final first = unlocked.first;
         final more = unlocked.length > 1 ? ' (+${unlocked.length - 1} more)' : '';
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showTimedSnackBar(
           SnackBar(
             content: Text(
                 '${first.emoji} Achievement unlocked: ${first.title}$more'),
+            duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: 'View',
               onPressed: () => Navigator.of(context).push(

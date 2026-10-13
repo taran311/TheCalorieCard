@@ -421,6 +421,15 @@ class _SoloGamePageState extends State<SoloGamePage> {
   final _input = TextEditingController();
   final _focus = FocusNode();
 
+  /// Puts the cursor in the guess box, once it's back on screen (it's
+  /// swapped out while the answer shows), so on a computer you can just
+  /// type the next guess and press Enter.
+  void _focusGuess() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
   /// The quiz's day, fixed when the page opens (it doesn't change under
   /// you at midnight).
   final String _day = GamesService.dayKey();
@@ -498,7 +507,7 @@ class _SoloGamePageState extends State<SoloGamePage> {
     }
     if (!mounted) return;
     setState(() => _loading = false);
-    if (!_finished) _focus.requestFocus();
+    if (!_finished) _focusGuess();
   }
 
   Future<void> _loadOwnDay() async {
@@ -593,7 +602,7 @@ class _SoloGamePageState extends State<SoloGamePage> {
     }
     if (!mounted) return;
     setState(() => _loading = false);
-    _focus.requestFocus();
+    _focusGuess();
   }
 
   Future<void> _lockIn() async {
@@ -658,7 +667,7 @@ class _SoloGamePageState extends State<SoloGamePage> {
 
   void _next() {
     setState(() => _revealed = false);
-    if (!_finished) _focus.requestFocus();
+    if (!_finished) _focusGuess();
   }
 
   Future<void> _share() async {
@@ -755,11 +764,16 @@ class _SoloGamePageState extends State<SoloGamePage> {
           score: _scores.last,
           xp: _xp.last,
           showXp: _showXp,
+          // The quiz's finishing bonus comes with the last answer.
+          bonus: _daily && _guesses.length >= n ? Xp.dailyBonus : 0,
           last: _guesses.length >= n,
           onNext: _next,
         )
       else ...[
         TextField(
+          // A fresh box for each question, so nothing typed for the last
+          // one can carry over (the browser keeps its own copy of the text).
+          key: ValueKey('guess_${_guesses.length}'),
           controller: _input,
           focusNode: _focus,
           enabled: !_saving,
@@ -790,10 +804,22 @@ class _SoloGamePageState extends State<SoloGamePage> {
             onPressed: _saving ? null : _lockIn,
             style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primaryDark),
-            child: Text(
-              _saving ? 'Saving…' : 'Lock it in',
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            // Shows the number that will be locked in, so what's scored
+            // is always what you see.
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _input,
+              builder: (context, value, _) {
+                final n = int.tryParse(value.text.trim());
+                return Text(
+                  _saving
+                      ? 'Saving…'
+                      : n == null
+                          ? 'Lock it in'
+                          : 'Lock in $n kcal',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w800),
+                );
+              },
             ),
           ),
         ),
@@ -999,6 +1025,9 @@ class _Reveal extends StatelessWidget {
   final int score;
   final int xp;
   final bool showXp;
+
+  /// Part of [xp] that's a bonus (finishing the quiz), not for this guess.
+  final int bonus;
   final bool last;
   final VoidCallback onNext;
 
@@ -1008,6 +1037,7 @@ class _Reveal extends StatelessWidget {
     required this.score,
     required this.xp,
     required this.showXp,
+    this.bonus = 0,
     required this.last,
     required this.onNext,
   });
@@ -1063,6 +1093,16 @@ class _Reveal extends StatelessWidget {
                     ],
                   ],
                 ),
+                // Say where XP came from, so "Way off" with XP makes sense.
+                if (showXp && bonus > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    xp - bonus > 0
+                        ? 'Includes +$bonus XP for finishing the quiz'
+                        : '+$bonus XP for finishing the quiz',
+                    style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                  ),
+                ],
               ],
             ),
           ),

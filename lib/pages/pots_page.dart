@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/snack.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/pot_service.dart';
@@ -65,9 +66,10 @@ class _PotsPageState extends State<PotsPage> {
       final moved = await PotService.move(_uid, amount);
       FoodLog.notifyChanged();
       if (moved > 0) {
-        messenger.showSnackBar(
+        messenger.showTimedSnackBar(
           SnackBar(
             content: Text('${moved.round()} kcal moved onto your card'),
+            duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: 'Undo',
               onPressed: () => _undo(moved, messenger),
