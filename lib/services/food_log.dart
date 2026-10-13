@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/portion_amount.dart';
 
 /// What was just logged, so the screen that asked can offer Undo.
 class LoggedFoods {
@@ -250,11 +251,9 @@ class FoodLog {
         'food_multiplier': multiplier,
         'food_portion': servingSize is String
             ? portionLabel(servingSize, multiplier)
-            : multiplier == 1
-                ? basePortion
-                : basePortion.isEmpty
-                    ? '×${formatAmount(multiplier)}'
-                    : '${formatAmount(multiplier)} × $basePortion',
+            : basePortion.isEmpty
+                ? (multiplier == 1 ? '' : '×${formatAmount(multiplier)}')
+                : PortionAmount.scaledLabel(basePortion, multiplier),
       });
     }
     if (calories != null) {

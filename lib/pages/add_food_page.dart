@@ -22,6 +22,8 @@ import 'package:namer_app/services/food_history.dart';
 import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/portion_amount.dart';
+import 'package:namer_app/ui/amount_field.dart';
 import 'package:namer_app/services/achievement_service.dart';
 
 /// A food being looked up: shown as a "pending transaction" until it
@@ -261,15 +263,15 @@ class _AddFoodPageState extends State<AddFoodPage> {
   static bool _isPer100(String portion) =>
       RegExp(r'^\s*100\s*(g|ml)\b', caseSensitive: false).hasMatch(portion);
 
-  /// "118g" scaled by 2 is "2 × 118g"; "100 g" scaled by 2.5 is "250 g".
+  /// "30 g" scaled by 1.5 is "45 g"; "100 g" by 2.5 is "250 g"; "1 bar
+  /// (45g)" by 2 is "2 × 1 bar (45g)".
   static String _scaledPortion(String basePortion, double multiplier) {
     if (multiplier == 1) return basePortion;
     final unit = RegExp(r'^\s*100\s*(g|ml)\b', caseSensitive: false)
         .firstMatch(basePortion)
         ?.group(1);
     if (unit != null) return '${(100 * multiplier).round()} ${unit.toLowerCase()}';
-    final m = FoodLog.formatAmount(multiplier);
-    return basePortion.isEmpty ? '$m×' : '$m × $basePortion';
+    return PortionAmount.scaledLabel(basePortion, multiplier);
   }
 
   /// Sets an item's calories outright (fixing an estimate). The base is
@@ -1962,18 +1964,17 @@ class _AdjustSheet extends StatefulWidget {
 class _AdjustSheetState extends State<_AdjustSheet> {
   late final bool _per100 = _AddFoodPageState._isPer100(widget.basePortion);
 
-  /// "g" or "ml" for per-100 portions.
-  late final String _unit = (RegExp(r'^\s*100\s*(g|ml)\b',
-                  caseSensitive: false)
-              .firstMatch(widget.basePortion)
-              ?.group(1) ??
-          'g')
-      .toLowerCase();
-
-  late final TextEditingController _amount = TextEditingController(
-    text: FoodLog.formatAmount(
-        _per100 ? 100 * widget.multiplier : widget.multiplier),
+  /// The exact amount, in portions, grams or ounces (ml / fl oz for
+  /// drinks) when the portion says what it weighs.
+  late final AmountInput _input = AmountInput(
+    basePortion: widget.basePortion,
+    multiplier: widget.multiplier,
+    allowPortions: !_per100,
   );
+
+  /// One portion's calories, for the live total as the amount changes.
+  late final double _kcalPerPortion =
+      widget.multiplier > 0 ? widget.calories / widget.multiplier : 0;
   late final TextEditingController _kcal =
       TextEditingController(text: '${widget.calories.round()}');
 
@@ -1983,17 +1984,15 @@ class _AdjustSheetState extends State<_AdjustSheet> {
 
   @override
   void dispose() {
-    _amount.dispose();
+    _input.dispose();
     _kcal.dispose();
     super.dispose();
   }
 
   void _save() {
     double? multiplier;
-    final amountText = _amount.text.trim();
-    if (amountText.isNotEmpty) {
-      final a = _parseNumber(amountText);
-      final m = a == null ? null : (_per100 ? a / 100 : a);
+    if (!_input.isEmpty) {
+      final m = _input.multiplier;
       if (m == null || !m.isFinite || m <= 0) {
         setState(() => _amountError = 'Enter an amount more than 0');
         return;
@@ -2023,6 +2022,23 @@ class _AdjustSheetState extends State<_AdjustSheet> {
           ? null
           : _Adjustment(multiplier: multiplier, calories: calories),
     );
+  }
+
+  /// Under the amount box: the same amount the other way round and what it
+  /// comes to ("= 45 g · 245 kcal"), updated as you type.
+  String _amountHelper() {
+    final m = _input.multiplier;
+    if (m == null) {
+      if (_input.unit != AmountUnit.portions) {
+        return 'In ${PortionAmount.label(_input.unit)}';
+      }
+      return widget.basePortion.isEmpty
+          ? '1 = as looked up'
+          : '1 = ${widget.basePortion}';
+    }
+    final other = _input.equivalent(m, widget.basePortion);
+    final kcal = '${(_kcalPerPortion * m).round()} kcal';
+    return other == null ? kcal : '= $other · $kcal';
   }
 
   @override
@@ -2073,28 +2089,38 @@ class _AdjustSheetState extends State<_AdjustSheet> {
                 ],
               ),
               const SizedBox(height: 16),
+              if (_input.units.length > 1) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: AmountUnitPicker(
+                    units: _input.units,
+                    selected: _input.unit,
+                    onChanged: (u) => setState(() {
+                      _input.setUnit(u);
+                      _amountError = null;
+                    }),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               TextField(
-                controller: _amount,
+                controller: _input.controller,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: _numberInput,
                 textInputAction: TextInputAction.done,
                 decoration: InputDecoration(
-                  labelText: _per100 ? 'Exact amount' : 'How many portions',
-                  suffixText: _per100 ? _unit : '×',
-                  helperText: _per100
-                      ? 'In $_unit'
-                      : widget.basePortion.isEmpty
-                          ? '1 = as looked up'
-                          : '1 = ${widget.basePortion}',
+                  labelText: _input.unit == AmountUnit.portions
+                      ? 'How many portions'
+                      : 'Exact amount',
+                  suffixText: _input.unit == AmountUnit.portions
+                      ? '×'
+                      : PortionAmount.label(_input.unit),
+                  helperText: _amountHelper(),
                   errorText: _amountError,
                   border: const OutlineInputBorder(),
                 ),
-                onChanged: (_) {
-                  if (_amountError != null) {
-                    setState(() => _amountError = null);
-                  }
-                },
+                onChanged: (_) => setState(() => _amountError = null),
                 onSubmitted: (_) => _save(),
               ),
               if (widget.canEditCalories) ...[

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/portion_amount.dart';
+import 'package:namer_app/ui/amount_field.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/home_widgets.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -173,11 +175,15 @@ class _EntrySheetState extends State<_EntrySheet> {
 
   late double _multiplier = _startMultiplier;
   late String _meal = _startMeal;
-  /// A multiple that isn't one of the buttons (×2.5) shows here.
-  late final _customController = TextEditingController(
-      text: _portions.any((m) => _same(m, _startMultiplier))
-          ? ''
-          : FoodLog.formatAmount(_startMultiplier));
+  late final String _basePortion = FoodLog.basePortionOf(widget.entry);
+
+  /// Any other amount: a multiple that isn't one of the buttons (×2.5), or
+  /// grams / ounces when the portion says what it weighs.
+  late final AmountInput _amount = AmountInput(
+    basePortion: _basePortion,
+    multiplier: _startMultiplier,
+    startEmpty: _portions.any((m) => _same(m, _startMultiplier)),
+  );
   final _caloriesController = TextEditingController();
   late final _noteController =
       TextEditingController(text: FoodLog.noteOf(widget.entry));
@@ -201,7 +207,7 @@ class _EntrySheetState extends State<_EntrySheet> {
       FoodLog.setNote(widget.entryId, _noteController.text)
           .catchError((Object _) {});
     }
-    _customController.dispose();
+    _amount.dispose();
     _caloriesController.dispose();
     _noteController.dispose();
     super.dispose();
@@ -227,10 +233,9 @@ class _EntrySheetState extends State<_EntrySheet> {
       _caloriesController.text.trim().isNotEmpty && _fixedCalories == null;
 
   bool get _customInvalid {
-    final text = _customController.text.trim();
-    if (text.isEmpty) return false;
-    final v = double.tryParse(text);
-    return v == null || !v.isFinite || v <= 0;
+    if (_amount.isEmpty) return false;
+    final m = _amount.multiplier;
+    return m == null || m <= 0;
   }
 
   bool _same(double a, double b) => (a - b).abs() < 0.0001;
@@ -260,14 +265,35 @@ class _EntrySheetState extends State<_EntrySheet> {
   void _pickPortion(double m) {
     setState(() {
       _multiplier = m;
-      _customController.clear();
+      // In portions the buttons say it; in grams the box shows it.
+      if (_amount.unit == AmountUnit.portions) {
+        _amount.controller.clear();
+      } else {
+        _amount.show(m);
+      }
     });
   }
 
-  void _onCustomChanged(String text) {
-    final v = double.tryParse(text.trim());
+  void _onCustomChanged(String _) {
+    final m = _amount.multiplier;
     setState(() {
-      if (v != null && v.isFinite && v > 0) _multiplier = v;
+      if (m != null && m.isFinite && m > 0) _multiplier = m;
+    });
+  }
+
+  void _setUnit(AmountUnit unit) {
+    setState(() {
+      // Switching to grams shows the current amount in grams.
+      if (_amount.isEmpty && unit != AmountUnit.portions) {
+        _amount.unit = unit;
+        _amount.show(_multiplier);
+      } else {
+        _amount.setUnit(unit);
+        if (unit == AmountUnit.portions &&
+            _portions.any((m) => _same(m, _multiplier))) {
+          _amount.controller.clear();
+        }
+      }
     });
   }
 
@@ -449,6 +475,17 @@ class _EntrySheetState extends State<_EntrySheet> {
     );
   }
 
+  /// "×1 is 30 g. Now 45 g.", so the amount is clear whichever way it's
+  /// typed.
+  String _portionHint() {
+    final one = _basePortion.isEmpty
+        ? '×1 is one portion, as it was looked up.'
+        : '×1 is $_basePortion.';
+    final other = _amount.equivalent(_multiplier, _basePortion);
+    if (other == null || _same(_multiplier, 1)) return one;
+    return '$one Now $other.';
+  }
+
   Widget _editPanel(Macros preview) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
@@ -464,36 +501,48 @@ class _EntrySheetState extends State<_EntrySheet> {
               for (final m in _portions)
                 ChoiceChip(
                   label: Text('×${FoodLog.formatAmount(m)}'),
-                  selected: _customController.text.trim().isEmpty &&
-                      _same(_multiplier, m),
+                  selected: _same(_multiplier, m) &&
+                      (_amount.isEmpty ||
+                          _amount.unit != AmountUnit.portions),
                   showCheckmark: false,
                   onSelected: _busy ? null : (_) => _pickPortion(m),
                 ),
-              SizedBox(
-                width: 110,
-                child: TextField(
-                  controller: _customController,
-                  enabled: !_busy,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                  ],
-                  onChanged: _onCustomChanged,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    labelText: 'Other',
-                    prefixText: '×',
-                    errorText: _customInvalid ? 'Above 0' : null,
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-              ),
             ],
+          ),
+          const SizedBox(height: 10),
+          if (_amount.units.length > 1) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: AmountUnitPicker(
+                units: _amount.units,
+                selected: _amount.unit,
+                onChanged: _busy ? null : _setUnit,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          TextField(
+            controller: _amount.controller,
+            enabled: !_busy,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: AmountInput.inputFormatters,
+            onChanged: _onCustomChanged,
+            decoration: InputDecoration(
+              isDense: true,
+              labelText: _amount.unit == AmountUnit.portions
+                  ? 'Other'
+                  : 'Exact amount',
+              prefixText: _amount.unit == AmountUnit.portions ? '×' : null,
+              suffixText: _amount.unit == AmountUnit.portions
+                  ? null
+                  : PortionAmount.label(_amount.unit),
+              errorText: _customInvalid ? 'Above 0' : null,
+              border: const OutlineInputBorder(),
+            ),
           ),
           const SizedBox(height: 4),
           Text(
-            '×1 is one portion, as it was looked up.',
+            _portionHint(),
             style: TextStyle(fontSize: 12, color: AppColors.muted),
           ),
           const SizedBox(height: 18),
