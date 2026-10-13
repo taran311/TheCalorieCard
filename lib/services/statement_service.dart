@@ -143,8 +143,15 @@ class Statement {
         d.onBudget(dailyBudget) != null);
   }
 
+  /// Average per complete day: days with food logged, but not today until
+  /// it's closed (a half-logged day would drag the average down).
   double get averageCalories {
-    final logged = days.where((d) => d.transactions.isNotEmpty).toList();
+    final today = BalanceService.dateKey(BalanceService.now());
+    final logged = days
+        .where((d) =>
+            d.transactions.isNotEmpty &&
+            (d.finished || BalanceService.dateKey(d.day) != today))
+        .toList();
     if (logged.isEmpty) return 0;
     return logged.fold<double>(0, (s, d) => s + d.calories) / logged.length;
   }
