@@ -127,6 +127,39 @@ void main() {
       expect(FoodHistory.search(foods, 'pizza'), isEmpty);
     });
 
+    test('search: every word typed, any order, amounts left out', () {
+      final had = [
+        tx('3 McCain hash browns', at: day, calories: 240),
+        tx('Tofoo naked tofu 100g', at: day, calories: 120),
+      ];
+      expect(FoodHistory.search(had, 'hash br').single.calories, 240);
+      expect(FoodHistory.search(had, '2 hash browns'), hasLength(1));
+      expect(FoodHistory.search(had, 'browns mccain'), hasLength(1));
+      expect(FoodHistory.search(had, 'tofu 200g'), hasLength(1));
+      expect(FoodHistory.search(had, 'hash tofu'), isEmpty);
+      expect(FoodHistory.search(had, '3 '), isEmpty, reason: 'no letters');
+    });
+
+    test('the same food typed again is reused: own numbers first', () {
+      final had = [
+        tx('3 McCain hash browns',
+            at: day, calories: 240),
+        tx('3 mccain  hash browns ',
+            at: day.subtract(const Duration(days: 2)), calories: 306),
+        tx('Oat latte', at: day, calories: 150),
+        tx('oat latte',
+            at: day.subtract(const Duration(days: 5)),
+            calories: 130,
+            ownNumbers: true),
+      ];
+      expect(FoodHistory.sameFood(had, '3 MCCAIN HASH BROWNS')?.calories, 240,
+          reason: 'the latest one');
+      expect(FoodHistory.sameFood(had, 'oat latte')?.calories, 130,
+          reason: 'numbers they set themselves win');
+      expect(FoodHistory.sameFood(had, '2 McCain hash browns'), isNull);
+      expect(FoodHistory.sameFood(had, ''), isNull);
+    });
+
     test('your own numbers for a food typed again: same name, latest', () {
       final mine = [
         tx('My protein shake', at: day, calories: 180, ownNumbers: true),

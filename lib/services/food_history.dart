@@ -66,25 +66,52 @@ class FoodHistory {
     return [for (final k in keys.take(limit)) latest[k]!];
   }
 
-  /// Up to [limit] past foods whose name contains [query] (ignoring
-  /// case), most recent first, each food once. Needs 2+ letters.
+  /// Up to [limit] past foods matching what's being typed, most recent
+  /// first, each food once. Every word typed has to be in the name
+  /// (ignoring case and order), and amounts are left out, so "2 hash br"
+  /// finds "3 McCain hash browns". Needs 2+ letters.
   static List<CardTransaction> search(
     List<CardTransaction> foods,
     String query, {
     int limit = 5,
   }) {
-    final q = query.trim().toLowerCase();
-    if (q.length < 2) return const [];
+    final words = query
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9\u00C0-\u024F]+'))
+        .where((w) => w.isNotEmpty && !RegExp(r'^\d').hasMatch(w))
+        .toList();
+    if (words.join().length < 2) return const [];
     final seen = <String>{};
     final out = <CardTransaction>[];
     final sorted = [...foods]..sort((a, b) => b.time.compareTo(a.time));
     for (final tx in sorted) {
-      if (!tx.description.toLowerCase().contains(q)) continue;
+      final name = tx.description.toLowerCase();
+      if (!words.every(name.contains)) continue;
       if (!seen.add(keyOf(tx))) continue;
       out.add(tx);
       if (out.length >= limit) break;
     }
     return out;
+  }
+
+  static String _norm(String s) =>
+      s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  /// Exactly this food logged before (same words, ignoring case and
+  /// spacing): their own numbers if they've set some, otherwise the latest
+  /// one looked up. Reused as it is, so typing it again needs no lookup
+  /// (quicker, and no AI cost). Null if it's new.
+  static CardTransaction? sameFood(List<CardTransaction> foods, String query) {
+    final own = ownNumbersFor(foods, query);
+    if (own != null) return own;
+    final q = _norm(query);
+    if (q.isEmpty) return null;
+    CardTransaction? best;
+    for (final tx in foods) {
+      if (tx.isRecipe || _norm(tx.description) != q) continue;
+      if (best == null || tx.time.isAfter(best.time)) best = tx;
+    }
+    return best;
   }
 
   /// The person's own numbers for exactly this food, if they've set them

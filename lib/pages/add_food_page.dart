@@ -184,25 +184,31 @@ class _AddFoodPageState extends State<AddFoodPage> {
   /// A past food as an item, with exactly the numbers it was logged with.
   /// [source] 'yours' when it's the person's own numbers for a food they
   /// typed again (see [FoodHistory.ownNumbersFor]).
+  ///
+  /// [onePortion]: the food typed again by name, so one portion of it (a
+  /// food logged at ×2 last time comes back at ×1), still marked "Check
+  /// this" if it was an estimate.
   Map<String, dynamic> _itemFromHistory(CardTransaction tx,
-          {String source = 'recent'}) =>
-      {
-        'name': tx.description,
-        'calories': tx.calories,
-        'protein': tx.protein,
-        'carbs': tx.carbs,
-        'fat': tx.fat,
-        'portion': tx.portion,
-        'source': source,
-        'needs_review': false,
-        'multiplier': 1.0,
-        'base': {
-          'calories': tx.calories,
-          'protein': tx.protein,
-          'carbs': tx.carbs,
-          'fat': tx.fat,
-        },
-      };
+      {String source = 'recent', bool onePortion = false}) {
+    final m = onePortion && tx.multiplier > 0 ? tx.multiplier : 1.0;
+    return {
+      'name': tx.description,
+      'calories': tx.calories / m,
+      'protein': tx.protein / m,
+      'carbs': tx.carbs / m,
+      'fat': tx.fat / m,
+      'portion': onePortion ? tx.basePortion : tx.portion,
+      'source': source,
+      'needs_review': onePortion && tx.estimate,
+      'multiplier': 1.0,
+      'base': {
+        'calories': tx.calories / m,
+        'protein': tx.protein / m,
+        'carbs': tx.carbs / m,
+        'fat': tx.fat / m,
+      },
+    };
+  }
 
   /// A suggestion from your history tapped while typing: added straight
   /// to the list with its exact numbers, and the half-typed name cleared.
@@ -676,16 +682,19 @@ class _AddFoodPageState extends State<AddFoodPage> {
     _takeItemsFromInput(all: true);
     if (_ingredients.isEmpty) return;
 
-    // Foods they've set their own numbers for before go straight in with
-    // those numbers; only the rest are looked up.
+    // Foods typed exactly as before go straight in with the numbers they
+    // had (their own, if they set some): no lookup, so it's instant and
+    // costs nothing. Only new foods are looked up.
     final yours = <Map<String, dynamic>>[];
     final queries = <String>[];
     for (final q in _ingredients) {
-      final tx = FoodHistory.ownNumbersFor(_history.foods, q);
-      if (tx != null) {
+      final tx = _tutorialMode ? null : FoodHistory.sameFood(_history.foods, q);
+      if (tx == null) {
+        queries.add(q);
+      } else if (tx.ownNumbers) {
         yours.add({..._itemFromHistory(tx, source: 'yours'), 'name': q});
       } else {
-        queries.add(q);
+        yours.add({..._itemFromHistory(tx, onePortion: true), 'name': q});
       }
     }
     if (queries.isEmpty) {

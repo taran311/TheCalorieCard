@@ -24,6 +24,14 @@ class CardTransaction {
   /// uses these rather than a fresh lookup.
   final bool ownNumbers;
 
+  /// How many portions it was logged at (2 for "×2"), and one portion's
+  /// label: so the same food typed again starts from one portion.
+  final double multiplier;
+  final String basePortion;
+
+  /// The numbers were an estimate ("Check this" when it was logged).
+  final bool estimate;
+
   const CardTransaction({
     required this.id,
     required this.description,
@@ -36,7 +44,10 @@ class CardTransaction {
     required this.fat,
     this.isRecipe = false,
     this.ownNumbers = false,
-  });
+    this.multiplier = 1,
+    String? basePortion,
+    this.estimate = false,
+  }) : basePortion = basePortion ?? portion;
 
   /// Its "where it went" category (see [SpendCategory]).
   SpendCategory get spendCategory => isRecipe
@@ -252,6 +263,9 @@ class StatementService {
               ownNumbers: data['food_edited'] == true ||
                   data['food_source'] == 'manual' ||
                   data['food_source'] == 'yours',
+              multiplier: FoodLog.multiplierOf(data),
+              basePortion: FoodLog.basePortionOf(data),
+              estimate: data['food_estimate'] == true,
             ),
           );
     }
