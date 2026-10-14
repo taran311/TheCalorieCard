@@ -39,6 +39,8 @@ class _StatsPageState extends State<StatsPage> {
     _Metric('premium_started', 'Premium started', 'New paid subscriptions'),
     _Metric('gift_redeemed', 'Gift codes used', 'Premium given by code'),
     _Metric('food_lookup', 'Food lookups', 'Server lookups (AI and database)'),
+    _Metric('food_lookup_saved', 'Saved answers used',
+        'Lookups answered from saved foods, no AI needed'),
     _Metric('coach_message', 'Coach messages', 'Messages sent to the Coach'),
   ];
 

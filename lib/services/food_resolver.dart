@@ -137,6 +137,25 @@ class FoodResolver {
     );
   }
 
+  /// Where a looked-up answer came from (not a person's own numbers).
+  static const lookupSources = {
+    'fatsecret', 'ai', 'web', 'label', 'tables', 'saved',
+  };
+
+  /// Off in tests (no server).
+  static bool reportEnabled = true;
+
+  /// Tells the server someone fixed the calories of a looked-up food
+  /// ([calories] for exactly [food] as typed, one portion). Saved answers
+  /// several people correct are looked up afresh. Fire-and-forget.
+  static void reportFix(String food, double calories) {
+    if (!reportEnabled) return;
+    if (food.trim().isEmpty || !calories.isFinite || calories < 0) return;
+    ProxyClient.post('/food/feedback', {'food': food, 'calories': calories})
+        .timeout(const Duration(seconds: 20))
+        .then((_) {}, onError: (_) {});
+  }
+
   /// Looks up several foods at once (a few at a time, to stay well inside
   /// the server's rate limit). Results keep the input order; failures are
   /// returned as null.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/portion_amount.dart';
 import 'package:namer_app/ui/amount_field.dart';
 import 'package:namer_app/ui/calorie_card.dart';
@@ -333,6 +334,15 @@ class _EntrySheetState extends State<_EntrySheet> {
         final text = _noteController.text.trim();
         await FoodLog.setNote(widget.entryId, text);
         _savedNote = text;
+      }
+      // Fixing a looked-up food's calories: tell the server (per portion),
+      // so an answer several people correct is looked up again.
+      final fixed = _fixedCalories;
+      final source = '${widget.entry['food_source'] ?? ''}';
+      if (fixed != null &&
+          _multiplier > 0 &&
+          FoodResolver.lookupSources.contains(source)) {
+        FoodResolver.reportFix(_name, fixed / _multiplier);
       }
       await FoodLog.updateEntry(
         widget.entryId,

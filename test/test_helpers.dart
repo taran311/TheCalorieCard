@@ -3,6 +3,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:namer_app/services/analytics.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/chat_service.dart';
+import 'package:namer_app/services/food_resolver.dart';
 
 /// Shared set-up for the balance tests: an in-memory Firestore, a fixed
 /// clock, and a user whose goals are 2000 kcal / 150P / 200C / 60F.
@@ -21,6 +22,7 @@ class TestWorld {
   void install() {
     Analytics.enabled = false;
     ChatService.notifyEnabled = false;
+    FoodResolver.reportEnabled = false;
     BalanceService.firestore = db;
     BalanceService.clock = () => now;
   }

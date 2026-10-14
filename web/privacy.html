@@ -32,7 +32,7 @@
   <header><div class="wrap">
     <a href="/">← The Calorie Card</a>
     <h1>Privacy policy</h1>
-    <p class="small" style="color:#fff;opacity:.9;margin:6px 0 0">Last updated 12 October 2026</p>
+    <p class="small" style="color:#fff;opacity:.9;margin:6px 0 0">Last updated 14 October 2026</p>
   </div></header>
   <main>
     <section>
@@ -81,7 +81,7 @@
         <tr><td>Render</td><td>Hosting our server, which looks up foods and runs Coach</td></tr>
         <tr><td>OpenAI</td><td>Estimating food from text and photos, and Calorie Coach replies</td></tr>
         <tr><td>FatSecret</td><td>Food database searches (only the food you typed is sent)</td></tr>
-        <tr><td>Open Food Facts</td><td>Barcode lookups (only the barcode is sent)</td></tr>
+        <tr><td>Open Food Facts</td><td>Barcode lookups and searches for branded foods (only the barcode or the food you typed is sent)</td></tr>
         <tr><td>Stripe</td><td>Payments and subscriptions</td></tr>
       </table>
       <p>Voice input is handled by your own browser's speech service (see "What we collect"), under that browser maker's privacy terms rather than ours.</p>
@@ -110,6 +110,12 @@
       <h2>Usage statistics</h2>
       <p>To see whether the app is working for people, our own server keeps daily totals: for example how many people opened the app, set up a card, logged their first food or came back the next day. These are counts only, not a record of who did what, and they're kept in our own database. We don't use Google Analytics, advertising pixels or any other third-party tracking, and no cookies are involved.</p>
       <p>So each person is counted once, a few dates are stored on your account: when you set up your card, when you logged your first food, and when you last used the app (to within a few minutes). We use the last of these to see how the app is being used and to help if something goes wrong; only we can see it. They're all deleted with your account. The daily totals contain no personal data.</p>
+    </section>
+
+    <section id="food-data">
+      <h2>Food lookups and food data</h2>
+      <p>When you look a food up, the words you typed are sent to our server, which works out the numbers. Answers are saved without anything that identifies you, so the next person to type the same food gets it instantly. If you fix the calories of a looked-up food, the food and your number are sent to our server so answers that several people correct get looked up again; we store a one-way code rather than your account, only to count how many different people corrected it.</p>
+      <p>Food data comes from FatSecret, Open Food Facts (food information from <a href="https://world.openfoodfacts.org">Open Food Facts</a> contributors, made available under the Open Database Licence) and McCance and Widdowson's The Composition of Foods Integrated Dataset (contains public sector information licensed under the Open Government Licence v3.0).</p>
     </section>
 
     <section>

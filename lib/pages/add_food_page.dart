@@ -293,6 +293,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
           'fat': item['fat'],
         });
     base['calories'] = multiplier > 0 ? kcal / multiplier : kcal;
+    // A looked-up answer someone fixed: tell the server, so an answer
+    // several people correct gets looked up again.
+    final from = (item['original_source'] ?? item['source']).toString();
+    if (FoodResolver.lookupSources.contains(from) && !_tutorialMode) {
+      FoodResolver.reportFix(
+          item['name'].toString(), (base['calories'] as num).toDouble());
+    }
     setState(() {
       _calculatedItems[idx] = {
         ...item,
@@ -424,6 +431,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                               Icons.public),
                         if (source == 'label')
                           badge('UK label values', AppText.emerald700,
+                              Icons.verified_outlined),
+                        if (source == 'tables')
+                          badge('UK food tables', AppText.emerald700,
                               Icons.verified_outlined),
                         if (source == 'recent')
                           badge('From your history', AppColors.sky700,

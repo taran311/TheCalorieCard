@@ -41,10 +41,10 @@ class ProxyClient {
 
   static DateTime? _lastWarmUp;
 
-  /// Wakes the server up ahead of a lookup. The free hosting plan puts it
-  /// to sleep when idle and the first request can take 30-50 seconds, so
-  /// we nudge it as soon as someone looks likely to log food. Cheap and
-  /// fire-and-forget: at most once every 4 minutes, errors ignored.
+  /// Opens the connection to the server ahead of a lookup (the server is
+  /// on a paid plan and never sleeps; this just saves the first lookup
+  /// setting up a connection). Cheap and fire-and-forget: at most once
+  /// every 4 minutes, errors ignored.
   static void warmUp() {
     final now = DateTime.now();
     final last = _lastWarmUp;
