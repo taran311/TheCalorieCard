@@ -168,7 +168,7 @@ class _HomeInboxState extends State<HomeInbox> {
     }
   }
 
-  /// Games progress, for "Today's Calorie Quiz is ready".
+  /// Games progress, for "Today's Calorie Quiz".
   StreamSubscription<GamesProgress>? _gamesSub;
   GamesProgress? _games;
 
@@ -626,7 +626,7 @@ class _HomeInboxState extends State<HomeInbox> {
         color: AppColors.primary,
         title: started > 0
             ? "Finish today's Calorie Quiz"
-            : "Today's Calorie Quiz is ready",
+            : "Today's Calorie Quiz",
         subtitle: started > 0
             ? '$started of ${GamesService.dailyRounds} guessed. Pick up '
                 'where you left off.'
