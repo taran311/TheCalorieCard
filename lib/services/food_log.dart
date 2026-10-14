@@ -278,6 +278,45 @@ class FoodLog {
     notifyChanged();
   }
 
+  /// Swaps a logged food's numbers for a fresh lookup ("Numbers look
+  /// wrong? Look up again"). [one] is the new answer for the words as
+  /// typed; the amount it was logged at (×2 and so on) is kept, and the
+  /// card is charged or refunded the difference.
+  static Future<void> replaceWithLookup(
+    String entryId, {
+    required Map<String, dynamic> entry,
+    required Macros one,
+    required String portion,
+    required String source,
+    required bool estimate,
+    String? userId,
+  }) async {
+    final m = multiplierOf(entry);
+    final scaled = one.scaled(m);
+    await BalanceService.updateEntry(
+      _uid(userId),
+      entryId,
+      macros: Macros(
+        calories: scaled.calories.roundToDouble(),
+        protein: scaled.protein,
+        carbs: scaled.carbs,
+        fat: scaled.fat,
+      ),
+      fields: {
+        'food_base': one.toEntryFields(),
+        'food_portion_base': portion,
+        'food_multiplier': m,
+        'food_portion': portion.isEmpty
+            ? ((m - 1).abs() < 1e-9 ? '' : '×${formatAmount(m)}')
+            : PortionAmount.scaledLabel(portion, m),
+        'food_source': source,
+        'food_estimate': estimate,
+        'food_edited': false,
+      },
+    );
+    notifyChanged();
+  }
+
   /// Longest note kept on a food (like a bank transaction note).
   static const maxNoteLength = 200;
 

@@ -322,6 +322,53 @@ class _EntrySheetState extends State<_EntrySheet> {
     }
   }
 
+  /// A typed food that was looked up (or reused from history), not a
+  /// recipe, scan or quick add: it can be looked up again.
+  bool get _canLookUpAgain {
+    final source = '${widget.entry['food_source'] ?? ''}';
+    return widget.entry['is_recipe'] != true &&
+        (FoodResolver.lookupSources.contains(source) ||
+            source == 'recent' ||
+            source == 'yours');
+  }
+
+  /// "Numbers look wrong? Look up again": a fresh lookup of the same words
+  /// (the server throws away what it had saved), at the same amount.
+  Future<void> _lookUpAgain() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final r = await FoodResolver.resolve(_name, refresh: true);
+      if (r.calories <= 0) throw StateError('no answer');
+      await FoodLog.replaceWithLookup(
+        widget.entryId,
+        entry: widget.entry,
+        one: Macros(
+          calories: r.calories,
+          protein: r.protein,
+          carbs: r.carbs,
+          fat: r.fat,
+        ),
+        portion: r.portion,
+        source: r.source,
+        estimate: r.needsReview,
+      );
+      if (mounted) {
+        Navigator.pop(context, const EntrySheetResult(EntrySheetAction.saved));
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = "Couldn't look that up again. Please try again.";
+        });
+      }
+    }
+  }
+
   Future<void> _save() async {
     if (_busy || !_changed || _caloriesInvalid || _customInvalid) return;
     setState(() {
@@ -575,6 +622,15 @@ class _EntrySheetState extends State<_EntrySheet> {
               border: const OutlineInputBorder(),
             ),
           ),
+          if (_canLookUpAgain)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _busy ? null : _lookUpAgain,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Numbers look wrong? Look up again'),
+              ),
+            ),
           const SizedBox(height: 18),
           _sectionLabel('Meal'),
           Wrap(

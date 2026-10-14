@@ -2,6 +2,7 @@
 // card must always be charged or refunded exactly the difference.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 
 import 'test_helpers.dart';
@@ -84,6 +85,30 @@ void main() {
     expect(e['food_calories'], near(100));
     expect(e['food_portion'], '1 slice');
     expect((await w.card())['calories'], near(1900));
+  });
+
+  test('looking up again swaps the numbers, keeps the amount, charges the '
+      'difference', () async {
+    final id = (await logToast(source: 'ai')).ids.single;
+    await FoodLog.updateEntry(id,
+        entry: await entry(id), multiplier: 2, userId: uid);
+    expect((await w.card())['calories'], near(1800));
+
+    await FoodLog.replaceWithLookup(id,
+        entry: await entry(id),
+        one: const Macros(calories: 80, protein: 3, carbs: 15, fat: 1),
+        portion: '1 slice (36g)',
+        source: 'tables',
+        estimate: false,
+        userId: uid);
+    final e = await entry(id);
+    expect(e['food_calories'], near(160));
+    expect(e['food_protein'], near(6));
+    expect(e['food_portion'], '2 × 1 slice (36g)');
+    expect(e['food_source'], 'tables');
+    expect(e['food_estimate'], isFalse);
+    expect(FoodLog.multiplierOf(e), 2);
+    expect((await w.card())['calories'], near(1840));
   });
 
   test('fixing calories replaces them and clears the estimate mark', () async {
