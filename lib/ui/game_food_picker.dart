@@ -119,7 +119,8 @@ class _GameFoodPickerState extends State<GameFoodPicker> {
                   'up with some of these.'
               : null,
         ),
-        for (final f in kGameFoods) _Item.food(f, _keyOf(f, fromList: true)),
+        // The hand-picked foods: a list someone can scroll through.
+        for (final f in kPickedGameFoods) _Item.food(f, _keyOf(f, fromList: true)),
       ],
     ];
   }
