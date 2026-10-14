@@ -8,6 +8,7 @@ import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/food_country.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/goal_maths.dart';
 import 'package:namer_app/services/profile_limits.dart';
@@ -54,6 +55,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     super.initState();
     // Open a connection to the lookup server early.
     ProxyClient.warmUp();
+    FoodCountry.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
 
     // Show the preview card in your chosen finish.
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -1290,6 +1294,82 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   }
 
   /// A titled card on the page.
+  /// Where foods are looked up for: saved straight away (it's not part of
+  /// the goal, so it doesn't wait for Save).
+  Widget _foodCountry() {
+    final cc = FoodCountry.code;
+    return Row(
+      children: [
+        Icon(Icons.public, color: AppColors.gray600),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(FoodCountry.nameOf(cc),
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700, color: AppColors.ink)),
+              Text(
+                FoodCountry.chosen ? 'Your choice' : "From this device's region",
+                style: TextStyle(fontSize: 12, color: AppColors.muted),
+              ),
+            ],
+          ),
+        ),
+        TextButton(
+          onPressed: _pickFoodCountry,
+          child: const Text('Change'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickFoodCountry() async {
+    final device = FoodCountry.deviceCountry;
+    final entries = FoodCountry.countries.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    // '' = back to the device's region.
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.75),
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.phone_iphone),
+                title: Text("This device's region "
+                    '(${FoodCountry.nameOf(device)})'),
+                selected: !FoodCountry.chosen,
+                onTap: () => Navigator.pop(context, ''),
+              ),
+              const Divider(height: 1),
+              for (final e in entries)
+                ListTile(
+                  title: Text(e.value),
+                  selected: FoodCountry.chosen && FoodCountry.code == e.key,
+                  onTap: () => Navigator.pop(context, e.key),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await FoodCountry.choose(picked.isEmpty ? null : picked);
+      if (mounted) setState(() {});
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text("Couldn't save that. Please try again.")));
+    }
+  }
+
   Widget _section({
     required String title,
     String? subtitle,
@@ -1424,6 +1504,13 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                               _buildManualInputTab(),
                           ],
                         ),
+                      ),
+                      const SizedBox(height: 16),
+                      _section(
+                        title: 'Food country',
+                        subtitle: 'Sizes, brands and labels are looked up '
+                            'for this country.',
+                        child: _foodCountry(),
                       ),
                       const SizedBox(height: 24),
                       Text(

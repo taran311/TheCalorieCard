@@ -490,7 +490,8 @@ class _FoodCheckPageState extends State<FoodCheckPage> {
     if (food == null || food.isEmpty || !mounted) return;
     String message;
     try {
-      final r = await ProxyClient.post('/admin/food-forget', {'food': food})
+      final r = await ProxyClient.post(
+              '/admin/food-forget', {'food': food, 'country': 'GB'})
           .timeout(const Duration(seconds: 30));
       message = r.statusCode == 200
           ? 'Forgotten. "$food" will be looked up afresh.'

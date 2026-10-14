@@ -328,15 +328,26 @@ class _AddFoodPageState extends State<AddFoodPage> {
         basePortion: basePortion,
         multiplier: (item['multiplier'] as num?)?.toDouble() ?? 1.0,
         calories: (item['calories'] as num?)?.toDouble() ?? 0,
-        // Estimates, and numbers the person typed in themselves.
+        // Estimates, numbers from history and numbers the person typed in.
         canEditCalories: item['source'] == 'ai' ||
             item['source'] == 'manual' ||
             item['source'] == 'yours' ||
+            item['source'] == 'recent' ||
             item['needs_review'] == true ||
             item['edited'] == true,
+        // Typed foods, looked up or reused from history (not scans,
+        // quick adds or recipes).
+        canLookUpAgain: !_tutorialMode &&
+            (FoodResolver.lookupSources.contains(item['source']) ||
+                item['source'] == 'recent' ||
+                item['source'] == 'yours'),
       ),
     );
     if (result == null || !mounted || idx >= _calculatedItems.length) return;
+    if (result.relookup) {
+      _lookUpAgain(idx);
+      return;
+    }
     final m = result.multiplier;
     if (m != null) _setMultiplier(idx, m);
     final kcal = result.calories;
@@ -406,6 +417,20 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         color: AppColors.ink,
                       ),
                     ),
+                    // Not sure it's the right product: say which one it
+                    // matched, so it's easy to spot ("Mini Sausages").
+                    if (review &&
+                        '${item['matched_name'] ?? ''}'.trim().isNotEmpty &&
+                        '${item['matched_name']}'.trim().toLowerCase() !=
+                            '${item['name']}'.trim().toLowerCase()) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Matched: ${item['matched_name']}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: AppText.amber700),
+                      ),
+                    ],
                     const SizedBox(height: 3),
                     Text(
                       [
@@ -430,7 +455,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                           badge('Label found online', AppText.emerald700,
                               Icons.public),
                         if (source == 'label')
-                          badge('UK label values', AppText.emerald700,
+                          badge('Label values', AppText.emerald700,
                               Icons.verified_outlined),
                         if (source == 'tables')
                           badge('UK food tables', AppText.emerald700,
@@ -687,6 +712,21 @@ class _AddFoodPageState extends State<AddFoodPage> {
     }
   }
 
+  /// Foods to look up fresh next time: not reused from history, and the
+  /// server skips (and replaces) anything it had saved.
+  final Set<String> _fresh = {};
+
+  /// Swaps an item for a fresh lookup of the same words.
+  void _lookUpAgain(int idx) {
+    final name = _calculatedItems[idx]['name'].toString();
+    setState(() {
+      _calculatedItems.removeAt(idx);
+      _ingredients.add(name);
+      _fresh.add(name);
+    });
+    _calculateWithAI();
+  }
+
   Future<void> _calculateWithAI() async {
     if (_calculating || _saving) return;
     _takeItemsFromInput(all: true);
@@ -698,7 +738,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
     final yours = <Map<String, dynamic>>[];
     final queries = <String>[];
     for (final q in _ingredients) {
-      final tx = _tutorialMode ? null : FoodHistory.sameFood(_history.foods, q);
+      final tx = _tutorialMode || _fresh.contains(q)
+          ? null
+          : FoodHistory.sameFood(_history.foods, q);
       if (tx == null) {
         queries.add(q);
       } else if (tx.ownNumbers) {
@@ -725,8 +767,11 @@ class _AddFoodPageState extends State<AddFoodPage> {
     });
 
     // Several lookups at once; each one settles on screen as it arrives.
+    final fresh = {..._fresh};
+    _fresh.clear();
     await FoodResolver.resolveAll(
       queries,
+      refresh: fresh,
       onResult: (i, r) {
         if (!mounted || i >= _pending.length) return;
         setState(() {
@@ -1954,7 +1999,11 @@ class _Adjustment {
   final double? multiplier;
   final double? calories;
 
-  const _Adjustment({this.multiplier, this.calories});
+  /// "Look up again": swap it for a fresh lookup (skipping your history
+  /// and anything saved).
+  final bool relookup;
+
+  const _Adjustment({this.multiplier, this.calories, this.relookup = false});
 }
 
 /// Change how much of a food you had (preset chips or an exact amount),
@@ -1966,6 +2015,7 @@ class _AdjustSheet extends StatefulWidget {
   final double multiplier;
   final double calories;
   final bool canEditCalories;
+  final bool canLookUpAgain;
 
   const _AdjustSheet({
     required this.name,
@@ -1974,6 +2024,7 @@ class _AdjustSheet extends StatefulWidget {
     required this.multiplier,
     required this.calories,
     required this.canEditCalories,
+    this.canLookUpAgain = false,
   });
 
   @override
@@ -2185,6 +2236,15 @@ class _AdjustSheetState extends State<_AdjustSheet> {
                     minimumSize: const Size.fromHeight(48)),
                 child: const Text('Save'),
               ),
+              if (widget.canLookUpAgain) ...[
+                const SizedBox(height: 4),
+                TextButton.icon(
+                  onPressed: () => Navigator.pop(
+                      context, const _Adjustment(relookup: true)),
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Numbers look wrong? Look up again'),
+                ),
+              ],
             ],
           ),
         ),

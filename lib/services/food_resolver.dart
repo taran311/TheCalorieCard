@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:namer_app/services/food_country.dart';
 import 'package:namer_app/services/proxy_client.dart';
 
 /// Result of turning a line of text ("2 crumpets") into nutrition.
@@ -105,10 +106,16 @@ class FoodResolver {
     return d == d.roundToDouble() ? d.toStringAsFixed(0) : d.toStringAsFixed(1);
   }
 
-  /// Looks up one food. Throws on network/server errors.
-  static Future<ResolvedFood> resolve(String query) async {
-    final response = await ProxyClient.post('/food/resolve', {'food': query})
-        .timeout(const Duration(seconds: 60));
+  /// Looks up one food. Throws on network/server errors. [refresh]: skip
+  /// (and replace) any answer the server had saved for it.
+  static Future<ResolvedFood> resolve(String query,
+      {bool refresh = false}) async {
+    await FoodCountry.ensureLoaded();
+    final response = await ProxyClient.post('/food/resolve', {
+      'food': query,
+      'country': FoodCountry.code,
+      if (refresh) 'refresh': true,
+    }).timeout(const Duration(seconds: 60));
     if (response.statusCode != 200) {
       throw Exception('Lookup failed (${response.statusCode})');
     }
@@ -151,7 +158,11 @@ class FoodResolver {
   static void reportFix(String food, double calories) {
     if (!reportEnabled) return;
     if (food.trim().isEmpty || !calories.isFinite || calories < 0) return;
-    ProxyClient.post('/food/feedback', {'food': food, 'calories': calories})
+    ProxyClient.post('/food/feedback', {
+      'food': food,
+      'calories': calories,
+      'country': FoodCountry.code,
+    })
         .timeout(const Duration(seconds: 20))
         .then((_) {}, onError: (_) {});
   }
@@ -162,6 +173,7 @@ class FoodResolver {
   static Future<List<ResolvedFood?>> resolveAll(
     List<String> queries, {
     int concurrency = 3,
+    Set<String> refresh = const {},
     void Function(int done, int total)? onProgress,
     void Function(int index, ResolvedFood? result)? onResult,
   }) async {
@@ -174,7 +186,8 @@ class FoodResolver {
         final i = next++;
         if (i >= queries.length) return;
         try {
-          results[i] = await resolve(queries[i]);
+          results[i] = await resolve(queries[i],
+              refresh: refresh.contains(queries[i]));
         } catch (_) {
           results[i] = null;
         }

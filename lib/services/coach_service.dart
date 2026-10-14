@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/coach_actions.dart';
+import 'package:namer_app/services/food_country.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/meal_time.dart';
 import 'package:namer_app/services/proxy_client.dart';
@@ -506,9 +507,11 @@ class CoachService {
     required List<CoachMessage> history,
     CoachContext? context,
   }) async {
+    await FoodCountry.ensureLoaded();
     final response = await ProxyClient.post('/coach', {
       'messages': [for (final m in history) m.toJson()],
       'context': context?.toJson() ?? const {},
+      'country': FoodCountry.code,
     }).timeout(const Duration(seconds: 45));
 
     Map<String, dynamic>? body;
