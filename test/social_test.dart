@@ -42,10 +42,17 @@ void main() {
       final day = FriendDay.fromLog({
         'totals': {'calories': 500},
         'balances': {'calories': 1500},
-      }, spentNow: 2100);
-      expect(day.spent, 2100);
+      }, spentNow: 2200);
+      expect(day.spent, 2200);
       expect(day.onTrack, isFalse);
-      expect(day.label, '105% of budget spent · over');
+      expect(day.label, '110% of budget spent · over');
+      // Up to 5% over still counts as on track (BudgetRule).
+      final close = FriendDay.fromLog({
+        'totals': {'calories': 500},
+        'balances': {'calories': 1500},
+      }, spentNow: 2100);
+      expect(close.onTrack, isTrue);
+      expect(close.label, '105% of budget spent · on track');
     });
 
     test('finished days say so', () {

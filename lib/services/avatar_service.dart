@@ -124,15 +124,20 @@ class Avatars {
     changed.value++;
   }
 
-  static Future<void> setPreset(String uid, String presetId) =>
-      _save(uid, <String, dynamic>{'preset': presetId});
+  static Future<void> setPreset(String uid, String presetId) async {
+    // Clear the old one first: an avatar is a preset or a photo, never
+    // both.
+    await _save(uid, FieldValue.delete());
+    await _save(uid, <String, dynamic>{'preset': presetId});
+  }
 
   /// [jpeg] should already be small (see [maxPhotoBytes]).
   static Future<void> setPhoto(String uid, Uint8List jpeg) {
     if (jpeg.length > maxPhotoBytes) {
       throw const AvatarTooBig();
     }
-    return _save(uid, <String, dynamic>{'photo': base64Encode(jpeg)});
+    return _save(uid, FieldValue.delete()).then(
+        (_) => _save(uid, <String, dynamic>{'photo': base64Encode(jpeg)}));
   }
 
   /// Back to the initial-letter avatar.

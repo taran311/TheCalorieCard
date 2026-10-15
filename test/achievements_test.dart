@@ -74,7 +74,9 @@ void main() {
     test("a day counts once you've eaten at least half your goal", () {
       expect(day(DateTime(2026, 10, 1), eaten: 1800).isGood, isTrue);
       expect(day(DateTime(2026, 10, 1), eaten: 900).isGood, isFalse);
-      expect(day(DateTime(2026, 10, 1), eaten: 2100).isGood, isFalse);
+      // Up to 5% over still counts (BudgetRule); more than that doesn't.
+      expect(day(DateTime(2026, 10, 1), eaten: 2100).isGood, isTrue);
+      expect(day(DateTime(2026, 10, 1), eaten: 2200).isGood, isFalse);
     });
 
     test("not eating earns nothing", () {

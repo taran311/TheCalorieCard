@@ -26,7 +26,7 @@ dependencies:
   # Opens Stripe's payment and subscription pages.
   url_launcher: ^6.3.0
   # Contactless logging: barcode scanning and meal photos.
-  mobile_scanner: ^5.2.3
+  mobile_scanner: ^7.4.2
   image_picker: ^1.1.2
   # Premium in the Android app (Google Play Billing).
   in_app_purchase: ^3.2.3
