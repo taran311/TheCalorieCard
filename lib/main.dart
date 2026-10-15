@@ -22,7 +22,7 @@ void main() async {
   // These don't depend on each other, so start them together rather than
   // one after another (a quicker start).
   await Future.wait([
-    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+    _startFirebase(),
     ThemeController.instance.load(),
     // A gift link (?gift=…): remembered until they're signed in to claim it.
     PendingGift.captureFromUrl(),
@@ -36,6 +36,20 @@ void main() async {
   runApp(const MyApp());
   // Moves to a newer deploy quietly, when nothing would be lost.
   AppUpdate.start();
+}
+
+/// Starts Firebase. On Android it has usually started already, from
+/// google-services.json: if that copy's settings differ slightly from
+/// [DefaultFirebaseOptions], Firebase reports "duplicate-app". That's
+/// harmless (the app is running), so carry on rather than stop on the
+/// opening screen.
+Future<void> _startFirebase() async {
+  try {
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
+  } on FirebaseException catch (e) {
+    if (e.code != 'duplicate-app') rethrow;
+  }
 }
 
 /// Read once at start-up (the page clears it from the address bar).

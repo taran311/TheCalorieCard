@@ -54,7 +54,9 @@ class DefaultFirebaseOptions {
     appId: '1:795453323864:android:cb410e20dfedcda1d1a82d',
     messagingSenderId: '795453323864',
     projectId: 'auth-af04a',
-    storageBucket: 'auth-af04a.appspot.com',
+    // Must match android/app/google-services.json exactly, or Firebase
+    // refuses to start ("duplicate-app") and the app never opens.
+    storageBucket: 'auth-af04a.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
