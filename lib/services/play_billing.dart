@@ -19,10 +19,11 @@ class PlayBilling {
 
   static const package = 'com.thecaloriecard.app';
 
-  /// Our plan name → Play product id.
+  /// Our plan name → the Play product ids it may have (the first that
+  /// exists in Play Console is used).
   static const products = {
-    'monthly': 'premium_monthly',
-    'yearly': 'premium_yearly',
+    'monthly': ['monthly', 'premium_monthly'],
+    'yearly': ['yearly', 'premium_yearly'],
   };
 
   /// Google Play billing is used here (the Android app).
@@ -69,11 +70,14 @@ class PlayBilling {
     try {
       final iap = InAppPurchase.instance;
       if (!await iap.isAvailable()) return const {};
-      final r = await iap.queryProductDetails(products.values.toSet());
+      final r = await iap.queryProductDetails(
+          {for (final ids in products.values) ...ids});
       final found = <String, ProductDetails>{};
       for (final e in products.entries) {
-        for (final d in r.productDetails) {
-          if (d.id == e.value) found.putIfAbsent(e.key, () => d);
+        for (final id in e.value) {
+          for (final d in r.productDetails) {
+            if (d.id == id) found.putIfAbsent(e.key, () => d);
+          }
         }
       }
       return _plans = found;
