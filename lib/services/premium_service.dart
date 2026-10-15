@@ -13,11 +13,11 @@ import 'package:url_launcher/url_launcher.dart';
 class PremiumPrices {
   PremiumPrices._();
 
-  static const monthly = '£3.99';
+  static const monthly = '£4.99';
   static const yearly = '£29.99';
   static const yearlyPerMonth = '£2.50';
   static const founder = '£19.99';
-  static const yearlySaving = '37%';
+  static const yearlySaving = '50%';
   static const freeCoachPerDay = 5;
 }
 
