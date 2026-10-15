@@ -86,6 +86,13 @@ class PortionAmount {
     }
   }
 
+  /// [text] with any weights and volumes taken out: "40g surreal" is
+  /// " surreal".
+  static String withoutAmounts(String text) => text.replaceAll(_size, ' ');
+
+  /// How many weights and volumes [text] mentions.
+  static int amountsIn(String text) => _size.allMatches(text).length;
+
   /// The units the amount can be typed in: portions (if [portions]), then
   /// the metric unit and ounces. Just portions when the size isn't known.
   static List<AmountUnit> unitsFor(PortionSize? size, {bool portions = true}) {

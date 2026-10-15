@@ -210,6 +210,33 @@ class _AddFoodPageState extends State<AddFoodPage> {
     };
   }
 
+  /// [query] worked out from a past entry of the same food in another
+  /// amount: its numbers × [factor] (see [FoodHistory.scaledFood]).
+  Map<String, dynamic> _itemScaledFromHistory(
+      CardTransaction tx, double factor, String query) {
+    final want = FoodHistory.amountOf(query);
+    final portion = switch (want?.unit) {
+      'g' => '${PortionAmount.format(want!.amount, AmountUnit.g)} g',
+      'ml' => '${PortionAmount.format(want!.amount, AmountUnit.ml)} ml',
+      _ => PortionAmount.scaledLabel(tx.portion, factor),
+    };
+    final values = {
+      'calories': tx.calories * factor,
+      'protein': tx.protein * factor,
+      'carbs': tx.carbs * factor,
+      'fat': tx.fat * factor,
+    };
+    return {
+      'name': query,
+      ...values,
+      'portion': portion,
+      'source': tx.ownNumbers ? 'yours' : 'recent',
+      'needs_review': tx.estimate && !tx.ownNumbers,
+      'multiplier': 1.0,
+      'base': values,
+    };
+  }
+
   /// A suggestion from your history tapped while typing: added straight
   /// to the list with its exact numbers, and the half-typed name cleared.
   void _addSuggestion(CardTransaction tx) {
@@ -738,10 +765,15 @@ class _AddFoodPageState extends State<AddFoodPage> {
     final yours = <Map<String, dynamic>>[];
     final queries = <String>[];
     for (final q in _ingredients) {
-      final tx = _tutorialMode || _fresh.contains(q)
-          ? null
-          : FoodHistory.sameFood(_history.foods, q);
-      if (tx == null) {
+      final reuse = !_tutorialMode && !_fresh.contains(q);
+      final tx = reuse ? FoodHistory.sameFood(_history.foods, q) : null;
+      // The same food in a different amount ("10g surreal" after "40g
+      // surreal"): scaled from what was logged, no lookup either.
+      final scaled =
+          reuse && tx == null ? FoodHistory.scaledFood(_history.foods, q) : null;
+      if (scaled != null) {
+        yours.add(_itemScaledFromHistory(scaled.tx, scaled.factor, q));
+      } else if (tx == null) {
         queries.add(q);
       } else if (tx.ownNumbers) {
         yours.add({..._itemFromHistory(tx, source: 'yours'), 'name': q});

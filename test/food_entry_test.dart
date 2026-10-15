@@ -14,10 +14,12 @@ CardTransaction tx(
   required DateTime at,
   double calories = 100,
   bool ownNumbers = false,
+  double multiplier = 1,
 }) =>
     CardTransaction(
       id: '$description-$at',
       ownNumbers: ownNumbers,
+      multiplier: multiplier,
       description: description,
       portion: portion,
       category: meal,
@@ -158,6 +160,53 @@ void main() {
           reason: 'numbers they set themselves win');
       expect(FoodHistory.sameFood(had, '2 McCain hash browns'), isNull);
       expect(FoodHistory.sameFood(had, ''), isNull);
+    });
+
+    test('the same food in another amount is scaled, not looked up', () {
+      final had = [
+        tx('40g Surreal', at: day, calories: 160),
+        tx('4 crumpets', at: day, calories: 360),
+        tx('330ml oat milk', at: day, calories: 150),
+        tx('Linda McCartney sausages 2',
+            at: day, calories: 200), // count not at the start
+        tx('30g oats with 200ml oat milk', at: day, calories: 250),
+      ];
+      final s = FoodHistory.scaledFood(had, '10g surreal');
+      expect(s?.factor, closeTo(0.25, 1e-9));
+      expect(s!.tx.calories * s.factor, closeTo(40, 1e-9));
+      expect(FoodHistory.scaledFood(had, 'surreal 0.1 kg')?.factor,
+          closeTo(2.5, 1e-9), reason: 'any unit, amount anywhere');
+      expect(FoodHistory.scaledFood(had, '2 crumpet')?.factor,
+          closeTo(0.5, 1e-9), reason: 'plurals match');
+      expect(FoodHistory.scaledFood(had, '500 ml oat milk')?.factor,
+          closeTo(500 / 330, 1e-9));
+      expect(FoodHistory.scaledFood(had, '100ml surreal'), isNull,
+          reason: 'weight vs volume');
+      expect(FoodHistory.scaledFood(had, '10g surreal crunch'), isNull,
+          reason: 'different food');
+      expect(FoodHistory.scaledFood(had, 'surreal'), isNull,
+          reason: 'no amount to scale by');
+      expect(FoodHistory.scaledFood(had, '60g oats with 200ml oat milk'),
+          isNull, reason: 'two amounts');
+      expect(FoodHistory.scaledFood(had, '2 x 30g bars'), isNull);
+    });
+
+    test('scaling allows for a change made when it was logged', () {
+      final had = [tx('40g surreal', at: day, calories: 240, multiplier: 1.5)];
+      // 40 g × 1.5 = 60 g for 240 kcal, so 30 g is half.
+      expect(FoodHistory.scaledFood(had, '30g surreal')?.factor,
+          closeTo(0.5, 1e-9));
+    });
+
+    test('foodKey and amountOf', () {
+      expect(FoodHistory.foodKey('40g Surreal'), 'surreal');
+      expect(FoodHistory.foodKey('Surreal (25g)'), 'surreal');
+      expect(FoodHistory.foodKey('2 slices of toast'), 'slice toast');
+      expect(FoodHistory.amountOf('1.5 oz nuts')?.amount,
+          closeTo(42.52, 0.01));
+      expect(FoodHistory.amountOf('3 crumpets')?.unit, 'count');
+      expect(FoodHistory.amountOf('2x crumpets')?.amount, 2);
+      expect(FoodHistory.amountOf('banana'), isNull);
     });
 
     test('your own numbers for a food typed again: same name, latest', () {

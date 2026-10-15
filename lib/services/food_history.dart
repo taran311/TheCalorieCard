@@ -1,3 +1,4 @@
+import 'package:namer_app/services/portion_amount.dart';
 import 'package:namer_app/services/statement_service.dart';
 
 /// Foods you've logged before, for one-tap re-adding on Add food: the
@@ -112,6 +113,90 @@ class FoodHistory {
       if (best == null || tx.time.isAfter(best.time)) best = tx;
     }
     return best;
+  }
+
+  /// The same food logged before in a different amount, and how much to
+  /// scale it by: "10g surreal" after "40g Surreal" is that entry × 0.25,
+  /// so it needs no lookup. Works for weights and volumes (g, kg, oz, ml,
+  /// l, fl oz) and counts ("2 crumpets" after "4 crumpets"); the food
+  /// words have to match (ignoring case, order, plurals and "of"). Their
+  /// own numbers first, otherwise the latest. Null if there's nothing to
+  /// scale from.
+  static ({CardTransaction tx, double factor})? scaledFood(
+      List<CardTransaction> foods, String query) {
+    final want = amountOf(query);
+    final key = foodKey(query);
+    if (want == null || key.isEmpty) return null;
+    ({CardTransaction tx, double factor})? best;
+    for (final tx in foods) {
+      if (tx.isRecipe || foodKey(tx.description) != key) continue;
+      final had = amountOf(tx.description);
+      if (had == null || had.unit != want.unit) continue;
+      // The amount typed, times any change made to it when it was logged
+      // ("40g" changed to ×1.5 was 60 g).
+      final eaten = had.amount * (tx.multiplier > 0 ? tx.multiplier : 1);
+      final factor = want.amount / eaten;
+      if (!factor.isFinite || factor < 0.02 || factor > 50) continue;
+      final b = best;
+      final better = b == null ||
+          (tx.ownNumbers && !b.tx.ownNumbers) ||
+          (tx.ownNumbers == b.tx.ownNumbers && tx.time.isAfter(b.tx.time));
+      if (better) best = (tx: tx, factor: factor);
+    }
+    return best;
+  }
+
+  /// How much [text] says, as grams ('g'), ml ('ml') or a count
+  /// ('count'): "40g surreal" is 40 g, "1.5 oz nuts" 42.5 g, "330ml oat
+  /// milk" 330 ml, "3 crumpets" 3. Null if it doesn't say.
+  ///
+  /// Only when there's one clear amount: "30g oats with 200ml oat milk" or
+  /// "2 x 30g bars" can't be scaled by a single number, so they're null.
+  static ({double amount, String unit})? amountOf(String text) {
+    final digit = RegExp(r'\d');
+    final weights = PortionAmount.amountsIn(text);
+    if (weights > 1) return null;
+    if (weights == 1) {
+      if (digit.hasMatch(PortionAmount.withoutAmounts(text))) return null;
+      final size = PortionAmount.sizeOf(text);
+      if (size == null) return null;
+      return (amount: size.amount, unit: size.volume ? 'ml' : 'g');
+    }
+    final count = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*(?:x\s+)?(?=[a-z])',
+            caseSensitive: false)
+        .firstMatch(text);
+    if (count == null || digit.hasMatch(text.substring(count.end))) {
+      return null;
+    }
+    final n = double.tryParse(count.group(1)!);
+    return n == null || n <= 0 ? null : (amount: n, unit: 'count');
+  }
+
+  /// The food words of [text], without the amount: "40g Surreal",
+  /// "surreal 10 g" and "Surreal (25g)" are all "surreal". Lower case,
+  /// plurals made singular, "of", "a" and "the" left out, in a fixed order.
+  static String foodKey(String text) {
+    final words = PortionAmount.withoutAmounts(text)
+        .toLowerCase()
+        .split(RegExp(r'[^a-z\u00C0-\u024F]+'))
+        .where((w) => w.isNotEmpty && !_fillers.contains(w))
+        .map(_singular)
+        .toList()
+      ..sort();
+    return words.join(' ');
+  }
+
+  static const _fillers = {'of', 'a', 'an', 'the', 'x'};
+
+  static String _singular(String w) {
+    if (w.length > 4 && w.endsWith('ies')) return '${w.substring(0, w.length - 3)}y';
+    if (w.length > 4 && RegExp(r'(ches|shes|xes|oes)$').hasMatch(w)) {
+      return w.substring(0, w.length - 2);
+    }
+    if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) {
+      return w.substring(0, w.length - 1);
+    }
+    return w;
   }
 
   /// The person's own numbers for exactly this food, if they've set them
