@@ -243,10 +243,13 @@ class _MenuPageState extends State<MenuPage> {
     } else if (e.loaded && e.inTrial) {
       final d = e.trialDaysLeft;
       title = 'Premium trial: $d day${d == 1 ? '' : 's'} left';
-      subtitle = 'Choose a plan to keep it and unlock the Aurora card';
-    } else if (!e.loaded) {
+      subtitle = Premium.sellsHere
+          ? 'Choose a plan to keep it and unlock the Aurora card'
+          : 'Unlimited Coach, photo logging and more';
+    } else if (!e.loaded || !Premium.sellsHere) {
       // Still checking: no prices yet, so someone who has already paid
-      // never sees an upsell flash past.
+      // never sees an upsell flash past. The apps never show prices
+      // (Premium is only sold on the website).
       title = 'Premium';
       subtitle = 'Unlimited Coach, photo logging and more';
     } else {

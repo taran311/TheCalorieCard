@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyCx9ahm61yv_C-GR7QjQ4lyMWUAUoTqAjc',
-    appId: '1:795453323864:android:72df55cc590dfa76d1a82d',
+    appId: '1:795453323864:android:cb410e20dfedcda1d1a82d',
     messagingSenderId: '795453323864',
     projectId: 'auth-af04a',
     storageBucket: 'auth-af04a.appspot.com',
@@ -84,4 +84,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'auth-af04a.appspot.com',
   );
 
-}
+}

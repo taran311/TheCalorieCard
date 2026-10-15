@@ -26,8 +26,9 @@ class AuthService {
     _facebookTest = Uri.base.queryParameters['facebook'] == '1';
   }
 
-  /// Whether to show "Continue with Facebook".
-  static bool get showFacebook => facebookLive || _facebookTest;
+  /// Whether to show "Continue with Facebook". Website only: the apps
+  /// would need Facebook's own sign-in kit set up for each app first.
+  static bool get showFacebook => kIsWeb && (facebookLive || _facebookTest);
 
   /// Codes Firebase uses when someone closes the Google window or taps
   /// Cancel. Not an error worth showing.

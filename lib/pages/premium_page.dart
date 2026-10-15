@@ -31,6 +31,7 @@ class _PremiumPageState extends State<PremiumPage> {
     _waitTimer = Timer(const Duration(seconds: 8), () {
       if (mounted) setState(() => _waitedLong = true);
     });
+    if (!Premium.sellsHere) return;
     Premium.foundersLeft().then((n) {
       if (!mounted) return;
       setState(() {
@@ -86,8 +87,9 @@ class _PremiumPageState extends State<PremiumPage> {
             ? "You've already got lifetime Premium."
             : r.stillPaying
                 ? "Lifetime Premium is yours! 💜 Your paid plan is still "
-                    'running: cancel it under Manage subscription so '
-                    "you're not charged."
+                    'running: cancel it under Manage subscription '
+                    '${Premium.sellsHere ? '' : 'on thecaloriecard.com '}'
+                    "so you're not charged."
                 : 'Lifetime Premium is yours! 💜 Your Aurora card '
                     'appears in a few seconds.'),
       ));
@@ -162,7 +164,7 @@ class _PremiumPageState extends State<PremiumPage> {
                   const SizedBox(height: 6),
                   Center(
                     child: Text(
-                      e.loaded && e.inTrial
+                      e.loaded && e.inTrial && Premium.sellsHere
                           ? "Aurora: yours as soon as you choose a plan. It "
                               "isn't part of the free trial."
                           : 'Aurora: the Premium-only card design',
@@ -196,6 +198,18 @@ class _PremiumPageState extends State<PremiumPage> {
                       ),
                       const SizedBox(height: 10),
                     ],
+                    if (!Premium.sellsHere)
+                      Text(
+                        e.lifetime
+                            ? 'Sign in on thecaloriecard.com and go to '
+                                'Premium → Manage subscription to cancel it.'
+                            : 'Thanks for your support. Your plan is '
+                                'managed on thecaloriecard.com.',
+                        textAlign: TextAlign.center,
+                        style:
+                            TextStyle(fontSize: 12.5, color: AppColors.muted),
+                      )
+                    else ...[
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
@@ -218,6 +232,15 @@ class _PremiumPageState extends State<PremiumPage> {
                       'period you\'ve paid for.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                    ),
+                    ],
+                  ] else if (!Premium.sellsHere) ...[
+                    Text(
+                      "Premium can't be bought in the app yet. Everything "
+                      'on the free plan stays free, and you can use a gift '
+                      'code below.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: AppColors.gray700),
                     ),
                   ] else ...[
                     Text(

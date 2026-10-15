@@ -26,9 +26,24 @@ if (flutterVersionName == null) {
     flutterVersionName = "1.0"
 }
 
+// The upload key that signs builds for Google Play. Its details live in
+// android/key.properties, which is never committed (see .gitignore): on
+// your computer it's made by scripts/make_upload_key.ps1, and the GitHub
+// build writes it from the repository's secrets. Without it, release
+// builds are signed with the debug key, which Google Play won't accept.
+def keyProperties = new Properties()
+def keyPropertiesFile = rootProject.file("key.properties")
+def hasUploadKey = keyPropertiesFile.exists()
+if (hasUploadKey) {
+    keyPropertiesFile.withReader("UTF-8") { reader ->
+        keyProperties.load(reader)
+    }
+}
+
 android {
-    namespace = "com.getfatorgetfit"
-    compileSdk = flutter.compileSdkVersion
+    namespace = "com.thecaloriecard.app"
+    // Google Play needs new apps and updates to target Android 16 (API 36).
+    compileSdk = Math.max(flutter.compileSdkVersion, 36)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -36,27 +51,37 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.getfatorgetfit"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
-        minSdkVersion = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // The app's permanent id on Google Play and in Firebase. Never
+        // change it once the app is published.
+        applicationId = "com.thecaloriecard.app"
+        minSdkVersion = Math.max(flutter.minSdkVersion, 24)
+        targetSdk = Math.max(flutter.targetSdkVersion, 36)
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
     }
 
+    signingConfigs {
+        if (hasUploadKey) {
+            upload {
+                keyAlias = keyProperties["keyAlias"]
+                keyPassword = keyProperties["keyPassword"]
+                storeFile = file(keyProperties["storeFile"])
+                storePassword = keyProperties["storePassword"]
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            signingConfig = hasUploadKey ? signingConfigs.upload : signingConfigs.debug
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

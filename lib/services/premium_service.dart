@@ -129,6 +129,12 @@ class Premium {
   static final ValueNotifier<Entitlement> notifier =
       ValueNotifier(Entitlement.unknown);
 
+  /// Whether Premium can be bought (and a Stripe plan managed) here. Only
+  /// on the website: Google Play and the App Store don't allow apps to
+  /// sell subscriptions through other payment systems. In the apps,
+  /// Premium bought on the website and gift codes still work.
+  static bool get sellsHere => kIsWeb;
+
   static Entitlement get current => notifier.value;
   static bool get isPremium => notifier.value.isPremium;
 

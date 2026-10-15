@@ -545,10 +545,13 @@ class _HomeInboxState extends State<HomeInbox> {
         icon: Icons.auto_awesome_rounded,
         color: AppColors.violet600,
         title: 'Premium trial: $days day${days == 1 ? '' : 's'} left',
-        subtitle: 'Choose a plan to keep it and unlock the Aurora card. '
-            'Logging stays free.',
+        subtitle: Premium.sellsHere
+            ? 'Choose a plan to keep it and unlock the Aurora card. '
+                'Logging stays free.'
+            : 'Logging, streaks and friends stay free after it ends.',
         actions: [
-          _InboxAction('See plans', _openPremium, primary: true),
+          if (Premium.sellsHere)
+            _InboxAction('See plans', _openPremium, primary: true),
         ],
       ));
     } else if (premium.trialEnded && !_trialEndSeen) {
@@ -558,8 +561,9 @@ class _HomeInboxState extends State<HomeInbox> {
         title: 'Your Premium trial has ended',
         subtitle: 'You keep logging, streaks and friends, free.',
         actions: [
-          _InboxAction('OK', _dismissTrialEnded),
-          _InboxAction('See plans', _openPremium, primary: true),
+          _InboxAction('OK', _dismissTrialEnded, primary: !Premium.sellsHere),
+          if (Premium.sellsHere)
+            _InboxAction('See plans', _openPremium, primary: true),
         ],
         stacked: narrow,
       ));
