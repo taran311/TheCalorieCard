@@ -1014,10 +1014,13 @@ AuthProblem authProblemFor(Object error, {required String flow}) {
           "Google sign-in isn't available on this address yet. Use your "
           'email and password for now.');
     default:
-      return AuthProblem(switch (flow) {
+      final message = switch (flow) {
         'signup' => "Your account wasn't created. Try again in a moment.",
         'reset' => "The reset email wasn't sent. Try again in a moment.",
         _ => "Sign-in didn't go through. Try again in a moment.",
-      });
+      };
+      // Firebase's code for anything unexpected, so a screenshot tells us
+      // what went wrong.
+      return AuthProblem(code.isEmpty ? message : '$message ($code)');
   }
 }
