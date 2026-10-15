@@ -248,9 +248,13 @@ class _MenuPageState extends State<MenuPage> {
           : 'Unlimited Coach, photo logging and more';
     } else if (!e.loaded || !Premium.sellsHere) {
       // Still checking: no prices yet, so someone who has already paid
-      // never sees an upsell flash past. The apps never show prices
-      // (Premium is only sold on the website).
+      // never sees an upsell flash past.
       title = 'Premium';
+      subtitle = 'Unlimited Coach, photo logging and more';
+    } else if (Premium.viaPlay) {
+      // Google Play sets the price in each country, shown on the Premium
+      // page, so none here.
+      title = 'Go Premium';
       subtitle = 'Unlimited Coach, photo logging and more';
     } else {
       title = 'Go Premium';

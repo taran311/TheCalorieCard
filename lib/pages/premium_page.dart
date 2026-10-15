@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:namer_app/services/play_billing.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -20,6 +22,9 @@ class _PremiumPageState extends State<PremiumPage> {
   bool _busy = false;
   String? _error;
 
+  /// Google's plans and prices (Android app). Null while loading.
+  Map<String, ProductDetails>? _playPlans;
+
   /// Billing can be slow to load (or unreadable). After a while we show
   /// the plans anyway, so a free account is never stuck on a skeleton.
   bool _waitedLong = false;
@@ -31,6 +36,12 @@ class _PremiumPageState extends State<PremiumPage> {
     _waitTimer = Timer(const Duration(seconds: 8), () {
       if (mounted) setState(() => _waitedLong = true);
     });
+    if (Premium.viaPlay) {
+      PlayBilling.plans().then((p) {
+        if (mounted) setState(() => _playPlans = p);
+      });
+      return; // the early-supporter price is only on the website
+    }
     if (!Premium.sellsHere) return;
     Premium.foundersLeft().then((n) {
       if (!mounted) return;
@@ -88,7 +99,7 @@ class _PremiumPageState extends State<PremiumPage> {
             : r.stillPaying
                 ? "Lifetime Premium is yours! 💜 Your paid plan is still "
                     'running: cancel it under Manage subscription '
-                    '${Premium.sellsHere ? '' : 'on thecaloriecard.com '}'
+                    '${Premium.canManage(Premium.current) ? '' : Premium.current.store == 'play' ? 'in Google Play ' : 'on thecaloriecard.com '}'
                     "so you're not charged."
                 : 'Lifetime Premium is yours! 💜 Your Aurora card '
                     'appears in a few seconds.'),
@@ -110,6 +121,27 @@ class _PremiumPageState extends State<PremiumPage> {
   ];
 
   static String _date(DateTime d) => '${d.day} ${_months[d.month - 1]} ${d.year}';
+
+  /// [plan]'s price: Google's (in the person's currency) in the Android
+  /// app, otherwise the website price.
+  String _price(String plan, String website) =>
+      _playPlans?[plan]?.price ?? website;
+
+  String _yearlyPerMonth() {
+    final y = _playPlans?['yearly'];
+    if (y == null) return PremiumPrices.yearlyPerMonth;
+    return '${y.currencySymbol}${(y.rawPrice / 12).toStringAsFixed(2)}';
+  }
+
+  String _saving() {
+    final m = _playPlans?['monthly'];
+    final y = _playPlans?['yearly'];
+    if (m == null || y == null || m.rawPrice <= 0) {
+      return 'Save ${PremiumPrices.yearlySaving}';
+    }
+    final pct = ((1 - y.rawPrice / (m.rawPrice * 12)) * 100).round();
+    return 'Save $pct%';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -198,13 +230,22 @@ class _PremiumPageState extends State<PremiumPage> {
                       ),
                       const SizedBox(height: 10),
                     ],
-                    if (!Premium.sellsHere)
+                    if (!Premium.canManage(e))
                       Text(
-                        e.lifetime
-                            ? 'Sign in on thecaloriecard.com and go to '
-                                'Premium → Manage subscription to cancel it.'
-                            : 'Thanks for your support. Your plan is '
-                                'managed on thecaloriecard.com.',
+                        e.store == 'play'
+                            ? (e.lifetime
+                                ? 'Cancel it in the Play Store on your '
+                                    'Android phone: Profile → Payments and '
+                                    'subscriptions.'
+                                : 'Thanks for your support. You bought '
+                                    'Premium through Google Play, so you '
+                                    'can change or cancel it in the Play '
+                                    'Store on your Android phone.')
+                            : (e.lifetime
+                                ? 'Sign in on thecaloriecard.com and go to '
+                                    'Premium → Manage subscription to cancel it.'
+                                : 'Thanks for your support. Your plan is '
+                                    'managed on thecaloriecard.com.'),
                         textAlign: TextAlign.center,
                         style:
                             TextStyle(fontSize: 12.5, color: AppColors.muted),
@@ -227,9 +268,13 @@ class _PremiumPageState extends State<PremiumPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Change plan, update your card or cancel. It takes '
-                      'one tap and you keep Premium until the end of the '
-                      'period you\'ve paid for.',
+                      e.store == 'play'
+                          ? 'Change plan, update your payment or cancel in '
+                              'Google Play. You keep Premium until the end of '
+                              'the period you\'ve paid for.'
+                          : 'Change plan, update your card or cancel. It '
+                              'takes one tap and you keep Premium until the '
+                              'end of the period you\'ve paid for.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12.5, color: AppColors.muted),
                     ),
@@ -239,6 +284,16 @@ class _PremiumPageState extends State<PremiumPage> {
                       "Premium can't be bought in the app yet. Everything "
                       'on the free plan stays free, and you can use a gift '
                       'code below.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: AppColors.gray700),
+                    ),
+                  ] else if (Premium.viaPlay && _playPlans == null) ...[
+                    const _PlansSkeleton(),
+                  ] else if (Premium.viaPlay && _playPlans!.isEmpty) ...[
+                    Text(
+                      "Couldn't reach Google Play to show the plans. Check "
+                      "you're signed in to the Play Store, then come back "
+                      'to this page.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13, color: AppColors.gray700),
                     ),
@@ -266,17 +321,15 @@ class _PremiumPageState extends State<PremiumPage> {
                     _PlanTile(
                       selected: _plan == 'yearly',
                       title: 'Yearly',
-                      price: '${PremiumPrices.yearly} a year',
-                      detail: 'Just ${PremiumPrices.yearlyPerMonth} a month.',
-                      badge: _foundersLeft > 0
-                          ? null
-                          : 'Save ${PremiumPrices.yearlySaving}',
+                      price: '${_price('yearly', PremiumPrices.yearly)} a year',
+                      detail: 'Just ${_yearlyPerMonth()} a month.',
+                      badge: _foundersLeft > 0 ? null : _saving(),
                       onTap: () => setState(() => _plan = 'yearly'),
                     ),
                     _PlanTile(
                       selected: _plan == 'monthly',
                       title: 'Monthly',
-                      price: '${PremiumPrices.monthly} a month',
+                      price: '${_price('monthly', PremiumPrices.monthly)} a month',
                       detail: 'Flexible. Cancel any time.',
                       onTap: () => setState(() => _plan = 'monthly'),
                     ),
@@ -298,9 +351,15 @@ class _PremiumPageState extends State<PremiumPage> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Cancel any time in one tap. Payments are handled '
-                      'securely by Stripe. If you don\'t choose a plan, '
-                      'you simply stay on the free plan.',
+                      Premium.viaPlay
+                          ? 'Paid through your Google Play account. Cancel any '
+                              'time in the Play Store and keep Premium until '
+                              'the end of the period you\'ve paid for. If you '
+                              'don\'t choose a plan, you simply stay on the '
+                              'free plan.'
+                          : 'Cancel any time in one tap. Payments are handled '
+                              'securely by Stripe. If you don\'t choose a '
+                              'plan, you simply stay on the free plan.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12.5, color: AppColors.muted),
                     ),
@@ -314,7 +373,34 @@ class _PremiumPageState extends State<PremiumPage> {
                         label: const Text('Have a code?'),
                       ),
                     ),
+                    if (Premium.viaPlay && !subscribed)
+                      Center(
+                        child: TextButton.icon(
+                          onPressed:
+                              _busy ? null : () => _run(PlayBilling.restore),
+                          icon: const Icon(Icons.restore_rounded),
+                          label: const Text('Restore purchases'),
+                        ),
+                      ),
                   ],
+                  ValueListenableBuilder<PlayNote?>(
+                    valueListenable: PlayBilling.note,
+                    builder: (context, note, _) => note == null
+                        ? const SizedBox.shrink()
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              note.text,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: note.error
+                                    ? AppText.red600
+                                    : AppColors.gray700,
+                              ),
+                            ),
+                          ),
+                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Text(
