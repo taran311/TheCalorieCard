@@ -295,7 +295,15 @@ class _RecipePickerPageState extends State<_RecipePickerPage> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> sharedRecipeDocs,
   ) async {
     final firestore = BalanceService.db;
-    final found = await Future.wait(sharedRecipeDocs.map((doc) async {
+    // The same recipe shared more than once shows once.
+    final seen = <String>{};
+    final unique = [
+      for (final d in sharedRecipeDocs)
+        if (d.data()['recipe_id'] is String &&
+            seen.add(d.data()['recipe_id'] as String))
+          d
+    ];
+    final found = await Future.wait(unique.map((doc) async {
       final data = doc.data();
       final recipeId = data['recipe_id'];
       final sharedByUserId = data['shared_by_user_id'];

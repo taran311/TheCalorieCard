@@ -168,7 +168,16 @@ class _RecipesPageState extends State<RecipesPage> {
       return;
     }
 
+    // Friends who already have it: shown as shared, so it's never sent
+    // twice (it would show up twice for them).
+    final already = await _sharedWith(recipeId);
     if (!mounted) return;
+    if (already.length >= friends.length) {
+      _showMessage(friends.length == 1
+          ? 'Already shared with ${friends.single.name}'
+          : 'Already shared with all your friends');
+      return;
+    }
 
     final selectedFriends = <String>{};
     var sharing = false;
@@ -204,10 +213,12 @@ class _RecipesPageState extends State<RecipesPage> {
                     itemCount: friends.length,
                     itemBuilder: (_, index) {
                       final friend = friends[index];
+                      final shared = already.contains(friend.id);
                       return CheckboxListTile(
                         title: Text(friend.name),
-                        value: selectedFriends.contains(friend.id),
-                        onChanged: sharing
+                        subtitle: shared ? const Text('Already shared') : null,
+                        value: shared || selectedFriends.contains(friend.id),
+                        onChanged: sharing || shared
                             ? null
                             : (value) {
                                 setDialogState(() {
@@ -270,10 +281,33 @@ class _RecipesPageState extends State<RecipesPage> {
     }
   }
 
+  /// The friends you've already shared [recipeId] with. Empty if it can't
+  /// be checked (then sharing works as before).
+  Future<Set<String>> _sharedWith(String recipeId) async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('shared_recipes')
+          .where('shared_by_user_id', isEqualTo: uid)
+          .where('recipe_id', isEqualTo: recipeId)
+          .get();
+      return {
+        for (final d in snap.docs)
+          if (d.data()['shared_with_user_id'] is String)
+            d.data()['shared_with_user_id'] as String
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
   Future<void> _performShare(String recipeId, Set<String> friendIds) async {
     final currentUserId = FirebaseAuth.instance.currentUser!.uid;
+    // Checked again here, in case it was shared from another device.
+    final already = await _sharedWith(recipeId);
 
     for (final friendId in friendIds) {
+      if (already.contains(friendId)) continue;
       await FirebaseFirestore.instance.collection('shared_recipes').add({
         'recipe_id': recipeId,
         'shared_by_user_id': currentUserId,
@@ -886,11 +920,14 @@ class _RecipesPageState extends State<RecipesPage> {
           ta is Timestamp ? ta : null, tb is Timestamp ? tb : null);
     });
 
+    // The same recipe shared more than once shows once (the newest).
+    final seen = <String>{};
     for (final doc in docs) {
       final data = doc.data();
       final recipeId = data['recipe_id'];
       final sharedByUserId = data['shared_by_user_id'];
       if (recipeId is! String || recipeId.isEmpty) continue;
+      if (!seen.add(recipeId)) continue;
 
       try {
         final recipeDoc =
