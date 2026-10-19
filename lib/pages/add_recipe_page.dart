@@ -11,6 +11,11 @@ import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/recipe_service.dart';
+import 'package:namer_app/services/recipe_import.dart';
+import 'package:namer_app/services/premium_service.dart';
+import 'package:namer_app/ui/premium_sheet.dart';
+import 'package:namer_app/pages/recipe_import_page.dart';
+import 'package:image_picker/image_picker.dart';
 
 class AddRecipePage extends StatefulWidget {
   final String? recipeId; // if provided, page works in edit mode
@@ -516,6 +521,16 @@ class _AddRecipePageState extends State<AddRecipePage> {
                           _buildSelectedIngredients(),
                           const SizedBox(height: 8),
                           _buildFreeTextInput(),
+                          const SizedBox(height: 4),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              icon: const Icon(Icons.document_scanner_outlined),
+                              label: const Text(
+                                  'Import from a screenshot or photo'),
+                              onPressed: _importFromImage,
+                            ),
+                          ),
                           if (_ingredients.isNotEmpty) ...[
                             const SizedBox(height: 16),
                             _buildTotalsBar(),
@@ -1242,6 +1257,124 @@ class _AddRecipePageState extends State<AddRecipePage> {
         ],
       ],
     );
+  }
+
+  /// Reads a recipe from screenshots or photos (another app, a website, a
+  /// cookbook) and adds its ingredients, after the person has checked them.
+  Future<void> _importFromImage() async {
+    if (!Premium.isPremium) {
+      await showPremiumSheet(
+        context,
+        title: 'Recipe import is part of Premium',
+        message: 'Screenshot a recipe from another app or website, or snap '
+            'a cookbook page, and we\'ll turn it into ingredients with our '
+            'own calorie lookup.',
+      );
+      return;
+    }
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose screenshots'),
+              subtitle: Text('Up to ${RecipeImport.maxImages}, for a long list'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              subtitle: const Text('A cookbook page or a written list'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    final List<XFile> files;
+    try {
+      final picker = ImagePicker();
+      // Tall enough to read a long screenshot, small enough to send fast.
+      if (source == ImageSource.gallery) {
+        files = await picker.pickMultiImage(
+            maxWidth: 1080, maxHeight: 2400, imageQuality: 80);
+      } else {
+        final f = await picker.pickImage(
+            source: source, maxWidth: 1600, maxHeight: 2400, imageQuality: 80);
+        files = [if (f != null) f];
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Couldn't open your photos.")));
+      }
+      return;
+    }
+    if (files.isEmpty || !mounted) return;
+    if (files.length > RecipeImport.maxImages) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Using the first ${RecipeImport.maxImages} images.')));
+    }
+
+    final images = <({List<int> bytes, String mime})>[];
+    for (final file in files.take(RecipeImport.maxImages)) {
+      final name = file.name.toLowerCase();
+      final mime = file.mimeType ??
+          (name.endsWith('.png')
+              ? 'image/png'
+              : name.endsWith('.webp')
+                  ? 'image/webp'
+                  : 'image/jpeg');
+      images.add((bytes: await file.readAsBytes(), mime: mime));
+    }
+    if (!mounted) return;
+
+    final added = await Navigator.of(context).push<List<ImportedIngredient>>(
+      MaterialPageRoute(
+        builder: (_) => RecipeImportPage(
+          images: images,
+          onDetails: (title, servings) {
+            if (!mounted) return;
+            setState(() {
+              if (_nameController.text.trim().isEmpty && title.isNotEmpty) {
+                _nameController.text = title;
+              }
+              final current = _servingSizeController.text.trim();
+              if (servings != null &&
+                  _servingUnit == 'Serving' &&
+                  (current.isEmpty || current == '1')) {
+                _servingSizeController.text = servings == servings.roundToDouble()
+                    ? servings.round().toString()
+                    : servings.toString();
+              }
+            });
+          },
+        ),
+      ),
+    );
+    if (added == null || added.isEmpty || !mounted) return;
+    setState(() {
+      _ingredients.addAll([
+        for (final a in added)
+          _IngredientEntry(
+            name: a.name,
+            calories: a.macros.calories,
+            protein: a.macros.protein,
+            carbs: a.macros.carbs,
+            fat: a.macros.fat,
+            portion: a.portion.isEmpty ? '1 serving' : a.portion,
+          ),
+      ]);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Added ${added.length} '
+            'ingredient${added.length == 1 ? '' : 's'}.')));
   }
 
   // Calculate all free text ingredients with AI
