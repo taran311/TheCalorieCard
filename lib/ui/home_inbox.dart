@@ -6,6 +6,8 @@ import 'package:namer_app/pages/budgets_page.dart';
 import 'package:namer_app/pages/games_hub_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/services/app_update.dart';
+import 'package:namer_app/services/save_guard.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/budget_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
@@ -305,6 +307,7 @@ class _HomeInboxState extends State<HomeInbox> {
   @override
   void initState() {
     super.initState();
+    AppUpdate.available.addListener(_onUpdateReady);
     _checkReminderOffer();
     _loadTrialSeen();
     _loadBudgetSeen();
@@ -357,6 +360,7 @@ class _HomeInboxState extends State<HomeInbox> {
 
   @override
   void dispose() {
+    AppUpdate.available.removeListener(_onUpdateReady);
     Premium.notifier.removeListener(_onPremiumChanged);
     _splitSub?.cancel();
     _debitSub?.cancel();
@@ -394,11 +398,40 @@ class _HomeInboxState extends State<HomeInbox> {
     }
   }
 
+  void _onUpdateReady() {
+    if (mounted) setState(() {});
+  }
+
+  /// Reloads to the new version, once nothing is still saving.
+  Future<void> _updateNow() async {
+    for (var i = 0; i < 20 && SaveGuard.pending > 0; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    AppUpdate.reload();
+  }
+
   /// Inbox items. On [narrow] screens, cards with two buttons put the
   /// buttons on their own row under the text.
   List<_InboxCard> _items({bool narrow = false}) {
     final items = <_InboxCard>[];
     final uid = widget.userId;
+
+    // A newer version is live (the website): first, and it can't be put
+    // off, so nobody stays on an old version the server has moved on from.
+    // One tap reloads; it also loads by itself the next time the app opens.
+    if (AppUpdate.available.value) {
+      items.add(_InboxCard(
+        icon: Icons.system_update_alt_rounded,
+        color: AppColors.primary,
+        title: 'New version ready ✨',
+        subtitle: 'Takes a second. You stay signed in, and nothing you '
+            'have logged is lost.',
+        actions: [
+          _InboxAction('Update now', _updateNow, primary: true),
+        ],
+        stacked: narrow,
+      ));
+    }
 
     // First: it can only be done until midnight.
     if (_openYesterday != null && !_hiddenToday('late_close')) {

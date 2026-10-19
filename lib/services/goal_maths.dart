@@ -93,6 +93,30 @@ Macros macrosScaledTo(Macros current, int calories) {
   );
 }
 
+/// Rescales macros to a calorie goal as it's typed, keeping the split it
+/// started with. Scaling the rounded result of the last keystroke would
+/// drift ("1" of 1350 rounds fat to 0g, and then it stays 0g): this keeps
+/// the split from before typing began, until the macros are changed some
+/// other way (typed in, Coach's suggestion, loaded).
+class MacroScaler {
+  Macros? _from;
+  (int, int, int)? _to;
+
+  Macros scale(int protein, int carbs, int fat, int calories) {
+    final now = (protein, carbs, fat);
+    if (_from == null || _to != now) {
+      _from = Macros(
+        protein: protein.toDouble(),
+        carbs: carbs.toDouble(),
+        fat: fat.toDouble(),
+      );
+    }
+    final m = macrosScaledTo(_from!, calories);
+    _to = (m.protein.round(), m.carbs.round(), m.fat.round());
+    return m;
+  }
+}
+
 /// Coach's targets per goal (`{'lose': {'calories', 'protein_g', 'carbs_g',
 /// 'fat_g'}, ...}`), with "lose" raised to [floor] if Coach went lower and
 /// its macros scaled up to match. Everything else is passed through.

@@ -349,6 +349,19 @@ class BalanceService {
   /// single read when there's nothing to do.
   ///
   /// Returns true if the balance was rebuilt.
+  /// The profile, with today's balance started: [ensureDailyReset] and
+  /// [userDataDoc] in one read when the card's already on today (nearly
+  /// always), rather than two reads one after the other.
+  static Future<DocumentSnapshot<Map<String, dynamic>>?> _profileForToday(
+      String userId) async {
+    final doc = await userDataDoc(userId);
+    if (doc == null || doc.data()?['balance_date'] == dateKey(now())) {
+      return doc;
+    }
+    await ensureDailyReset(userId);
+    return userDataDoc(userId);
+  }
+
   static Future<bool> ensureDailyReset(String userId,
       {bool force = false}) async {
     final doc = await userDataDoc(userId);
@@ -460,8 +473,7 @@ class BalanceService {
 
   /// Moves the whole pot onto today's card. Returns how much was moved.
   static Future<double> spendPot(String userId) async {
-    await ensureDailyReset(userId);
-    final doc = await userDataDoc(userId);
+    final doc = await _profileForToday(userId);
     if (doc == null) return 0;
     final today = dateKey(now());
     final moved = await _db.runTransaction<double>((tx) async {
@@ -522,8 +534,7 @@ class BalanceService {
     // Bring the card onto today's balance first. The new entries aren't
     // written yet, so the rebuild doesn't count them and we charge them
     // exactly once below.
-    await ensureDailyReset(userId);
-    final userDoc = await userDataDoc(userId);
+    final userDoc = await _profileForToday(userId);
 
     final batch = _db.batch();
     final ids = <String>[];
@@ -575,8 +586,7 @@ class BalanceService {
 
         // Rebuild first if it's a new day: the rebuild still sees this
         // entry, and the refund below takes it back off exactly once.
-        if (today) await ensureDailyReset(userId);
-        final userDoc = today ? await userDataDoc(userId) : null;
+        final userDoc = today ? await _profileForToday(userId) : null;
 
         final batch = _db.batch();
         batch.delete(ref);
@@ -599,8 +609,7 @@ class BalanceService {
         final today = isLogEntry(data) && isToday(entryDate(data));
         // A new day rebuilds from the entries as they are now (without
         // this one); the charge below then adds it exactly once.
-        if (today) await ensureDailyReset(userId);
-        final userDoc = today ? await userDataDoc(userId) : null;
+        final userDoc = today ? await _profileForToday(userId) : null;
         final batch = _db.batch();
         batch.set(_db.collection('user_food').doc(entryId), data);
         if (userDoc != null) {
@@ -635,8 +644,8 @@ class BalanceService {
     final today = isLogEntry(data) && isToday(entryDate(data));
     // A new day rebuilds from the entries as they are now; the difference
     // below is then applied exactly once.
-    if (today && macros != null) await ensureDailyReset(userId);
-    final userDoc = today && macros != null ? await userDataDoc(userId) : null;
+    final userDoc =
+        today && macros != null ? await _profileForToday(userId) : null;
 
     final batch = _db.batch();
     batch.update(ref, {
@@ -662,12 +671,17 @@ class BalanceService {
     if (!goals.isValid || goals.calories <= 0) {
       throw ArgumentError('Calorie goal must be more than zero: $goals');
     }
-    // Close yesterday first (pot savings etc.) if Home hasn't yet today.
-    await ensureDailyReset(userId);
-    final doc = await userDataDoc(userId);
+    // The profile and today's food at the same time (one wait, not three).
+    var (doc, eaten) = await (userDataDoc(userId), todaysTotals(userId)).wait;
     if (doc == null) throw StateError('No profile to update');
+    // Close yesterday first (pot savings etc.) if Home hasn't yet today:
+    // rare, as Home does it when the app opens.
+    if (doc.data()?['balance_date'] != dateKey(now())) {
+      await ensureDailyReset(userId);
+      doc = await userDataDoc(userId);
+      if (doc == null) throw StateError('No profile to update');
+    }
     final data = doc.data() ?? const <String, dynamic>{};
-    final eaten = await todaysTotals(userId);
     await doc.reference.update({
       ...extra,
       'calorie_goal': goals.calories,

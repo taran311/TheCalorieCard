@@ -168,11 +168,11 @@ class FoodResolver {
   }
 
   /// Looks up several foods at once (a few at a time, to stay well inside
-  /// the server's rate limit). Results keep the input order; failures are
-  /// returned as null.
+  /// the server's rate limit of 30 a minute). Results keep the input
+  /// order; failures are returned as null.
   static Future<List<ResolvedFood?>> resolveAll(
     List<String> queries, {
-    int concurrency = 3,
+    int concurrency = 5,
     Set<String> refresh = const {},
     void Function(int done, int total)? onProgress,
     void Function(int index, ResolvedFood? result)? onResult,

@@ -70,6 +70,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
       WidgetsBinding.instance.platformDispatcher.locale.countryCode);
 
   // Macro input fields
+  /// Keeps the macro split while a calorie goal is typed.
+  final _scaler = MacroScaler();
   int? _proteinGoal;
   final TextEditingController _proteinController = TextEditingController();
   late FocusNode _proteinFocusNode;
@@ -215,14 +217,8 @@ class _GetStartedPageState extends State<GetStartedPage> {
     final int calories = cardActiveCalories ?? 0;
 
     // Keep the split they have (30/40/30 if there isn't one yet).
-    final m = macrosScaledTo(
-      Macros(
-        protein: (_proteinGoal ?? 0).toDouble(),
-        carbs: (_carbsGoal ?? 0).toDouble(),
-        fat: (_fatsGoal ?? 0).toDouble(),
-      ),
-      calories,
-    );
+    final m = _scaler.scale(
+        _proteinGoal ?? 0, _carbsGoal ?? 0, _fatsGoal ?? 0, calories);
     final int protein = m.protein.round();
     final int carbs = m.carbs.round();
     final int fats = m.fat.round();

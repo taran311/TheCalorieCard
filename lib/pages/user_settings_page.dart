@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
@@ -136,6 +137,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   /// when something differs, and leaving with changes asks first.
   String? _savedSnapshot;
 
+  /// Keeps the macro split while a calorie goal is typed.
+  final _scaler = MacroScaler();
   int? _proteinGoal;
   int? _carbsGoal;
   int? _fatsGoal;
@@ -254,13 +257,12 @@ class _UserSettingsPageState extends State<UserSettingsPage>
         },
       );
       // A new weight here is a weigh-in too, so the weight log keeps up.
+      // Not waited for: the goals are saved, so the page can close now.
       final kg = _selectedWeight;
       if (kg != null && kg != _loadedWeight && ProfileLimits.weightOk(kg)) {
-        try {
-          await WeightService.log(userId, kg);
-        } catch (_) {
+        unawaited(WeightService.log(userId, kg).catchError((_) {
           // The profile is saved; the log can catch up next time.
-        }
+        }));
       }
       FoodLog.notifyChanged();
       return null;
@@ -475,14 +477,8 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     if (calories == null || calories <= 0) return;
 
     // Keep their split (30/40/30 if there isn't one yet).
-    final m = macrosScaledTo(
-      Macros(
-        protein: (_proteinGoal ?? 0).toDouble(),
-        carbs: (_carbsGoal ?? 0).toDouble(),
-        fat: (_fatsGoal ?? 0).toDouble(),
-      ),
-      calories,
-    );
+    final m = _scaler.scale(
+        _proteinGoal ?? 0, _carbsGoal ?? 0, _fatsGoal ?? 0, calories);
     final int protein = m.protein.round();
     final int carbs = m.carbs.round();
     final int fats = m.fat.round();

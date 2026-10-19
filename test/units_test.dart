@@ -200,4 +200,32 @@ void main() {
       expect(untouched['lose']['calories'], 1800);
     });
   });
+
+  group('MacroScaler', () {
+    test('typing a goal digit by digit keeps the split', () {
+      // 150g protein, 200g carbs, 67g fat (about 2003 kcal), then "1350"
+      // typed one digit at a time.
+      final scaler = MacroScaler();
+      var p = 150, c = 200, f = 67;
+      for (final kcal in [1, 13, 135, 1350]) {
+        final m = scaler.scale(p, c, f, kcal);
+        p = m.protein.round();
+        c = m.carbs.round();
+        f = m.fat.round();
+      }
+      expect(f, greaterThan(40), reason: 'fat must not round away to 0');
+      expect(p, closeTo(150 * 1350 / 2003, 2));
+      expect(c, closeTo(200 * 1350 / 2003, 2));
+      expect(f, closeTo(67 * 1350 / 2003, 2));
+    });
+
+    test('macros changed another way start a new split', () {
+      final scaler = MacroScaler();
+      scaler.scale(150, 200, 67, 1000);
+      // Typed in by hand afterwards: that's the split now.
+      final m = scaler.scale(100, 100, 100, 1700);
+      expect(m.protein, m.carbs);
+      expect(m.fat, m.protein);
+    });
+  });
 }

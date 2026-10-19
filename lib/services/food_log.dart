@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:namer_app/services/analytics.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -465,7 +466,9 @@ class FoodLog {
     notifyChanged();
     // Achievements are a bonus: the food is already logged, so a failure
     // here must not look like the logging failed (that invites a retry
-    // and a duplicate entry). recordLogging never throws.
-    await AchievementService.recordLogging(uid, foods: foods, scans: scans);
+    // and a duplicate entry). recordLogging never throws. Not waited for,
+    // so Add food closes as soon as the food is saved.
+    unawaited(
+        AchievementService.recordLogging(uid, foods: foods, scans: scans));
   }
 }
