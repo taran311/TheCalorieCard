@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -291,11 +293,23 @@ class _RecipesPageState extends State<RecipesPage> {
           .where('shared_by_user_id', isEqualTo: uid)
           .where('recipe_id', isEqualTo: recipeId)
           .get();
-      return {
-        for (final d in snap.docs)
-          if (d.data()['shared_with_user_id'] is String)
-            d.data()['shared_with_user_id'] as String
-      };
+      final friends = <String>{};
+      final extras = <DocumentReference<Map<String, dynamic>>>[];
+      for (final d in snap.docs) {
+        final to = d.data()['shared_with_user_id'];
+        if (to is! String) continue;
+        // Shared more than once before this check existed: tidy up the
+        // extra copies (best effort, they're hidden anyway).
+        if (!friends.add(to)) extras.add(d.reference);
+      }
+      if (extras.isNotEmpty) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (final r in extras) {
+          batch.delete(r);
+        }
+        unawaited(batch.commit().catchError((_) {}));
+      }
+      return friends;
     } catch (_) {
       return const {};
     }
