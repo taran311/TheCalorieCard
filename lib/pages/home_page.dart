@@ -1543,6 +1543,32 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  /// A friend's food (or a whole meal of theirs): straight into Add food
+  /// on your own card, for today, where the amounts, calories and meal can
+  /// be changed before adding. Starts on the same meal as theirs.
+  Future<void> _copyFromFriend(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      String meal) async {
+    if (docs.isEmpty || FirebaseAuth.instance.currentUser == null) return;
+    final from = widget.bannerTitle;
+    final items = [
+      for (final d in docs) FoodLog.copyItem(d.data(), from: from),
+    ];
+    setState(() => _showEmojiPicker.clear());
+    Provider.of<CategoryService>(context, listen: false)
+        .setSelectedCategory(meal);
+    FoodLog.logDay = null; // always your today
+    final saved = await Navigator.of(context, rootNavigator: true).push<Object?>(
+      MaterialPageRoute(builder: (_) => AddFoodPage(initialItems: items)),
+    );
+    if (!mounted || saved is! LoggedFoods) return;
+    final n = saved.ids.length;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Added ${n == 1 ? 'it' : '$n foods'} to your '
+          '${FoodLog.displayMeal(saved.meal)}'),
+    ));
+  }
+
   /// One of your foods was tapped (or long-pressed): see it, change the
   /// portion or meal, fix the calories, delete, log again or set up a
   /// direct debit.
@@ -2119,6 +2145,9 @@ class _HomePageState extends State<HomePage>
     // Small "+" and recipe buttons; the big Add food button is under the
     // card, so these stay light and never truncate on a 320 px phone.
     final canAdd = _canEditSelectedDay;
+    // A friend's card: copy the whole meal to your own day.
+    final canCopy = widget.readOnly && docs.isNotEmpty;
+    final compact = canAdd || canCopy;
     final width = MediaQuery.sizeOf(context).width;
     final narrow = width < 420;
     // On the smallest phones the meal icon makes way for the totals.
@@ -2127,8 +2156,8 @@ class _HomePageState extends State<HomePage>
     return Material(
       color: AppColors.gray50,
       child: Padding(
-          padding: EdgeInsets.fromLTRB(16, canAdd ? 2 : 12, canAdd ? 4 : 12,
-              canAdd ? 2 : 12),
+          padding: EdgeInsets.fromLTRB(16, compact ? 2 : 12, compact ? 4 : 12,
+              compact ? 2 : 12),
           child: Row(
             children: [
               if (showIcon) ...[
@@ -2202,6 +2231,18 @@ class _HomePageState extends State<HomePage>
                   color: AppText.primary,
                   onPressed: () => _openAddFood(meal),
                   icon: const Icon(Icons.add_circle_outline, size: 24),
+                ),
+              ],
+              if (canCopy) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Copy $meal to my day',
+                  constraints:
+                      const BoxConstraints(minWidth: 44, minHeight: 44),
+                  padding: EdgeInsets.zero,
+                  color: AppText.primary,
+                  onPressed: () => _copyFromFriend(docs, meal),
+                  icon: const Icon(Icons.copy_all_outlined, size: 22),
                 ),
               ],
             ],
@@ -2465,13 +2506,21 @@ class _HomePageState extends State<HomePage>
               Container(
                 padding: const EdgeInsets.all(8),
                 color: AppColors.gray100,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceEvenly,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     _reactionEmoji(doc.id, '🔥'),
                     _reactionEmoji(doc.id, '😈'),
                     _reactionEmoji(doc.id, '💪'),
                     _reactionEmoji(doc.id, '❤️'),
+                    // Had the same? Add it to your own day.
+                    TextButton.icon(
+                      onPressed: () => _copyFromFriend(
+                          [doc], FoodLog.mealOf(data['foodCategory'])),
+                      icon: const Icon(Icons.add_circle_outline, size: 18),
+                      label: const Text('Add to mine'),
+                    ),
                   ],
                 ),
               ),

@@ -181,7 +181,7 @@ class _HigherLowerPageState extends State<HigherLowerPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: _FoodChoice(
+              child: HlChoice(
                 food: pair.a,
                 revealed: picked != null,
                 isHigher: identical(pair.a, pair.higher),
@@ -191,7 +191,7 @@ class _HigherLowerPageState extends State<HigherLowerPage> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _FoodChoice(
+              child: HlChoice(
                 food: pair.b,
                 revealed: picked != null,
                 isHigher: identical(pair.b, pair.higher),
@@ -217,6 +217,10 @@ class _HigherLowerPageState extends State<HigherLowerPage> {
             ),
           ),
         ),
+        if (pair.why != null) ...[
+          const SizedBox(height: 12),
+          SurpriseNote(pair.why!),
+        ],
         const SizedBox(height: 14),
         SizedBox(
           height: 52,
@@ -299,14 +303,17 @@ class _HigherLowerPageState extends State<HigherLowerPage> {
   }
 }
 
-class _FoodChoice extends StatelessWidget {
+/// One side of a pair: tap it if you think it has more. Shared with Higher
+/// or Lower against a friend.
+class HlChoice extends StatelessWidget {
   final HlFood food;
   final bool revealed;
   final bool isHigher;
   final bool isPicked;
   final VoidCallback onTap;
 
-  const _FoodChoice({
+  const HlChoice({
+    super.key,
     required this.food,
     required this.revealed,
     required this.isHigher,
@@ -379,6 +386,49 @@ class _FoodChoice extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// "😮 Surprise!": why a surprise pair's answer isn't the obvious one.
+/// Shared with Higher or Lower against a friend.
+class SurpriseNote extends StatelessWidget {
+  final String why;
+  const SurpriseNote(this.why, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.amber300.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(AppDecor.radius),
+        border: Border.all(color: AppColors.amber300),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ExcludeSemantics(
+            child: Text('😮', style: TextStyle(fontSize: 22)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Surprise!',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: AppText.amber700)),
+                const SizedBox(height: 2),
+                Text(why,
+                    style: TextStyle(
+                        fontSize: 14, height: 1.35, color: AppColors.ink)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

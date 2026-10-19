@@ -93,6 +93,30 @@ class PortionAmount {
   /// How many weights and volumes [text] mentions.
   static int amountsIn(String text) => _size.allMatches(text).length;
 
+  /// [name] with its one weight or volume multiplied [by], keeping the unit
+  /// as written: "20g sriracha mayo" by 0.75 is "15g sriracha mayo". Null
+  /// when the name gives no amount, or more than one (we can't tell which
+  /// to change), so it's left as it is.
+  static String? rescaleName(String name, double by) {
+    if (!by.isFinite || by <= 0) return null;
+    final matches = _size.allMatches(name).toList();
+    if (matches.length != 1) return null;
+    final m = matches.single;
+    final digits = m.group(1)!;
+    final n = double.tryParse(digits.replaceAll(',', '.'));
+    if (n == null || !n.isFinite || n <= 0) return null;
+    final value = n * by;
+    var text = value.toStringAsFixed(value >= 10 ? 0 : 1);
+    if (text.contains('.')) {
+      text = text
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
+    }
+    if (text == '0') return null;
+    final start = m.start + m.group(0)!.indexOf(digits);
+    return name.replaceRange(start, start + digits.length, text);
+  }
+
   /// The units the amount can be typed in: portions (if [portions]), then
   /// the metric unit and ounces. Just portions when the size isn't known.
   static List<AmountUnit> unitsFor(PortionSize? size, {bool portions = true}) {

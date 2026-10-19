@@ -1824,18 +1824,18 @@ class MockApp extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Mirrors the real "pick a game" sheet.
-              Text('Guess the Calories with Marcus',
+              Text('Play Marcus',
                   style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                       color: AppColors.ink)),
               const SizedBox(height: 10),
               _gameModeCard('🎲', 'Mystery foods',
-                  'You both guess the same 5 everyday foods.', true),
+                  'You both guess the calories in the same 5 foods.', true),
               const SizedBox(height: 8),
-              _gameModeCard('🍽️', 'Guess what I ate',
-                  "You each pick 5 things you've eaten. You guess theirs, "
-                      'they guess yours.',
+              _gameModeCard('⚖️', 'Higher or Lower',
+                  'You both get the same 10 pairs: pick the one with more '
+                      'calories.',
                   false),
               const SizedBox(height: 12),
               _mark('gameConfirm',

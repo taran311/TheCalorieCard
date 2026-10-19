@@ -116,16 +116,6 @@ class _GamesHubPageState extends State<GamesHubPage> {
                         _open(const SoloGamePage(kind: SoloKind.daily)),
                   ),
                   _GameCard(
-                    emoji: '🪞',
-                    title: 'Guess your own day',
-                    subtitle: 'You logged it, but do you know it? Guess '
-                        "how many calories one of your recent days came to. "
-                        '${p.ownXpLeft(day) ? 'Earns XP once a day.' : 'Practice only until tomorrow.'}',
-                    action: 'Play',
-                    onTap: () =>
-                        _open(const SoloGamePage(kind: SoloKind.own)),
-                  ),
-                  _GameCard(
                     emoji: '🍽️',
                     title: 'Guess the Meal',
                     subtitle: 'How much did they eat? Real meals, nights out '
@@ -138,7 +128,8 @@ class _GamesHubPageState extends State<GamesHubPage> {
                     emoji: '⚖️',
                     title: 'Higher or Lower',
                     subtitle: 'Which has more calories? '
-                        '${GamesService.higherLowerPairs} quick pairs.'
+                        '${GamesService.higherLowerPairs} quick pairs, with a '
+                        'few surprises.'
                         '${p.hlBest > 0 ? ' Your best: ${p.hlBest}.' : ''} '
                         '${hlLeft > 0 ? '$hlLeft of ${Xp.higherLowerRoundsPerDay} XP rounds left today.' : 'Practice only until tomorrow.'}',
                     action: 'Play',
@@ -154,12 +145,13 @@ class _GamesHubPageState extends State<GamesHubPage> {
                           CalorieGameService.waitingOn(_uid, games);
                       return _GameCard(
                         emoji: '🎯',
-                        title: 'Guess the Calories',
+                        title: 'Challenge a friend',
                         subtitle: waiting > 0
                             ? '$waiting game${waiting == 1 ? '' : 's'} '
                                 'waiting for you.'
-                            : 'Challenge a friend. Closest guesses win, '
-                                'and the winner earns bonus XP.',
+                            : 'Mystery foods or Higher or Lower, played '
+                                'whenever suits you. The winner earns bonus '
+                                'XP.',
                         action: waiting > 0 ? 'Your turn' : 'Open',
                         highlight: waiting > 0,
                         onTap: () => _open(const CalorieGamesPage()),

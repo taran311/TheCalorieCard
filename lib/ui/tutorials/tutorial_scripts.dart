@@ -719,9 +719,9 @@ final List<Tutorial> tutorials = [
       ),
       TStep(
         title: 'Pick a game',
-        body: 'Mystery foods: you both guess the same 5 foods. Or Guess what '
-            "I ate: you each pick 5 foods you've eaten. Tap Start, and "
-            "Marcus hears it's his turn.",
+        body: 'Mystery foods: you both guess the calories in the same 5 '
+            'foods. Or Higher or Lower: the same 10 pairs, pick the one with '
+            "more. Tap Start, and Marcus hears it's his turn.",
         target: 'gameConfirm',
         act: TAct.tap,
         apply: (s) {

@@ -218,6 +218,27 @@ void main() {
       }
     });
 
+    test('every surprise pair is in the game, and the surprise one has more',
+        () {
+      final pairs = GamesService.surprisePairs();
+      expect(pairs.length, kHlSurprises.length,
+          reason: 'a surprise names a food or portion the game lacks');
+      for (final p in pairs) {
+        expect(p.a.kcal, greaterThan(p.b.kcal), reason: p.a.name);
+        expect(p.difference, greaterThanOrEqualTo(p.a.kcal * 0.15),
+            reason: '${p.a.name} vs ${p.b.name} is a coin toss');
+        expect(GamesService.surpriseWhy(p.b, p.a), p.why);
+      }
+    });
+
+    test('a round mixes in a few surprises', () {
+      for (var seed = 0; seed < 20; seed++) {
+        final pairs = GamesService.dealHigherLower(random: Random(seed));
+        expect(pairs.where((p) => p.surprise).length,
+            greaterThanOrEqualTo(GamesService.surprisesPerRound));
+      }
+    });
+
     test('the pool has no repeats', () {
       final pool = GamesService.higherLowerPool();
       expect(pool.map((f) => f.name.toLowerCase()).toSet().length,

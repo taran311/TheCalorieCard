@@ -129,6 +129,8 @@ String? entrySourceLabel(Map<String, dynamic> entry) {
         label = '🌐 Found online';
       case 'recent':
         label = '🔁 Logged again';
+      case 'friend':
+        label = "👋 Copied from a friend's day";
       case 'manual':
         label = '✍️ Typed in by you';
     }
@@ -329,6 +331,7 @@ class _EntrySheetState extends State<_EntrySheet> {
     return widget.entry['is_recipe'] != true &&
         (FoodResolver.lookupSources.contains(source) ||
             source == 'recent' ||
+            source == 'friend' ||
             source == 'yours');
   }
 

@@ -41,7 +41,12 @@ class _PendingItem {
 }
 
 class AddFoodPage extends StatefulWidget {
-  const AddFoodPage({Key? key}) : super(key: key);
+  /// Foods to start with, ready to check and add (copied from a friend's
+  /// day, say: see [FoodLog.copyItem]).
+  final List<Map<String, dynamic>> initialItems;
+
+  const AddFoodPage({Key? key, this.initialItems = const []})
+      : super(key: key);
 
   @override
   State<AddFoodPage> createState() => _AddFoodPageState();
@@ -101,6 +106,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
     super.initState();
     // Wake the lookup server while they type, so it's ready on Calculate.
     ProxyClient.warmUp();
+    _calculatedItems.addAll(
+        widget.initialItems.map((i) => Map<String, dynamic>.from(i)));
     _loadHistory();
   }
 
@@ -276,18 +283,38 @@ class _AddFoodPageState extends State<AddFoodPage> {
     double b(String k) => (base[k] as num?)?.toDouble() ?? 0;
     final basePortion =
         (item['base_portion'] ?? item['portion'] ?? '').toString();
+    final portion = _scaledPortion(basePortion, multiplier);
+    final values = {
+      'calories': b('calories') * multiplier,
+      'protein': b('protein') * multiplier,
+      'carbs': b('carbs') * multiplier,
+      'fat': b('fat') * multiplier,
+    };
+    // "20g sriracha mayo" changed to 15 g says 15g, and that's its new
+    // single portion (as it's logged), so the name and the amount under it
+    // always agree.
+    final renamed = (multiplier - 1).abs() < 1e-9 || portion.contains('×')
+        ? null
+        : PortionAmount.rescaleName('${item['name'] ?? ''}', multiplier);
     setState(() {
-      _calculatedItems[idx] = {
-        ...item,
-        'base': base,
-        'base_portion': basePortion,
-        'portion': _scaledPortion(basePortion, multiplier),
-        'multiplier': multiplier,
-        'calories': b('calories') * multiplier,
-        'protein': b('protein') * multiplier,
-        'carbs': b('carbs') * multiplier,
-        'fat': b('fat') * multiplier,
-      };
+      _calculatedItems[idx] = renamed != null
+          ? {
+              ...item,
+              'name': renamed,
+              'base': values,
+              'base_portion': portion,
+              'portion': portion,
+              'multiplier': 1.0,
+              ...values,
+            }
+          : {
+              ...item,
+              'base': base,
+              'base_portion': basePortion,
+              'portion': portion,
+              'multiplier': multiplier,
+              ...values,
+            };
     });
   }
 
@@ -360,6 +387,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
             item['source'] == 'manual' ||
             item['source'] == 'yours' ||
             item['source'] == 'recent' ||
+            item['source'] == 'friend' ||
             item['needs_review'] == true ||
             item['edited'] == true,
         // Typed foods, looked up or reused from history (not scans,
@@ -367,6 +395,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
         canLookUpAgain: !_tutorialMode &&
             (FoodResolver.lookupSources.contains(item['source']) ||
                 item['source'] == 'recent' ||
+                item['source'] == 'friend' ||
                 item['source'] == 'yours'),
       ),
     );
@@ -490,6 +519,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         if (source == 'recent')
                           badge('From your history', AppColors.sky700,
                               Icons.history),
+                        if (source == 'friend')
+                          badge(
+                              item['from_friend'] != null
+                                  ? "From ${item['from_friend']}'s day"
+                                  : "From a friend's day",
+                              AppColors.sky700,
+                              Icons.people_outline),
                         if (source == 'yours')
                           badge('Your numbers from before', AppColors.sky700,
                               Icons.history),

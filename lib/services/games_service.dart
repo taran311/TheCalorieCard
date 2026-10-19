@@ -105,6 +105,16 @@ class Xp {
   /// XP for a finished friend game.
   static int forFriendGame(CalorieGame g, String uid) {
     var xp = 0;
+    if (g.isHigherLower) {
+      // Half a guess's best: 10 pairs earn what 5 foods do.
+      xp = g.correctOf(uid) * forScore(50);
+      if (g.winner == uid) {
+        xp += winBonus;
+      } else if (g.isDraw && !g.expired) {
+        xp += drawBonus;
+      }
+      return xp;
+    }
     for (final s in g.roundScoresOf(uid)) {
       xp += forScore(s);
     }
@@ -535,11 +545,67 @@ class HlFood {
 class HlPair {
   final HlFood a;
   final HlFood b;
-  const HlPair(this.a, this.b);
+
+  /// For a surprise pair (see [kHlSurprises]): why the answer isn't what
+  /// most people expect, shown once it's answered.
+  final String? why;
+  const HlPair(this.a, this.b, {this.why});
 
   HlFood get higher => a.kcal >= b.kcal ? a : b;
   int get difference => (a.kcal - b.kcal).abs();
+  bool get surprise => why != null;
 }
+
+/// A head-to-head where the "healthy" or smaller-looking one is the one
+/// with more calories, with a line on why. The foods are the game's own
+/// ([kPickedGameFoods], by name and portion), so their numbers are the
+/// same everywhere in the games.
+class HlSurprise {
+  final String a;
+  final String aPortion;
+  final String b;
+  final String bPortion;
+  final String why;
+  const HlSurprise(this.a, this.aPortion, this.b, this.bPortion, this.why);
+}
+
+const List<HlSurprise> kHlSurprises = [
+  HlSurprise('Granola', '45g, dry', 'Walkers Ready Salted', '1 bag (32.5g)',
+      'Granola is baked with oil and syrup, so a "healthy" bowl can beat a bag of crisps.'),
+  HlSurprise('Avocado', '1 whole (136g)', 'Skittles', '1 bag (45g)',
+      'Avocado is mostly fat, and fat has 9 kcal a gram. Good fat, but it counts.'),
+  HlSurprise('Almonds', 'A big handful (50g)', 'Coca-Cola', '1 can (330ml)',
+      'Nuts are great for you, but a big handful has about twice the calories of a can of Coke.'),
+  HlSurprise('Orange juice', '200ml', 'Fanta Orange', '1 can (330ml)',
+      'Juice keeps all the fruit sugar but loses the fibre that fills you up.'),
+  HlSurprise('Olive oil', '1 tablespoon', 'Apple', '1 medium (182g)',
+      'One tablespoon of oil has more calories than a whole apple. Measuring oil is the easiest win.'),
+  HlSurprise('Banana chips', '30g', 'Popcorn', '20g, air-popped',
+      'Banana chips are fried, so a small handful is double a bowl of air-popped popcorn.'),
+  HlSurprise('Coconut milk (tinned)', '100ml', 'Oat milk', '200ml',
+      'Tinned coconut milk is mostly fat: 100ml has twice the calories of a glass of oat milk.'),
+  HlSurprise('Red wine', 'A large glass (250ml)', 'Walkers Ready Salted',
+      '1 bag (32.5g)',
+      'A large glass of wine has more calories than a bag of crisps. Alcohol has 7 kcal a gram.'),
+  HlSurprise('Lager (4%)', '1 pint', 'Dark chocolate (70%)', '4 squares (20g)',
+      'A pint of lager beats four squares of chocolate, and it rarely stops at one.'),
+  HlSurprise('Dried apricots', '5 (35g)', 'Lotus Biscoff', 'A pack of 2',
+      'Drying fruit shrinks it, but not its sugar. Five apricots beat two Biscoff.'),
+  HlSurprise('Muesli (no added sugar)', '45g, dry', 'Cornflakes', '30g, dry',
+      "Muesli's nuts and dried fruit add up, and it's usually poured in a bigger bowl."),
+  HlSurprise('Edamame', 'A big bowl (200g, shelled)', 'Pringles Original',
+      'About 13 crisps (30g)',
+      'Edamame is full of protein, but a big bowl is more than a pile of Pringles.'),
+  HlSurprise('Plain bagel', '1 (85g)', 'Baguette', 'A 60g piece',
+      'Bagels are dense: one is nearly three slices of bread.'),
+  HlSurprise('Macadamias', '30g', 'Skittles', '1 bag (45g)',
+      'Macadamias are the most calorie-dense nut: a small handful beats a bag of Skittles.'),
+  HlSurprise('Medjool date', '1 date (24g)', 'Oreo', '1 biscuit',
+      "One Medjool date has more calories than an Oreo. It's nature's toffee."),
+  HlSurprise('Prosecco', '1 glass (125ml)', 'Gin and slimline tonic',
+      '1 single (25ml gin)',
+      'Bubbles feel light, but a glass of prosecco has more than a gin with slimline tonic.'),
+];
 
 // ============================================================================
 // Guess your own day
@@ -863,12 +929,49 @@ class GamesService {
     return out;
   }
 
-  /// Everything Higher or Lower deals from: the quiz foods and the meal
+  /// The surprise pairs, with each side's numbers from [kPickedGameFoods].
+  /// A pair whose foods aren't (or are no longer) there is left out.
+  static List<HlPair> surprisePairs() {
+    HlFood? find(String name, String portion) {
+      for (final f in kPickedGameFoods) {
+        if (f.name == name && f.portion == portion && f.kcal > 0) {
+          return HlFood(f.emoji, f.name, f.portion, f.kcal);
+        }
+      }
+      return null;
+    }
+
+    return [
+      for (final s in kHlSurprises)
+        if (find(s.a, s.aPortion) case final a?)
+          if (find(s.b, s.bPortion) case final b?) HlPair(a, b, why: s.why),
+    ];
+  }
+
+  /// The "why" for [a] against [b], if they're one of the surprise pairs
+  /// (either way round).
+  static String? surpriseWhy(HlFood a, HlFood b) {
+    for (final s in kHlSurprises) {
+      if ((s.a == a.name && s.aPortion == a.detail &&
+              s.b == b.name && s.bPortion == b.detail) ||
+          (s.a == b.name && s.aPortion == b.detail &&
+              s.b == a.name && s.bPortion == a.detail)) {
+        return s.why;
+      }
+    }
+    return null;
+  }
+
+  /// How many surprise pairs a round of Higher or Lower has.
+  static const surprisesPerRound = 3;
+
+  /// Everything Higher or Lower deals from: the hand-picked foods (ones
+  /// people know, not the long list from the food tables) and the meal
   /// items, each once.
   static List<HlFood> higherLowerPool() {
     final seen = <String>{};
     final out = <HlFood>[];
-    for (final f in kGameFoods) {
+    for (final f in kPickedGameFoods) {
       if (f.kcal <= 0 || !seen.add(f.name.toLowerCase())) continue;
       out.add(HlFood(f.emoji, f.name, f.portion, f.kcal));
     }
@@ -884,23 +987,40 @@ class GamesService {
 
   /// A round of Higher or Lower: [higherLowerPairs] pairs, no food twice,
   /// and never two foods so close it's a coin toss (at least 15% apart).
-  static List<HlPair> dealHigherLower({Random? random}) {
+  /// [surprisesPerRound] of them are surprise pairs (the "healthy" one has
+  /// more), mixed in at random places and sides, so you can't spot them.
+  static List<HlPair> dealHigherLower({Random? random, int? pairs}) {
     final r = random ?? Random();
-    final pool = higherLowerPool()..shuffle(r);
+    final want = pairs ?? higherLowerPairs;
+    final names = <String>{};
+    final out = <HlPair>[];
+    final surprises = surprisePairs()..shuffle(r);
+    for (final p in surprises) {
+      if (out.length >= min(surprisesPerRound, want)) break;
+      if (names.contains(p.a.name) || names.contains(p.b.name)) continue;
+      names..add(p.a.name)..add(p.b.name);
+      out.add(r.nextBool() ? p : HlPair(p.b, p.a, why: p.why));
+    }
+    final pool = [
+      for (final f in higherLowerPool())
+        if (!names.contains(f.name)) f
+    ]..shuffle(r);
     final used = <int>{};
-    final pairs = <HlPair>[];
-    for (var i = 0; i < pool.length && pairs.length < higherLowerPairs; i++) {
+    for (var i = 0; i < pool.length && out.length < want; i++) {
       if (used.contains(i)) continue;
       for (var j = i + 1; j < pool.length; j++) {
         if (used.contains(j)) continue;
+        if (pool[i].name == pool[j].name) continue;
         final a = pool[i].kcal, b = pool[j].kcal;
         if ((a - b).abs() < max(a, b) * 0.15) continue;
         used..add(i)..add(j);
-        pairs.add(HlPair(pool[i], pool[j]));
+        out.add(HlPair(pool[i], pool[j],
+            why: surpriseWhy(pool[i], pool[j])));
         break;
       }
     }
-    return pairs;
+    // Surprises anywhere in the round, not always first.
+    return out..shuffle(r);
   }
 
   /// The most recent day before [today] (within a week) with at least

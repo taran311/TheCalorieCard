@@ -260,6 +260,72 @@ void main() {
     expect((await load(ref.id)).scoreOf(me), 500);
   });
 
+  group('Higher or Lower with a friend', () {
+    Future<String> newHl() => CalorieGameService.create(
+          uid: me,
+          myName: 'me',
+          friendId: friend,
+          friendName: 'sam',
+          mode: GameMode.higherLower,
+          random: Random(3),
+          notify: false,
+        );
+
+    /// Picks the right side of every pair, or the wrong side for the
+    /// pairs in [wrong].
+    Future<CalorieGame> answerAll(String id, String uid,
+        {Set<int> wrong = const {}}) async {
+      var g = await load(id);
+      for (var i = 0; i < g.pairCount; i++) {
+        final p = g.pairAt(i);
+        final right = identical(p.higher, p.a) ? 0 : 1;
+        g = await CalorieGameService.guess(
+            gameId: id,
+            uid: uid,
+            kcal: wrong.contains(i) ? 1 - right : right,
+            notify: false);
+      }
+      return g;
+    }
+
+    test('is saved as pairs both players answer', () async {
+      final id = await newHl();
+      final g = await load(id);
+      expect((await raw(id))['mode'], 'higherLower');
+      expect(g.isHigherLower, isTrue);
+      expect(g.foods, hasLength(CalorieGameService.hlPairs * 2));
+      expect(g.pairCount, CalorieGameService.hlPairs);
+      expect(g.totalFor(me), CalorieGameService.hlPairs);
+      expect(g.ready, isTrue);
+      expect(g.nextFoodFor(me), 0);
+      expect(g.shownMax, CalorieGameService.hlPairs);
+      for (var i = 0; i < g.pairCount; i++) {
+        final p = g.pairAt(i);
+        expect(p.a.name, isNot(p.b.name));
+        expect(p.difference, greaterThan(0));
+      }
+    });
+
+    test('most right wins, and the score is how many right', () async {
+      final id = await newHl();
+      await answerAll(id, me, wrong: {0});
+      final g = await answerAll(id, friend, wrong: {1, 2, 3});
+      expect(g.isFinished, isTrue);
+      expect(g.correctOf(me), CalorieGameService.hlPairs - 1);
+      expect(g.correctOf(friend), CalorieGameService.hlPairs - 3);
+      expect(g.shownScoreOf(me), CalorieGameService.hlPairs - 1);
+      expect(g.winner, me);
+      expect((await load(id)).doneBy(friend), isTrue);
+    });
+
+    test('a draw when both get the same number right', () async {
+      final id = await newHl();
+      await answerAll(id, me, wrong: {4});
+      final g = await answerAll(id, friend, wrong: {7});
+      expect(g.isDraw, isTrue);
+    });
+  });
+
   group('Guess what I ate', () {
     test('starting saves your picks and waits for your friend to pick',
         () async {

@@ -69,6 +69,30 @@ void main() {
     });
   });
 
+  group('rescaleName', () {
+    test('changes the one amount in the name', () {
+      expect(PortionAmount.rescaleName('20g sriracha mayo', 0.75),
+          '15g sriracha mayo');
+      expect(PortionAmount.rescaleName('alpro no sugars plain 100g', 2),
+          'alpro no sugars plain 200g');
+      expect(PortionAmount.rescaleName('tofoo tofu 280 g', 0.5),
+          'tofoo tofu 140 g');
+      expect(PortionAmount.rescaleName('250ml oat milk', 1.5), '375ml oat milk');
+    });
+
+    test('small amounts keep a decimal', () {
+      expect(PortionAmount.rescaleName('1kg potatoes', 0.25), '0.3kg potatoes');
+      expect(PortionAmount.rescaleName('2.5g salt', 2), '5g salt');
+    });
+
+    test('leaves names without exactly one amount alone', () {
+      expect(PortionAmount.rescaleName('1 yubi protein bar', 2), isNull);
+      expect(PortionAmount.rescaleName('100g oats and 200ml oat milk', 2),
+          isNull);
+      expect(PortionAmount.rescaleName('20g mayo', 0), isNull);
+    });
+  });
+
   group('AmountInput', () {
     test('switching unit keeps the same amount', () {
       final input = AmountInput(basePortion: '30 g', multiplier: 1.5);

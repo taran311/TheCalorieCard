@@ -144,11 +144,15 @@ delete a loss.
 
 Fields:
 
-- `mode`: `'classic'` (Mystery foods: both guess the same 5 dealt `foods`)
-  or `'swap'` (Guess what I ate). Games saved before this have no `mode`
+- `mode`: `'classic'` (Mystery foods: both guess the same 5 dealt `foods`),
+  `'higherLower'` (Higher or Lower: the same 10 pairs for both) or `'swap'`
+  (Guess what I ate: no longer offered by the app, but older games and
+  older app versions still use it). Games saved before this have no `mode`
   and are classic.
-- `foods`: the 5 dealt foods (`{emoji, name, portion, kcal}`); empty in a
-  swap game.
+- `foods`: the 5 dealt foods (`{emoji, name, portion, kcal}`); in Higher or
+  Lower the 20 foods of the 10 pairs, two at a time; empty in a swap game.
+- `guesses`: in Higher or Lower, one `0` or `1` per pair (which of the two
+  the player picked as having more calories).
 - `picks` (swap only): `{uid: [5 foods] | null}`. The challenger's 5 are
   saved when the game is created; the friend's are null until they pick.
   In a swap game, `guesses[uid]` are for the *other* player's picks.
@@ -169,10 +173,18 @@ match /calorie_games/{id} {
   function game() { return resource.data; }
   function incoming() { return request.resource.data; }
   function isSwap(d) { return d.get('mode', 'classic') == 'swap'; }
+  function isHl(d) { return d.get('mode', 'classic') == 'higherLower'; }
   function other(d) { return d.player_ids.removeAll([me()])[0]; }
   // Foods each player guesses: 5 in a swap game, the dealt foods otherwise.
   function total(d) { return isSwap(d) ? 5 : d.foods.size(); }
-  function done(d, uid) { return d.guesses[uid].size() == total(d); }
+  // How many answers a player can give: one per pair in Higher or Lower.
+  function fits(d, n) {
+    return isHl(d) ? n * 2 <= d.foods.size() : n <= total(d);
+  }
+  function done(d, uid) {
+    return isHl(d) ? d.guesses[uid].size() * 2 == d.foods.size()
+      : d.guesses[uid].size() == total(d);
+  }
   function allGuessed(d) {
     return done(d, d.player_ids[0]) && done(d, d.player_ids[1]);
   }
@@ -209,6 +221,8 @@ match /calorie_games/{id} {
     (
       (!isSwap(incoming()) && incoming().get('mode', 'classic') == 'classic' &&
         incoming().foods.size() == 5 && !('picks' in incoming())) ||
+      (isHl(incoming()) && incoming().foods.size() == 20 &&
+        !('picks' in incoming())) ||
       (isSwap(incoming()) && incoming().foods.size() == 0 &&
         incoming().picks.keys().hasOnly(incoming().player_ids) &&
         incoming().picks[me()].size() == 5 &&
@@ -246,7 +260,9 @@ match /calorie_games/{id} {
         incoming().guesses.diff(game().guesses).affectedKeys()
           .hasOnly([me()]) &&
         mineAfter().size() == mineBefore().size() + 1 &&
-        mineAfter().size() <= total(game()) &&
+        fits(game(), mineAfter().size()) &&
+        // Higher or Lower: each answer is which of the two, 0 or 1.
+        (!isHl(game()) || mineAfter()[mineBefore().size()] in [0, 1]) &&
         mineAfter()[0:mineBefore().size()] == mineBefore() &&
         incoming().updated_at == request.time &&
         freshExpiry() &&

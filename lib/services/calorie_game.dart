@@ -7,6 +7,7 @@ import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/game_foods_tables.dart';
+import 'package:namer_app/services/games_service.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/services/statement_service.dart';
 
@@ -320,13 +321,34 @@ enum GameMode {
   classic,
 
   /// "Guess what I ate": each player picks 5 foods they've eaten, and
-  /// guesses the other player's.
-  swap;
+  /// guesses the other player's. No longer offered for new games (people's
+  /// own meals made it awkward), but games already started still play.
+  swap,
 
-  String get emoji => this == GameMode.classic ? '🎲' : '🍽️';
+  /// Higher or Lower: the same pairs for both players; pick the one with
+  /// more calories. Saved as `higherLower`.
+  higherLower;
 
-  String get title =>
-      this == GameMode.classic ? 'Mystery foods' : 'Guess what I ate';
+  /// The kinds a new game can be.
+  static const offered = [GameMode.classic, GameMode.higherLower];
+
+  String get emoji => switch (this) {
+        GameMode.classic => '🎲',
+        GameMode.swap => '🍽️',
+        GameMode.higherLower => '⚖️',
+      };
+
+  String get title => switch (this) {
+        GameMode.classic => 'Mystery foods',
+        GameMode.swap => 'Guess what I ate',
+        GameMode.higherLower => 'Higher or Lower',
+      };
+
+  static GameMode fromName(Object? name) => switch (name) {
+        'swap' => GameMode.swap,
+        'higherLower' => GameMode.higherLower,
+        _ => GameMode.classic,
+      };
 
   /// "🎲 Mystery foods", for chips and list tiles.
   String get label => '$emoji $title';
@@ -335,11 +357,14 @@ enum GameMode {
 /// A game of Guess the Calories between two friends, stored in
 /// `calorie_games/{id}`:
 ///   player_ids: [a, b]        names: {a: 'sam', b: 'taz'}
-///   mode: 'classic' | 'swap'  (missing means classic)
-///   foods: [{emoji, name, portion, kcal}, ...]   (classic: the 5 dealt)
+///   mode: 'classic' | 'swap' | 'higherLower'  (missing means classic)
+///   foods: [{emoji, name, portion, kcal}, ...]   (classic: the 5 dealt;
+///          higherLower: the pairs, two foods each, in order)
 ///   picks: {a: [5 foods], b: null}               (swap: each player's own)
 ///   guesses: {a: [250, 90], b: []}     (one per food, in order; in a swap
-///                                       game, for the OTHER player's picks)
+///                                       game, for the OTHER player's picks;
+///                                       higherLower: 0 or 1 per pair, the
+///                                       one picked as having more)
 ///   status: 'active' | 'finished'      winner: uid | 'draw' | null
 ///   expires_at: 7 days after the last move    expired: true if it ran out
 class CalorieGame {
@@ -412,6 +437,33 @@ class CalorieGame {
   bool get isFinished => status == GameStatus.finished;
   bool get isDraw => winner == CalorieGameService.draw;
   bool get isSwap => mode == GameMode.swap;
+  bool get isHigherLower => mode == GameMode.higherLower;
+
+  /// Higher or Lower: how many pairs, and pair [i].
+  int get pairCount => foods.length ~/ 2;
+  HlPair pairAt(int i) {
+    HlFood side(GameFood f) => HlFood(f.emoji, f.name, f.portion, f.kcal);
+    final a = side(foods[2 * i]), b = side(foods[2 * i + 1]);
+    return HlPair(a, b, why: GamesService.surpriseWhy(a, b));
+  }
+
+  /// Higher or Lower: whether [pick] (0 or 1) is the one with more in
+  /// pair [i].
+  bool pickRight(int i, int pick) {
+    final p = pairAt(i);
+    return identical(pick == 0 ? p.a : p.b, p.higher);
+  }
+
+  /// Higher or Lower: how many [uid] got right.
+  int correctOf(String uid) =>
+      roundScoresOf(uid).where((s) => s > 0).length;
+
+  /// The score to show: points, or in Higher or Lower how many right.
+  int shownScoreOf(String uid) =>
+      isHigherLower ? correctOf(uid) : scoreOf(uid);
+
+  /// The most [shownScoreOf] can be.
+  int get shownMax => isHigherLower ? pairCount : maxScore;
 
   String opponentOf(String uid) =>
       playerIds.firstWhere((p) => p != uid, orElse: () => '');
@@ -440,8 +492,11 @@ class CalorieGame {
 
   /// How many foods [uid] guesses in all: 5 in either mode (a classic game
   /// counts its dealt foods, as it always has).
-  int totalFor(String uid) =>
-      isSwap ? CalorieGameService.rounds : foods.length;
+  int totalFor(String uid) => isSwap
+      ? CalorieGameService.rounds
+      : isHigherLower
+          ? pairCount
+          : foods.length;
 
   /// How many foods [uid] has guessed.
   int progressOf(String uid) => min(guessesOf(uid).length, totalFor(uid));
@@ -454,7 +509,7 @@ class CalorieGame {
   int? nextFoodFor(String uid) {
     if (doneBy(uid) || !ready) return null;
     final i = progressOf(uid);
-    return i < foodsFor(uid).length ? i : null;
+    return i < (isHigherLower ? pairCount : foodsFor(uid).length) ? i : null;
   }
 
   /// Whether the game is waiting on [uid]: to pick their foods, or to
@@ -462,9 +517,16 @@ class CalorieGame {
   bool isTurnOf(String uid) =>
       !isFinished && (needsPickFrom(uid) || (ready && !doneBy(uid)));
 
-  /// 0-100 for each food [uid] has guessed so far.
+  /// 0-100 for each food [uid] has guessed so far (Higher or Lower: 100
+  /// for each pair right, 0 wrong).
   List<int> roundScoresOf(String uid) {
     final g = guessesOf(uid);
+    if (isHigherLower) {
+      return [
+        for (var i = 0; i < min(g.length, pairCount); i++)
+          pickRight(i, g[i]) ? 100 : 0
+      ];
+    }
     final f = foodsFor(uid);
     return [
       for (var i = 0; i < min(g.length, f.length); i++)
@@ -474,7 +536,7 @@ class CalorieGame {
 
   int scoreOf(String uid) => roundScoresOf(uid).fold(0, (a, b) => a + b);
 
-  int get maxScore => (isSwap ? CalorieGameService.rounds : foods.length) * 100;
+  int get maxScore => totalFor('') * 100;
 
   /// When the game ends if nobody moves: [expiresAt], or for games saved
   /// before that existed, [CalorieGameService.lifetime] after the last
@@ -509,7 +571,7 @@ class CalorieGame {
           for (final e in rawNames.entries) '${e.key}': '${e.value}'
       },
       createdBy: '${d['created_by'] ?? ''}',
-      mode: d['mode'] == 'swap' ? GameMode.swap : GameMode.classic,
+      mode: GameMode.fromName(d['mode']),
       foods: [
         for (final f in (d['foods'] as List? ?? const [])) GameFood.fromMap(f)
       ],
@@ -559,6 +621,18 @@ class CalorieGameService {
   static const rounds = 5;
   static const draw = 'draw';
 
+  /// Pairs in a Higher or Lower game with a friend.
+  static const hlPairs = 10;
+
+  /// A Higher or Lower game's foods: [hlPairs] pairs, two foods each.
+  static List<GameFood> dealPairs([Random? random]) => [
+        for (final p in GamesService.dealHigherLower(
+            random: random, pairs: hlPairs)) ...[
+          GameFood(p.a.emoji, p.a.name, p.a.detail, p.a.kcal),
+          GameFood(p.b.emoji, p.b.name, p.b.detail, p.b.kcal),
+        ]
+      ];
+
   /// A game ends this long after the last move, so none waits forever.
   static const lifetime = Duration(days: 7);
 
@@ -592,6 +666,7 @@ class CalorieGameService {
       throw ArgumentError('Pick a friend to play');
     }
     final swap = mode == GameMode.swap;
+    final hl = mode == GameMode.higherLower;
     if (swap && (picks == null || picks.length != rounds)) {
       throw ArgumentError('Pick $rounds foods first');
     }
@@ -602,7 +677,7 @@ class CalorieGameService {
       'created_by': uid,
       'foods': swap
           ? <Map<String, dynamic>>[]
-          : [for (final f in deal(random)) f.toMap()],
+          : [for (final f in hl ? dealPairs(random) : deal(random)) f.toMap()],
       if (swap)
         'picks': {
           uid: [for (final f in picks!) f.toMap()],
@@ -624,8 +699,11 @@ class CalorieGameService {
           swap
               ? "🍽️ Guess what I ate! Pick 5 foods you've eaten and guess "
                   'mine. Tap to play.'
-              : "🎯 I've challenged you to Guess the Calories (mystery "
-                  'foods)! Tap to play.',
+              : hl
+                  ? "⚖️ I've challenged you to Higher or Lower! $hlPairs "
+                      'pairs: which has more calories? Tap to play.'
+                  : "🎯 I've challenged you to Guess the Calories (mystery "
+                      'foods)! Tap to play.',
           gameId: ref.id);
       unawaited(notifyOpponent(ref.id));
     }
@@ -785,12 +863,15 @@ class CalorieGameService {
     // You finished it: tell your friend how it went.
     if (notify && finishedNow) {
       final other = after.opponentOf(uid);
-      final me = after.scoreOf(uid), them = after.scoreOf(other);
+      final hl = after.isHigherLower;
+      final me = hl ? after.correctOf(uid) : after.scoreOf(uid);
+      final them = hl ? after.correctOf(other) : after.scoreOf(other);
+      final title = hl ? 'Higher or Lower' : 'Guess the Calories';
       final line = after.isDraw
-          ? "🎯 Guess the Calories: it's a draw, $me each!"
+          ? "🎯 $title: it's a draw, $me each!"
           : after.winner == uid
-              ? '🏆 I won Guess the Calories, $me to $them!'
-              : '🏆 You won Guess the Calories, $them to $me!';
+              ? '🏆 I won $title, $me to $them!'
+              : '🏆 You won $title, $them to $me!';
       await _tell(uid, after.nameOf(uid), other, after.nameOf(other), line,
           gameId: after.id);
     }
@@ -886,7 +967,9 @@ class CalorieGameService {
         g.needsPickFrom(other)
             ? '🍽️ Your turn in Guess the Calories: pick 5 foods for me '
                 'to guess!'
-            : '🎯 Your turn in Guess the Calories!',
+            : g.isHigherLower
+                ? '⚖️ Your turn in Higher or Lower!'
+                : '🎯 Your turn in Guess the Calories!',
         gameId: g.id);
     unawaited(notifyOpponent(g.id, nudge: true));
   }

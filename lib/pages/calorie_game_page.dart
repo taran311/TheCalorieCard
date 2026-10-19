@@ -7,6 +7,7 @@ import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/games_service.dart';
 import 'package:namer_app/services/notification_service.dart';
+import 'package:namer_app/pages/higher_lower_page.dart';
 import 'package:namer_app/ui/game_food_picker.dart';
 import 'package:namer_app/ui/game_level.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -22,18 +23,23 @@ Future<String> _myName() {
 bool _startingGame = false;
 
 /// One line on each kind of game, the same everywhere it's offered.
-String _modeBlurb(GameMode mode) => mode == GameMode.classic
-    ? 'You both guess the same ${CalorieGameService.rounds} everyday foods.'
-    : "You each pick ${CalorieGameService.rounds} things you've eaten. You "
-        'guess theirs, they guess yours.';
+String _modeBlurb(GameMode mode) => switch (mode) {
+      GameMode.classic => 'You both guess the calories in the same '
+          '${CalorieGameService.rounds} foods. Closest guesses win.',
+      GameMode.higherLower => 'You both get the same '
+          '${CalorieGameService.hlPairs} pairs: pick the one with more '
+          'calories. Most right wins.',
+      GameMode.swap => "You each pick ${CalorieGameService.rounds} things "
+          "you've eaten. You guess theirs, they guess yours.",
+    };
 
 /// Starts a game with a friend and opens it.
 ///
 /// Always asks which kind of game first (a game can't start without one),
 /// with [mode] preselected if given. [confirm] is kept so existing callers
 /// (the Friends list) work unchanged: either way the choice sheet is the
-/// confirmation. For "Guess what I ate" you pick your 5 foods before the
-/// game is created, so backing out leaves no half-made game.
+/// confirmation. ("Guess what I ate" isn't offered for new games; its
+/// games already started still play.)
 Future<void> startCalorieGame(
   BuildContext context, {
   required String friendId,
@@ -66,7 +72,9 @@ Future<bool> _startGame(
       showDragHandle: true,
       builder: (_) => _ModeSheet(
         friendName: friendName,
-        initial: initial ?? GameMode.classic,
+        initial: GameMode.offered.contains(initial)
+            ? initial!
+            : GameMode.classic,
       ),
     );
     if (mode == null) return false;
@@ -129,7 +137,7 @@ class _ModeSheetState extends State<_ModeSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Guess the Calories with ${widget.friendName}',
+              'Play ${widget.friendName}',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
@@ -139,7 +147,7 @@ class _ModeSheetState extends State<_ModeSheet> {
             const SizedBox(height: 6),
             Text(
               'Pick a game. You each play whenever suits you, and the '
-              'closest guesses win.',
+              "winner's revealed once you've both finished.",
               style: TextStyle(
                 fontSize: 14,
                 height: 1.35,
@@ -147,7 +155,7 @@ class _ModeSheetState extends State<_ModeSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            for (final m in GameMode.values) ...[
+            for (final m in GameMode.offered) ...[
               _ModeCard(
                 mode: m,
                 selected: _mode == m,
@@ -464,15 +472,14 @@ class _HowToPlay extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text('Two ways to play with a friend:', style: body),
                 const SizedBox(height: 4),
-                for (final m in GameMode.values)
+                for (final m in GameMode.offered)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text('${m.label}: ${_modeBlurb(m)}', style: body),
                   ),
                 const SizedBox(height: 4),
                 Text(
-                  'Play whenever suits you. The closer you are, the more '
-                  'points (up to 100 a food). The winner is revealed once '
+                  'Play whenever suits you. The winner is revealed once '
                   "you've both finished. A game ends 7 days after the last "
                   'move.',
                   style: body,
@@ -539,7 +546,7 @@ class _GameTile extends StatelessWidget {
       }
       icon = Icons.timer_off_outlined;
     } else if (game.isFinished) {
-      final score = '${game.scoreOf(uid)}–${game.scoreOf(other)}';
+      final score = '${game.shownScoreOf(uid)}–${game.shownScoreOf(other)}';
       if (game.isDraw) {
         subtitle = 'Draw · $score';
         accent = AppColors.gray600;
@@ -893,6 +900,139 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
     _focusGuess();
   }
 
+  /// Higher or Lower: [pick] (0 or 1) is the one you think has more.
+  Future<void> _submitPick(CalorieGame game, int pick) async {
+    if (_saving) return;
+    final index = game.nextFoodFor(_uid);
+    if (index == null) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _saving = true;
+      _answering = index;
+      _lastGuess = pick;
+      _error = null;
+    });
+    try {
+      await CalorieGameService.guess(gameId: game.id, uid: _uid, kcal: pick);
+      if (!mounted) return;
+      setState(() => _revealing = index);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = "Couldn't save that. Try again.");
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// Higher or Lower: pair [index], to pick from or, once picked, with
+  /// the answer.
+  Widget _pair(CalorieGame game, int index) {
+    final pair = game.pairAt(index);
+    final guesses = game.guessesOf(_uid);
+    final int? pick = index < guesses.length
+        ? guesses[index]
+        : (_revealing == index || _answering == index ? _lastGuess : null);
+    final revealed = _revealing == index && pick != null;
+    final right = pick != null && game.pickRight(index, pick);
+    final last = index >= game.totalFor(_uid) - 1;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Pair ${index + 1} of ${game.totalFor(_uid)}',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
+            color: AppColors.gray600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Which has more calories?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
+          ),
+        ),
+        const SizedBox(height: 14),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final side in const [0, 1]) ...[
+                if (side == 1) const SizedBox(width: 10),
+                Expanded(
+                  child: HlChoice(
+                    food: side == 0 ? pair.a : pair.b,
+                    revealed: revealed,
+                    isHigher:
+                        identical(side == 0 ? pair.a : pair.b, pair.higher),
+                    isPicked: pick == side,
+                    onTap: () {
+                      if (!_saving && !revealed) _submitPick(game, side);
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (_error != null && !revealed) ...[
+          const SizedBox(height: 10),
+          Text(_error!,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppText.rose600)),
+        ],
+        if (revealed) ...[
+          const SizedBox(height: 16),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              '${right ? 'Right! ' : 'Not this time. '}'
+              '${pair.higher.name} has ${pair.difference} kcal more.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: right ? AppText.emerald600 : AppText.rose600,
+              ),
+            ),
+          ),
+          if (pair.why != null) ...[
+            const SizedBox(height: 12),
+            SurpriseNote(pair.why!),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 52,
+            child: FilledButton(
+              autofocus: true,
+              onPressed: _next,
+              child: Text(
+                last ? 'Finish' : 'Next pair',
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+        ] else ...[
+          const SizedBox(height: 12),
+          Text(
+            "${game.nameOf(game.opponentOf(_uid))} won't see your answers "
+            'until you have both finished.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: AppColors.gray600),
+          ),
+        ],
+      ],
+    );
+  }
+
   /// Opens the picker, saves your 5 foods, and the game moves straight on
   /// to guessing (or waiting, if your friend hasn't picked yet).
   Future<void> _pickFoods(CalorieGame game) async {
@@ -1025,11 +1165,16 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
 
     final Widget content;
     final String step;
-    if (_revealing != null && _revealing! < foods.length) {
-      content = _reveal(game, _revealing!);
+    final rounds = game.isHigherLower ? game.pairCount : foods.length;
+    if (_revealing != null && _revealing! < rounds) {
+      content = game.isHigherLower
+          ? _pair(game, _revealing!)
+          : _reveal(game, _revealing!);
       step = 'reveal-$_revealing';
-    } else if (_saving && _answering != null && _answering! < foods.length) {
-      content = _question(game, _answering!);
+    } else if (_saving && _answering != null && _answering! < rounds) {
+      content = game.isHigherLower
+          ? _pair(game, _answering!)
+          : _question(game, _answering!);
       step = 'question-$_answering';
     } else if (game.isFinished) {
       step = 'result';
@@ -1057,7 +1202,9 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
     } else {
       final index = game.nextFoodFor(_uid)!;
       step = 'question-$index';
-      content = _question(game, index);
+      content = game.isHigherLower
+          ? _pair(game, index)
+          : _question(game, index);
     }
 
     final banner = _banner(game, now);
@@ -1460,7 +1607,11 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
               const Text('⏳', style: TextStyle(fontSize: 48)),
               const SizedBox(height: 8),
               Text(
-                'You scored ${game.scoreOf(_uid)} out of ${game.maxScore}',
+                game.isHigherLower
+                    ? 'You got ${game.correctOf(_uid)} of ${game.pairCount} '
+                        'right'
+                    : 'You scored ${game.scoreOf(_uid)} out of '
+                        '${game.maxScore}',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 20,
@@ -1488,6 +1639,8 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
             guesser: 'You',
             onlyGuessed: true,
           )
+        else if (game.isHigherLower)
+          _PairsTable(game: game, uid: _uid, showFriend: false)
         else
           _AnswersTable(game: game, uid: _uid, showFriend: false),
         _alertsCard(),
@@ -2011,6 +2164,99 @@ class _AnswersTable extends StatelessWidget {
 }
 
 
+/// Higher or Lower: each pair, the one with more, and who got it right.
+class _PairsTable extends StatelessWidget {
+  final CalorieGame game;
+  final String uid;
+  final bool showFriend;
+
+  const _PairsTable({
+    required this.game,
+    required this.uid,
+    required this.showFriend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final other = game.opponentOf(uid);
+    final mine = game.roundScoresOf(uid);
+    final theirs = game.roundScoresOf(other);
+
+    Widget mark(List<int> scores, int i) {
+      if (i >= scores.length) {
+        return Text('–',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.gray400));
+      }
+      final right = scores[i] > 0;
+      return Icon(right ? Icons.check_circle : Icons.cancel,
+          size: 20, color: right ? AppText.emerald600 : AppText.rose600);
+    }
+
+    Widget head(String text) => Text(text,
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: AppColors.gray600));
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: AppDecor.card,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('More calories',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.gray600)),
+              ),
+              SizedBox(width: 52, child: head('You')),
+              if (showFriend)
+                SizedBox(width: 64, child: head(game.nameOf(other))),
+            ],
+          ),
+          const Divider(height: 16),
+          for (var i = 0; i < game.pairCount; i++)
+            if (i < mine.length || showFriend)
+              Builder(builder: (context) {
+                final p = game.pairAt(i);
+                final lower = identical(p.higher, p.a) ? p.b : p.a;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${p.higher.emoji} ${p.higher.name} '
+                          '(${p.higher.kcal}) beats ${lower.emoji} '
+                          '${lower.name} (${lower.kcal})'
+                          '${p.surprise ? ' 😮' : ''}',
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              TextStyle(fontSize: 13, color: AppColors.ink),
+                        ),
+                      ),
+                      SizedBox(width: 52, child: Center(child: mark(mine, i))),
+                      if (showFriend)
+                        SizedBox(
+                            width: 64, child: Center(child: mark(theirs, i))),
+                    ],
+                  ),
+                );
+              }),
+        ],
+      ),
+    );
+  }
+}
+
 /// The big reveal: who won, the scores, everyone's guesses, your record.
 class _Result extends StatefulWidget {
   final CalorieGame game;
@@ -2135,8 +2381,8 @@ class _ResultState extends State<_Result> {
                   Expanded(
                     child: _ScoreBlock(
                       label: 'You',
-                      score: game.scoreOf(uid),
-                      max: game.maxScore,
+                      score: game.shownScoreOf(uid),
+                      max: game.shownMax,
                       highlight: won || game.isDraw,
                     ),
                   ),
@@ -2144,8 +2390,8 @@ class _ResultState extends State<_Result> {
                   Expanded(
                     child: _ScoreBlock(
                       label: name,
-                      score: game.scoreOf(other),
-                      max: game.maxScore,
+                      score: game.shownScoreOf(other),
+                      max: game.shownMax,
                       highlight: !won,
                     ),
                   ),
@@ -2200,7 +2446,9 @@ class _ResultState extends State<_Result> {
             missing: "You didn't get to guess any of $name's foods.",
             empty: "$name didn't pick any foods.",
           ),
-        ] else
+        ] else if (game.isHigherLower)
+          _PairsTable(game: game, uid: uid, showFriend: true)
+        else
           _AnswersTable(game: game, uid: uid, showFriend: true),
         const SizedBox(height: 18),
         SizedBox(

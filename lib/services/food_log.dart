@@ -181,6 +181,38 @@ class FoodLog {
     );
   }
 
+  /// A friend's logged food as an item for Add food, so it can be checked,
+  /// changed (amount, calories, meal) and added to your own day. Their
+  /// numbers and amount come across; their note and reactions don't.
+  /// [from] is the friend's name, shown on the item.
+  static Map<String, dynamic> copyItem(Map<String, dynamic> entry,
+      {String? from}) {
+    final now = Macros.fromEntry(entry);
+    final base = baseOf(entry);
+    final name = '${entry['food_description'] ?? 'Food'}'
+        .replaceFirst(RegExp(r'^Recipe:\s*'), '')
+        .trim();
+    return {
+      'name': name.isEmpty ? 'Food' : name,
+      'calories': now.calories,
+      'protein': now.protein,
+      'carbs': now.carbs,
+      'fat': now.fat,
+      'portion': '${entry['food_portion'] ?? ''}',
+      'base': {
+        'calories': base.calories,
+        'protein': base.protein,
+        'carbs': base.carbs,
+        'fat': base.fat,
+      },
+      'base_portion': basePortionOf(entry),
+      'multiplier': multiplierOf(entry),
+      'source': 'friend',
+      if (from != null && from.trim().isNotEmpty) 'from_friend': from.trim(),
+      if (entry['food_estimate'] == true) 'needs_review': true,
+    };
+  }
+
   /// For an item logged at a multiple of what was looked up ("×2.5"): the
   /// single portion and the multiple, so editing it later starts from
   /// ×2.5 rather than treating 2.5 portions as one.
@@ -255,6 +287,8 @@ class FoodLog {
                 ? (multiplier == 1 ? '' : '×${formatAmount(multiplier)}')
                 : PortionAmount.scaledLabel(basePortion, multiplier),
       });
+      fields.addAll(_renamedFor(entry, multiplier, scaled,
+          '${fields['food_portion']}', recipe: servingSize is String));
     }
     if (calories != null) {
       if (!calories.isFinite || calories < 0) {
@@ -276,6 +310,29 @@ class FoodLog {
     await BalanceService.updateEntry(uid, entryId,
         macros: macros, fields: fields);
     notifyChanged();
+  }
+
+  /// "20g sriracha mayo" changed to 15 g: the name says 15g too, so it
+  /// never shows one amount in the name and another underneath. The new
+  /// amount becomes the entry's single portion ("15g sriracha mayo" at ×1),
+  /// so the name always matches its portion and typing it again later
+  /// finds the right numbers. Nothing changes for names without exactly
+  /// one amount ("1 protein bar"), or portions that don't scale to a plain
+  /// amount ("2 × 1 bar").
+  static Map<String, dynamic> _renamedFor(Map<String, dynamic> entry,
+      double multiplier, Macros scaled, String newPortion,
+      {required bool recipe}) {
+    if (recipe || (multiplier - 1).abs() < 1e-9) return const {};
+    if (newPortion.contains('×')) return const {};
+    final name = '${entry['food_description'] ?? ''}';
+    final renamed = PortionAmount.rescaleName(name, multiplier);
+    if (renamed == null || renamed == name) return const {};
+    return {
+      'food_description': renamed,
+      'food_base': scaled.toEntryFields(),
+      'food_portion_base': newPortion,
+      'food_multiplier': 1.0,
+    };
   }
 
   /// Swaps a logged food's numbers for a fresh lookup ("Numbers look
