@@ -21,6 +21,7 @@ import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/late_close.dart';
 import 'package:namer_app/services/friends_service.dart';
+import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/leaderboard_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/services/pacing.dart';
@@ -440,11 +441,6 @@ class _HomePageState extends State<HomePage>
   Map<String, List<Map<String, dynamic>>> _foodReactions = {};
   Map<String, bool> _showEmojiPicker = {};
   Map<String, bool> _showReactions = {};
-  String? _reactionConfirmationFoodId;
-  String? _reactionConfirmationEmoji;
-  String? _reactionConfirmationUsername;
-  AnimationController? _reactionFadeController;
-  Animation<double>? _reactionFadeAnimation;
 
   // Card animations
   AnimationController? _jiggleAnimationController;
@@ -471,15 +467,6 @@ class _HomePageState extends State<HomePage>
     _jiggleAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
-    );
-
-    _reactionFadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _reactionFadeAnimation = CurvedAnimation(
-      parent: _reactionFadeController!,
-      curve: Curves.easeInOut,
     );
 
     _jiggleAnimation = TweenSequence<double>([
@@ -617,7 +604,6 @@ class _HomePageState extends State<HomePage>
     _midnightTimer?.cancel();
     _jiggleAnimationController?.dispose();
     _cardDragResetController?.dispose();
-    _reactionFadeController?.dispose();
     super.dispose();
   }
 
@@ -1452,77 +1438,6 @@ class _HomePageState extends State<HomePage>
       setState(() => _foodReactions = byFood);
     } catch (e) {
       // Reactions are a nice extra; the food is already showing.
-    }
-  }
-
-  Future<void> _addReaction(String foodItemId, String emoji) async {
-    try {
-      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-      if (currentUserId == null) return;
-
-      // Get current user's email for display
-      final currentUserEmail = FirebaseAuth.instance.currentUser?.email ?? '';
-      final username = currentUserEmail.split('@')[0];
-
-      // Check if user already reacted to this food item
-      final existingReaction = await FirebaseFirestore.instance
-          .collection('food_reactions')
-          .where('food_item_id', isEqualTo: foodItemId)
-          .where('user_id', isEqualTo: currentUserId)
-          .limit(1)
-          .get();
-
-      if (existingReaction.docs.isNotEmpty) {
-        // Update existing reaction
-        await existingReaction.docs.first.reference.update({
-          'emoji': emoji,
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-      } else {
-        // Create new reaction
-        await FirebaseFirestore.instance.collection('food_reactions').add({
-          'food_item_id': foodItemId,
-          'owner_id': _activeUserId,
-          'user_id': currentUserId,
-          'emoji': emoji,
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-      }
-
-      // Refresh reactions
-      await _fetchReactionsForFoodItems();
-
-      if (mounted) {
-        setState(() {
-          _showEmojiPicker[foodItemId] = false;
-          // Show confirmation animation
-          _reactionConfirmationFoodId = foodItemId;
-          _reactionConfirmationEmoji = emoji;
-          _reactionConfirmationUsername = username;
-        });
-
-        // Fade in animation
-        _reactionFadeController?.forward(from: 0.0);
-
-        // Wait 2 seconds then fade out
-        await Future.delayed(const Duration(seconds: 2));
-        await _reactionFadeController?.reverse();
-
-        if (mounted) {
-          setState(() {
-            _reactionConfirmationFoodId = null;
-            _reactionConfirmationEmoji = null;
-            _reactionConfirmationUsername = null;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text("Couldn't add your reaction. Please try again.")),
-        );
-      }
     }
   }
 
@@ -2381,17 +2296,6 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Widget _reactionEmoji(String foodId, String emoji) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(24),
-      onTap: () => _addReaction(foodId, emoji),
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Text(emoji, style: const TextStyle(fontSize: 32)),
-      ),
-    );
-  }
-
   Widget _buildFoodRow(
       QueryDocumentSnapshot<Map<String, dynamic>> doc, bool canEdit) {
     final data = doc.data();
@@ -2502,19 +2406,20 @@ class _HomePageState extends State<HomePage>
               ),
             ),
             // Friends viewing your card: pick a reaction.
+            // A friend's food tapped: had the same? Add it to your day.
+            // (Cheers are for their whole day, under the card, not for
+            // single foods.)
             if (widget.readOnly && (_showEmojiPicker[doc.id] ?? false))
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
                 color: AppColors.gray100,
-                child: Wrap(
-                  alignment: WrapAlignment.spaceEvenly,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                child: Row(
                   children: [
-                    _reactionEmoji(doc.id, '🔥'),
-                    _reactionEmoji(doc.id, '😈'),
-                    _reactionEmoji(doc.id, '💪'),
-                    _reactionEmoji(doc.id, '❤️'),
-                    // Had the same? Add it to your own day.
+                    Expanded(
+                      child: Text('Had this too?',
+                          style: TextStyle(
+                              color: AppColors.gray700, fontSize: 14)),
+                    ),
                     TextButton.icon(
                       onPressed: () => _copyFromFriend(
                           [doc], FoodLog.mealOf(data['foodCategory'])),
@@ -2522,35 +2427,6 @@ class _HomePageState extends State<HomePage>
                       label: const Text('Add to mine'),
                     ),
                   ],
-                ),
-              ),
-            // Reaction just added (friend's view).
-            if (widget.readOnly &&
-                _reactionConfirmationFoodId == doc.id &&
-                _reactionFadeAnimation != null)
-              FadeTransition(
-                opacity: _reactionFadeAnimation!,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: AppColors.emerald50,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _reactionConfirmationUsername ?? '',
-                          style: TextStyle(
-                            color: AppColors.gray700,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        _reactionConfirmationEmoji ?? '',
-                        style: const TextStyle(fontSize: 24),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             // Owner tapped a food: who reacted to it.
@@ -2933,6 +2809,17 @@ class _HomePageState extends State<HomePage>
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                         child: _buildAddFoodBar(),
                       ),
+                    // A friend's card today: cheer their day.
+                    if (widget.readOnly &&
+                        widget.userIdOverride != null &&
+                        _isSelectedDateToday)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: _DayCheer(
+                          friendId: widget.userIdOverride!,
+                          name: widget.bannerTitle ?? 'your friend',
+                        ),
+                      ),
                     if (usuals != null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -3192,6 +3079,97 @@ class _PastDayNotice extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// "Cheer Sam's day": one tap sends a friendly line into your chat with
+/// them, so they actually see it (it arrives like any message). For their
+/// whole day, never a single food: nobody's food is up for judging.
+class _DayCheer extends StatefulWidget {
+  final String friendId;
+  final String name;
+
+  const _DayCheer({required this.friendId, required this.name});
+
+  static const cheers = [
+    ('🔥', "🔥 Your day's looking great!"),
+    ('💪', '💪 Strong day, keep going!'),
+    ('👏', '👏 Keep it up!'),
+    ('❤️', '❤️ Proud of you today!'),
+  ];
+
+  @override
+  State<_DayCheer> createState() => _DayCheerState();
+}
+
+class _DayCheerState extends State<_DayCheer> {
+  String? _sent;
+  bool _sending = false;
+
+  Future<void> _send(String emoji, String text) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || _sending || _sent != null) return;
+    setState(() => _sending = true);
+    try {
+      await ChatService.sendToFriend(
+        uid: user.uid,
+        myName: await FriendsService.nameFor(user.uid, email: user.email),
+        friendId: widget.friendId,
+        friendName: widget.name,
+        text: text,
+      );
+      if (mounted) setState(() => _sent = emoji);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Cheer not sent. Check your connection.')));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sent = _sent;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+      decoration: AppDecor.card,
+      child: sent != null
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                'Sent $sent to ${widget.name}, in your chat',
+                style: TextStyle(
+                    color: AppText.emerald600, fontWeight: FontWeight.w700),
+              ),
+            )
+          : Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "Cheer ${widget.name}'s day",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: AppColors.ink, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                for (final c in _DayCheer.cheers)
+                  Tooltip(
+                    message: c.$2,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(24),
+                      onTap: _sending ? null : () => _send(c.$1, c.$2),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Text(c.$1, style: const TextStyle(fontSize: 26)),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }
