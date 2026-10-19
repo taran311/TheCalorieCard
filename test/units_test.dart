@@ -179,6 +179,13 @@ void main() {
           closeTo(1600, 15));
     });
 
+    test('a broken split (no fat) is replaced with the default', () {
+      const broken = Macros(calories: 1350, protein: 169, carbs: 169, fat: 0);
+      final scaled = macrosScaledTo(broken, 1350);
+      expect(scaled.fat, greaterThan(40));
+      expect(scaled.protein, closeTo(101, 1));
+    });
+
     test('no macros to scale: the default split', () {
       final scaled = macrosScaledTo(Macros.zero, 2000);
       expect(scaled.protein, 150);

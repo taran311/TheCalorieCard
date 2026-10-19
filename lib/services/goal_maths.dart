@@ -77,11 +77,18 @@ Macros defaultMacrosFor(int calories) => Macros(
 
 /// [current]'s macros scaled to a new calorie goal, so someone who chose a
 /// high-protein split keeps it when the calories change. Falls back to
-/// [defaultMacrosFor] when there are no macros to scale.
+/// [defaultMacrosFor] when there are no macros to scale, or the split has
+/// under 15% of calories from fat or under 10% from protein.
 Macros macrosScaledTo(Macros current, int calories) {
   final fromMacros =
       current.protein * 4 + current.carbs * 4 + current.fat * 9;
   if (!fromMacros.isFinite || fromMacros <= 0 || calories <= 0) {
+    return defaultMacrosFor(calories);
+  }
+  // A split nobody would choose (no fat at all, or almost no protein: what
+  // an earlier bug left some goals at) isn't worth keeping.
+  if (current.fat * 9 / fromMacros < 0.15 ||
+      current.protein * 4 / fromMacros < 0.10) {
     return defaultMacrosFor(calories);
   }
   final f = calories / fromMacros;
