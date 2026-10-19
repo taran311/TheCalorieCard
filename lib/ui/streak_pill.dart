@@ -51,7 +51,7 @@ class _StreakPillState extends State<StreakPill> {
                 borderRadius: BorderRadius.circular(14),
                 onTap: () => showStreakSheet(context, s),
                 child: SizedBox(
-                  height: 48,
+                  height: 44,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: ExcludeSemantics(

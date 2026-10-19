@@ -29,9 +29,10 @@ class _MessagesButtonState extends State<MessagesButton> {
         for (final doc in snapshot.data?.docs ??
             const <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
           final counts = doc.data()['unread_count'];
+          // Chats with something new, not messages (see the Friends tab).
           if (counts is Map) {
             final v = counts[_uid];
-            if (v is num) unread += v.toInt();
+            if (v is num && v > 0) unread++;
           }
         }
         const icon = Icon(Icons.chat_bubble_outline);

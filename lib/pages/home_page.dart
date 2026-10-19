@@ -1109,9 +1109,13 @@ class _HomePageState extends State<HomePage>
           return const SizedBox.shrink();
         }
         return Align(
-          alignment: Alignment.centerRight,
-          child: OutlinedButton.icon(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
             onPressed: _evenOutBusy ? null : () => _spreadOverWeek(overBy),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 40),
+            ),
             icon: const Icon(Icons.calendar_view_week_outlined, size: 18),
             label: const Text('Spread it over the week'),
           ),
@@ -2794,18 +2798,9 @@ class _HomePageState extends State<HomePage>
                         child: spentLine,
                       ),
                     if (_isOwnCard && _isSelectedDateToday) _evenOutLine(),
-                    // What you've eaten of each macro (the card shows what's
-                    // left). Wide screens have the Today panel instead.
-                    if (spentLine != null &&
-                        _goalsForSelectedDay.protein > 0 &&
-                        !_todayPanelShowing)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                        child: DayMacros(
-                          eaten: _dayTotals,
-                          goals: _goalsForSelectedDay,
-                        ),
-                      ),
+                    // Macros are on the card (what's left; tap it for eaten
+                    // against goals), so they aren't repeated here. Wide
+                    // screens have the Today panel too.
                     if (pacing != null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -2883,7 +2878,7 @@ class _HomePageState extends State<HomePage>
                           },
                         ),
                       ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(

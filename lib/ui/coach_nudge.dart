@@ -13,12 +13,17 @@ class CoachNudgeCard extends StatelessWidget {
   final DateTime? today;
   final VoidCallback onTap;
 
+  /// Inside the card, under the text ("Spread it over the week"), so the
+  /// note and what you can do about it are one thing.
+  final Widget? footer;
+
   const CoachNudgeCard({
     super.key,
     required this.overBy,
     this.goal = 2000,
     this.today,
     required this.onTap,
+    this.footer,
   });
 
   @override
@@ -43,7 +48,10 @@ class CoachNudgeCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppDecor.radius),
               border: Border.all(color: AppColors.violet300),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+            Row(
               children: [
                 Container(
                   width: 38,
@@ -91,6 +99,13 @@ class CoachNudgeCard extends StatelessWidget {
                     size: 20, color: AppText.primaryDark),
               ],
             ),
+                if (footer != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 46, top: 2),
+                    child: footer!,
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -108,7 +123,8 @@ class CoachNudge extends StatelessWidget {
   /// know about pages).
   final void Function(String question) onAsk;
 
-  /// Shown under the card (the "Spread it over the week" controls).
+  /// Shown inside the card, under the text (the "Spread it over the
+  /// week" controls).
   final Widget? footer;
 
   const CoachNudge({
@@ -131,12 +147,8 @@ class CoachNudge extends StatelessWidget {
         goal: goal,
         today: today,
       ).question),
+      footer: footer,
     );
-    final extra = footer;
-    if (extra == null) return card;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [card, const SizedBox(height: 8), extra],
-    );
+    return card;
   }
 }

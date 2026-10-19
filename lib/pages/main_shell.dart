@@ -1036,6 +1036,8 @@ class _BadgeCountsState extends State<_BadgeCounts> {
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: _conversations,
           builder: (context, convos) {
+            // Chats with something new, not messages: two messages from
+            // one friend is one person waiting, so 1.
             var unread = 0;
             final docs = convos.data?.docs ??
                 <QueryDocumentSnapshot<Map<String, dynamic>>>[];
@@ -1043,7 +1045,7 @@ class _BadgeCountsState extends State<_BadgeCounts> {
               final map = doc.data()['unread_count'];
               if (map is Map) {
                 final v = map[widget.userId];
-                if (v is num) unread += v.toInt();
+                if (v is num && v > 0) unread++;
               }
             }
             return widget.builder(

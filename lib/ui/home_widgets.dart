@@ -54,7 +54,7 @@ class DayStepper extends StatelessWidget {
         );
 
     return Container(
-      height: 48,
+      height: 44,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
