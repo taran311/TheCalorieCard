@@ -77,6 +77,30 @@ void main() {
     expect((s.gameMine, s.gameTheirs, s.gameOver), (5, 5, true));
   });
 
+  test('recipe import tutorial: matching makes it the screenshot total', () {
+    final t = tutorials.firstWhere((t) => t.id == 'recipe_import');
+    final s = TutorialState();
+    t.setup!(s);
+    expect(s.screen, MockScreen.recipeEditor);
+    final recipesBefore = s.recipes.length;
+    for (final step in t.steps) {
+      step.complete(s);
+    }
+    expect(s.importOurs, 1430, reason: 'the tutorial text says 1,430');
+    expect(s.importShown, 1322, reason: 'the tutorial text says 1,322');
+    expect(s.importMatched, isTrue);
+    expect(s.screen, MockScreen.recipes);
+    expect(s.recipes.length, recipesBefore + 1);
+    final r = s.recipes.last;
+    expect(r.name, 'Coconut tofu curry');
+    expect(r.servings, 4);
+    expect(r.kcal, 1322);
+    // Our macro split is kept, just scaled: tofu 580 → 480 kcal.
+    final tofu = r.ingredients.first;
+    expect(tofu.kcal, 480);
+    expect(tofu.protein, closeTo(60.4 * 480 / 580, 1e-9));
+  });
+
   test('step complete() types the full text', () {
     final s = TutorialState();
     TStep(

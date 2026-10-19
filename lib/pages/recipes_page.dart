@@ -964,7 +964,7 @@ class _RecipesPageState extends State<RecipesPage> {
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
         title: const Text('Recipes'),
-        actions: const [ScreenHelpButton(tutorialIds: ['recipe'])],
+        actions: const [ScreenHelpButton(tutorialIds: ['recipe', 'recipe_import'])],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Row(
@@ -984,9 +984,9 @@ class _RecipesPageState extends State<RecipesPage> {
               child: FirstVisitHint(
                 screen: 'recipes',
                 label: 'recipes',
-                tutorialIds: const ['recipe'],
+                tutorialIds: const ['recipe', 'recipe_import'],
                 onShow: () =>
-                    showScreenHelp(context, tutorialIds: const ['recipe']),
+                    showScreenHelp(context, tutorialIds: const ['recipe', 'recipe_import']),
               ),
             ),
             Expanded(

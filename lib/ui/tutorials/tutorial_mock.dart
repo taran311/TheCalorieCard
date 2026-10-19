@@ -69,6 +69,37 @@ class MockRecipe {
       );
 }
 
+/// One ingredient line read from a recipe screenshot (recipe import).
+class MockImportLine {
+  /// As it appeared in the screenshot.
+  final String asWritten;
+
+  /// What we read it as.
+  final String query;
+
+  /// Calories printed beside it in the screenshot.
+  final int shown;
+
+  /// Our own lookup.
+  final MockFood ours;
+
+  /// The name was cut off, so the reading is a guess.
+  final bool unclear;
+
+  const MockImportLine(this.asWritten, this.query, this.shown, this.ours,
+      {this.unclear = false});
+
+  /// Ours scaled to the screenshot's calories, keeping our macro split.
+  MockFood get matched => ours.kcal <= 0
+      ? MockFood(ours.name, ours.portion, ours.meal, shown)
+      : ours.scaled(shown / ours.kcal, ours.portion);
+
+  /// Ours vs the screenshot, as a signed whole percent.
+  int get percent => ((ours.kcal - shown) / shown * 100).round();
+}
+
+enum ImportStage { pick, reading, review, compare }
+
 class MockMessage {
   final bool mine;
   final String text;
@@ -87,6 +118,7 @@ enum MockScreen {
   coach,
   recipes,
   recipeEditor,
+  recipeImport,
   friends,
   messages,
   chat,
@@ -143,9 +175,22 @@ class TutorialState {
     ]),
   ];
   String draftName = '';
+  int draftServings = 2;
   String draftTyped = '';
   final List<MockFood> draftIngredients = [];
   bool showPicker = false;
+
+  // Recipe import (from a screenshot)
+  ImportStage importStage = ImportStage.pick;
+  String importTitle = '';
+  int importServings = 0;
+  final List<MockImportLine> importLines = [];
+  bool importMatched = false;
+
+  int get importOurs => importLines.fold(0, (s, l) => s + l.ours.kcal);
+  int get importShown => importLines.fold(0, (s, l) => s + l.shown);
+  List<MockFood> get importChosen =>
+      [for (final l in importLines) importMatched ? l.matched : l.ours];
 
   // Friends and chat
   final List<MockFriend> friends = [
@@ -181,7 +226,10 @@ class TutorialState {
 
   /// The bottom-bar tab that matches the screen.
   String get tab => switch (screen) {
-        MockScreen.recipes || MockScreen.recipeEditor => 'recipes',
+        MockScreen.recipes ||
+        MockScreen.recipeEditor ||
+        MockScreen.recipeImport =>
+          'recipes',
         MockScreen.coach => 'coach',
         MockScreen.friends ||
         MockScreen.messages ||
@@ -218,6 +266,7 @@ class MockApp extends StatelessWidget {
       MockScreen.coach => _coach(),
       MockScreen.recipes => _recipes(),
       MockScreen.recipeEditor => _recipeEditor(),
+      MockScreen.recipeImport => _recipeImport(),
       MockScreen.friends => _friends(),
       MockScreen.messages => _messages(),
       MockScreen.chat => _chat(),
@@ -1019,12 +1068,35 @@ class MockApp extends StatelessWidget {
               const SizedBox(height: 4),
               _mark('recipeName', _fakeField(s.draftName, 'e.g. Chickpea curry')),
               const SizedBox(height: 12),
-              Text('This recipe makes 2 servings',
+              Text('This recipe makes ${s.draftServings} servings',
                   style: TextStyle(color: AppColors.muted)),
               const SizedBox(height: 12),
               _mark('ingInput',
                   _fakeField(s.draftTyped, 'e.g. 200g tofu, 1 onion')),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _mark(
+                  'importBtn',
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.document_scanner_outlined,
+                            size: 18, color: AppText.primary),
+                        const SizedBox(width: 6),
+                        Text('Import from a screenshot or photo',
+                            style: TextStyle(
+                                color: AppText.primary,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
               for (final f in s.draftIngredients)
                 Container(
                   margin: const EdgeInsets.only(bottom: 6),
@@ -1045,7 +1117,7 @@ class MockApp extends StatelessWidget {
                   padding: const EdgeInsets.all(10),
                   decoration: AppDecor.inset,
                   child: Text(
-                      'Whole recipe: $whole kcal · per serving: ${(whole / 2).round()} kcal',
+                      'Whole recipe: $whole kcal · per serving: ${(whole / s.draftServings).round()} kcal',
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ],
@@ -1067,6 +1139,302 @@ class MockApp extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _recipeImport() {
+    final stage = s.importStage;
+    return Column(
+      children: [
+        _header(
+            stage == ImportStage.compare
+                ? 'Check against your screenshot'
+                : 'Import a recipe',
+            back: true),
+        Expanded(
+          child: switch (stage) {
+            ImportStage.pick => _importPick(),
+            ImportStage.reading => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 14),
+                    Text('Reading your recipe…',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.ink)),
+                  ],
+                ),
+              ),
+            ImportStage.review => _importReview(),
+            ImportStage.compare => _importCompare(),
+          },
+        ),
+      ],
+    );
+  }
+
+  /// A pretend screenshot of a recipe in some other app.
+  Widget _importPick() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Your photos',
+            style: TextStyle(
+                fontSize: 12,
+                color: AppColors.muted,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        _mark(
+          'shot',
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F4F5),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.gray300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.screenshot_outlined,
+                        size: 16, color: Color(0xFF71717A)),
+                    const SizedBox(width: 6),
+                    const Text('Screenshot · another app',
+                        style:
+                            TextStyle(fontSize: 11, color: Color(0xFF71717A))),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('Coconut tofu curry',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: Color(0xFF18181B))),
+                const Text('Serves 4',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF71717A))),
+                const SizedBox(height: 6),
+                for (final l in _shotLines)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(l.$1,
+                              style: const TextStyle(
+                                  fontSize: 12.5, color: Color(0xFF27272A))),
+                        ),
+                        Text('${l.$2}',
+                            style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF27272A))),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The lines the pretend screenshot shows, before they're read.
+  List<(String, int)> get _shotLines => s.importLines.isNotEmpty
+      ? [for (final l in s.importLines) (l.asWritten, l.shown)]
+      : const [
+          ('400.0 g firm tofu', 480),
+          ('coco 400.0 ml', 680),
+          ('1.0 medium red onion', 44),
+          ('2.0 tbsp curry paste', 60),
+          ('250.0 g spinach', 58),
+        ];
+
+  Widget _importReview() {
+    final unclear = s.importLines.where((l) => l.unclear).length;
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text("Here's what we read. Fix anything that's wrong.",
+            style: TextStyle(color: AppColors.muted)),
+        if (unclear > 0) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.amber700.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.help_outline,
+                    size: 18, color: AppColors.amber700),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: Text(
+                        '$unclear line was hard to read. Check it below.')),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        _mark(
+          'importLines',
+          Column(
+            children: [
+              for (final l in s.importLines)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _fakeField(l.query, ''),
+                      if (l.unclear)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 14, top: 3),
+                          child: Text(
+                              'Hard to read: we took "${l.asWritten}" as this',
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.amber700)),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        _mark(
+          'importMain',
+          _fakeButton(
+            icon: Icons.search,
+            label: 'Look up ${s.importLines.length} ingredients',
+            filled: true,
+            wide: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _importCompare() {
+    final chosen = s.importChosen.fold(0, (sum, f) => sum + f.kcal);
+    Widget stat(String label, String value) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              Text(value,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: AppColors.ink)),
+            ],
+          ),
+        );
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _mark(
+          'importTotals',
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: AppDecor.card,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  stat('Our lookup', '${s.importOurs} kcal'),
+                  stat('Screenshot', '${s.importShown} kcal'),
+                ]),
+                const Divider(height: 18),
+                Row(children: [
+                  stat('Going into your recipe', '$chosen kcal'),
+                ]),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        _mark(
+          'matchAll',
+          _fakeButton(
+            icon: s.importMatched ? Icons.undo : Icons.straighten,
+            label: s.importMatched
+                ? 'Use our numbers for all'
+                : 'Match all to screenshot',
+            filled: false,
+            wide: true,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Matching keeps our protein, carbs and fat split, just scaled to '
+          'the screenshot\'s calories.',
+          style: TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+        const SizedBox(height: 10),
+        for (var i = 0; i < s.importLines.length; i++)
+          _mark('importRow_$i', _importRow(s.importLines[i])),
+        const SizedBox(height: 6),
+        _mark(
+          'importMain',
+          _fakeButton(
+            icon: Icons.add,
+            label: 'Add ${s.importLines.length} ingredients to recipe',
+            filled: true,
+            wide: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _importRow(MockImportLine l) {
+    final pct = l.percent;
+    final close = pct.abs() <= 10;
+    final color = close ? AppColors.emerald700 : AppColors.amber700;
+    final f = s.importMatched ? l.matched : l.ours;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: AppDecor.card,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l.query,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, color: AppColors.ink)),
+          const SizedBox(height: 2),
+          Text('Ours ${l.ours.kcal} · Screenshot ${l.shown}',
+              style: TextStyle(fontSize: 12.5, color: AppColors.ink)),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(close ? Icons.check_circle : Icons.info_outline,
+                  size: 15, color: color),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  close
+                      ? 'Close'
+                      : 'Ours is ${pct > 0 ? '+' : ''}$pct% vs the screenshot',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: color,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+              _kcalPill(f.kcal),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

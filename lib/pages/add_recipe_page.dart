@@ -179,7 +179,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
     final canDemo = !_tutorialMode && !_saving && !_hasAnyInput;
     showScreenHelp(
       context,
-      tutorialIds: const ['recipe'],
+      tutorialIds: const ['recipe', 'recipe_import'],
       onDemo: canDemo ? _runTutorial : null,
       demoUnavailable: canDemo ? null : 'Clear the form first to see the demo here',
     );

@@ -39,6 +39,27 @@ const _ingredients = [
       protein: 2.7, carbs: 36, fat: 0.3),
 ];
 
+// Recipe import: a screenshot from another app. The tofu there is a lighter
+// brand than ours, so the two lookups differ a little.
+const _importLines = [
+  MockImportLine('400.0 g firm tofu', '400g firm tofu', 480,
+      MockFood('Firm tofu', '400g', 'Recipe', 580,
+          protein: 60.4, carbs: 4.4, fat: 31.6)),
+  MockImportLine('coco 400.0 ml', '400ml coconut milk', 680,
+      MockFood('Coconut milk', '400ml', 'Recipe', 696,
+          protein: 6.4, carbs: 9.6, fat: 72),
+      unclear: true),
+  MockImportLine('1.0 medium red onion', '1 medium red onion', 44,
+      MockFood('Red onion', '1 medium', 'Recipe', 44,
+          protein: 1.2, carbs: 10.3, fat: 0.1)),
+  MockImportLine('2.0 tbsp curry paste', '2 tbsp curry paste', 60,
+      MockFood('Curry paste', '2 tbsp', 'Recipe', 52,
+          protein: 1, carbs: 6, fat: 2.6)),
+  MockImportLine('250.0 g spinach', '250g spinach', 58,
+      MockFood('Spinach', '250g', 'Recipe', 58,
+          protein: 7.2, carbs: 9, fat: 1)),
+];
+
 final _finished = TStep(
   title: "That's it!",
   body: 'Tap Finish to go back to your real card. You can replay any '
@@ -422,6 +443,120 @@ final List<Tutorial> tutorials = [
         },
         then: (s) => s.toast = null,
         focus: 'section_Dinner',
+      ),
+      _finished,
+    ],
+  ),
+
+  // ------------------------------------------------------- recipe import
+  Tutorial(
+    id: 'recipe_import',
+    emoji: '📸',
+    title: 'Import a recipe',
+    subtitle: 'From a screenshot, and match its calories',
+    setup: (s) => s.screen = MockScreen.recipeEditor,
+    steps: [
+      TStep(
+        title: 'Got a recipe somewhere else?',
+        body: 'Screenshot it in another app or on a website, or snap a '
+            'cookbook page. Then tap "Import from a screenshot or photo". '
+            "It's part of Premium.",
+        target: 'importBtn',
+        act: TAct.tap,
+        apply: (s) {
+          s.screen = MockScreen.recipeImport;
+          s.importStage = ImportStage.pick;
+        },
+        focus: 'shot',
+      ),
+      TStep(
+        title: 'Pick your screenshot',
+        body: 'Choose up to 3 if the list is long. We only read the foods '
+            'and amounts.',
+        target: 'shot',
+        act: TAct.tap,
+        apply: (s) => s.importStage = ImportStage.reading,
+        then: (s) {
+          s.importLines
+            ..clear()
+            ..addAll(_importLines);
+          s.importTitle = 'Coconut tofu curry';
+          s.importServings = 4;
+          s.importStage = ImportStage.review;
+        },
+        thenAfter: const Duration(milliseconds: 1800),
+        focus: 'importLines',
+      ),
+      const TStep(
+        title: 'Check what we read',
+        body: '"coco" was cut off, so we guessed coconut milk and flagged '
+            "it. Fix anything that's wrong. Adding a brand makes it more "
+            'accurate.',
+        target: 'importLines',
+      ),
+      TStep(
+        title: 'Look them up',
+        body: "Every ingredient goes through our own lookup, not the "
+            "screenshot's numbers.",
+        target: 'importMain',
+        act: TAct.tap,
+        apply: (s) => s.importStage = ImportStage.compare,
+        focus: 'importTotals',
+      ),
+      const TStep(
+        title: 'Ours vs the screenshot',
+        body: 'Our lookup says 1,430 kcal and the screenshot says 1,322. '
+            'Each ingredient shows how close the two are.',
+        target: 'importTotals',
+      ),
+      const TStep(
+        title: 'Why they differ',
+        body: 'Brands vary. The screenshot used a lighter tofu than ours, so '
+            "its number is lower. That's normal, and it's why you get to "
+            'choose.',
+        target: 'importRow_0',
+      ),
+      TStep(
+        title: 'Match the screenshot',
+        body: 'Trust the screenshot? Tap "Match all to screenshot". The '
+            'calories then match it exactly, with our protein, carbs and fat '
+            'scaled to fit. You can switch single ingredients too.',
+        target: 'matchAll',
+        act: TAct.tap,
+        apply: (s) => s.importMatched = true,
+        focus: 'importTotals',
+      ),
+      TStep(
+        title: 'Add them to your recipe',
+        body: 'The name and servings come from the screenshot too.',
+        target: 'importMain',
+        act: TAct.tap,
+        apply: (s) {
+          s.draftIngredients
+            ..clear()
+            ..addAll(s.importChosen);
+          s.draftName = s.importTitle;
+          s.draftServings = s.importServings;
+          s.screen = MockScreen.recipeEditor;
+          s.toast = 'Added 5 ingredients';
+        },
+        then: (s) => s.toast = null,
+        focus: 'recipeMain',
+      ),
+      TStep(
+        title: 'Save it',
+        body: 'It\'s in your recipes at 1,322 kcal, exactly as the '
+            'screenshot said, ready to log in a tap.',
+        target: 'recipeMain',
+        act: TAct.tap,
+        apply: (s) {
+          s.recipes.add(MockRecipe(s.draftName, s.draftServings,
+              List<MockFood>.of(s.draftIngredients)));
+          s.screen = MockScreen.recipes;
+          s.toast = 'Saved to My recipes';
+        },
+        then: (s) => s.toast = null,
+        focus: 'recipe_Coconut tofu curry',
       ),
       _finished,
     ],
