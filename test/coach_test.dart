@@ -9,6 +9,7 @@ CoachContext ctx({
   double proteinEaten = 100,
   int hour = 12,
   List<String> foods = const ['Porridge'],
+  bool closed = false,
 }) =>
     CoachContext(
       calorieGoal: 2000,
@@ -20,6 +21,7 @@ CoachContext ctx({
       daysLoggedThisWeek: 5,
       averageThisWeek: 1850,
       hour: hour,
+      dayClosed: closed,
     );
 
 void main() {
@@ -93,6 +95,30 @@ void main() {
     // Also there when over, and with no numbers.
     expect(labels(ctx(left: -200)), contains('Drinks night out'));
     expect(labels(null), contains('Dining out'));
+  });
+
+  test('a closed day looks back and ahead, with nothing to eat', () {
+    final l = labels(ctx(left: 29, hour: 21, closed: true));
+    expect(l.first, 'How did I do today?');
+    expect(l, contains('Plan tomorrow'));
+    expect(l, isNot(contains('Dining out')));
+    expect(l, isNot(contains('Drinks night out')));
+    expect(l, isNot(contains('Add food for me')));
+    expect(l.where((x) => x.contains('kcal')), isEmpty);
+    expect(CoachService.showGoingOut(ctx(closed: true)), isFalse);
+  });
+
+  test('almost nothing left: snack-sized help, no meals or nights out', () {
+    final late = labels(ctx(left: 29, hour: 21));
+    expect(late.first, 'Still hungry?');
+    expect(late, isNot(contains('Meal ideas for my 29 kcal')));
+    expect(late, isNot(contains('A snack under 29 kcal')));
+    expect(late, isNot(contains('Dining out')));
+    expect(late, isNot(contains('Plan my dinner')));
+    expect(late, isNot(contains('Help me hit my protein')));
+    expect(labels(ctx(left: 120, hour: 21)), contains('A snack under 120 kcal'));
+    // Earlier in the day a night out can still be planned around it.
+    expect(labels(ctx(left: 29, hour: 13)), contains('Dining out'));
   });
 
   test('dining out question carries the place and calories left', () {

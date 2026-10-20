@@ -75,6 +75,55 @@ Macros defaultMacrosFor(int calories) => Macros(
       fat: (calories * 0.30 / 9).round().toDouble(),
     );
 
+/// A ready-made way to split calories between protein, carbs and fat
+/// (shares of calories, adding up to 1).
+class MacroSplit {
+  final String id;
+  final String label;
+  final String hint;
+  final double protein;
+  final double carbs;
+  final double fat;
+
+  const MacroSplit(this.id, this.label, this.hint,
+      {required this.protein, required this.carbs, required this.fat});
+
+  /// Grams for [calories] (4 kcal/g protein and carbs, 9 kcal/g fat).
+  Macros macrosFor(int calories) => Macros(
+        calories: calories.toDouble(),
+        protein: (calories * protein / 4).round().toDouble(),
+        carbs: (calories * carbs / 4).round().toDouble(),
+        fat: (calories * fat / 9).round().toDouble(),
+      );
+
+  /// The preset these macros already match (each share within 3
+  /// percentage points), if any.
+  static MacroSplit? matching(num protein, num carbs, num fat) {
+    final total = protein * 4 + carbs * 4 + fat * 9;
+    if (!total.isFinite || total <= 0) return null;
+    for (final s in presets) {
+      if ((protein * 4 / total - s.protein).abs() <= 0.03 &&
+          (carbs * 4 / total - s.carbs).abs() <= 0.03 &&
+          (fat * 9 / total - s.fat).abs() <= 0.03) {
+        return s;
+      }
+    }
+    return null;
+  }
+
+  static const presets = [
+    MacroSplit('balanced', 'Balanced', '30% protein · 40% carbs · 30% fat',
+        protein: 0.30, carbs: 0.40, fat: 0.30),
+    MacroSplit('high_protein', 'High protein',
+        '40% protein · 35% carbs · 25% fat',
+        protein: 0.40, carbs: 0.35, fat: 0.25),
+    MacroSplit('low_carb', 'Low carb', '35% protein · 25% carbs · 40% fat',
+        protein: 0.35, carbs: 0.25, fat: 0.40),
+    MacroSplit('keto', 'Keto', '25% protein · 5% carbs · 70% fat',
+        protein: 0.25, carbs: 0.05, fat: 0.70),
+  ];
+}
+
 /// [current]'s macros scaled to a new calorie goal, so someone who chose a
 /// high-protein split keeps it when the calories change. Falls back to
 /// [defaultMacrosFor] when there are no macros to scale, or the split has

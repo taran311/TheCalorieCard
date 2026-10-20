@@ -468,11 +468,12 @@ class _CoachPageState extends State<CoachPage> {
                           ),
                           if (!started) ...[
                             const SizedBox(height: 8),
-                            _GoingOutCards(
-                              context: _context,
-                              onTap: (outing) => _tapPrompt(prompts
-                                  .firstWhere((p) => p.outing == outing)),
-                            ),
+                            if (CoachService.showGoingOut(_context))
+                              _GoingOutCards(
+                                context: _context,
+                                onTap: (outing) => _tapPrompt(prompts
+                                    .firstWhere((p) => p.outing == outing)),
+                              ),
                             const SizedBox(height: 12),
                             // The most useful few first; the rest behind
                             // "More ideas", so it isn't a wall of buttons.

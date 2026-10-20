@@ -82,6 +82,9 @@ class CoachContext {
   final List<CoachEntryRef> entries;
   final List<CoachRecipeRef> recipes;
 
+  /// Today's card is closed (or it's a rest day): no more eating to plan.
+  final bool dayClosed;
+
   const CoachContext({
     required this.calorieGoal,
     required this.caloriesLeft,
@@ -94,6 +97,7 @@ class CoachContext {
     required this.hour,
     this.entries = const [],
     this.recipes = const [],
+    this.dayClosed = false,
   });
 
   bool get isOver => caloriesLeft < 0;
@@ -107,6 +111,7 @@ class CoachContext {
                 ? 'afternoon'
                 : 'evening',
         'calorie_goal': calorieGoal.round(),
+        if (dayClosed) 'day_closed': true,
         'calories_left_today': caloriesLeft.round(),
         'eaten_today': {
           'calories': eaten.calories.round(),
@@ -137,6 +142,13 @@ class CoachContext {
     final statementFuture = StatementService.load(uid, days: 7)
         .then<Statement?>((s) => s)
         .catchError((_) => null);
+    final now = BalanceService.now();
+    final logFuture = BalanceService.db
+        .collection('daily_logs')
+        .doc('${uid}_${BalanceService.dateKey(now)}')
+        .get()
+        .then<Map<String, dynamic>?>((d) => d.data())
+        .catchError((_) => null);
     final recipesFuture = BalanceService.db
         .collection('recipes')
         .where('user_id', isEqualTo: uid)
@@ -159,6 +171,7 @@ class CoachContext {
     final entries = await entriesFuture;
     final statement = await statementFuture;
     final recipes = await recipesFuture;
+    final log = await logFuture;
 
     final goals = BalanceService.goalsFrom(profile) ?? Macros.zero;
     final eaten = BalanceService.totalOf(entries.map((e) => e.data()));
@@ -204,6 +217,7 @@ class CoachContext {
           )
       ],
       recipes: recipes,
+      dayClosed: log?['finished'] == true || log?['rest_day'] == true,
     );
   }
 }
@@ -336,10 +350,42 @@ class CoachService {
   }
 
   /// Ready-made questions, the most useful for right now first.
+  /// Below this, there isn't room for a meal: snack-sized ideas only.
+  static const _smallLeft = 150;
+
+  /// Whether "Dining out" and "Drinks night out" make sense right now:
+  /// not once the day's closed, and not with almost nothing left late on
+  /// (earlier in the day it's still useful for planning a lighter night).
+  static bool showGoingOut(CoachContext? c) {
+    if (c == null) return true;
+    if (c.dayClosed) return false;
+    return c.caloriesLeft >= 300 || c.hour < 16;
+  }
+
   static List<CoachPrompt> promptsFor(CoachContext? c) {
     final left = c?.caloriesLeft.round() ?? 0;
     final hour = c?.hour ?? BalanceService.now().hour;
     final prompts = <CoachPrompt>[];
+
+    // Closed for the day: look back and plan ahead, nothing to eat now.
+    if (c != null && c.dayClosed) {
+      prompts.addAll(const [
+        CoachPrompt('📊', 'How did I do today?',
+            "Look at what I've eaten today and tell me how I did, kindly and honestly."),
+        CoachPrompt('🌅', 'Plan tomorrow',
+            'Help me plan a simple day of meals for tomorrow that fits my numbers.'),
+        CoachPrompt('📈', 'How was my week?',
+            'How has my last week gone? What went well and one thing to try next week?'),
+        CoachPrompt('🔁', 'Healthier swaps',
+            "Suggest a few easy swaps for the foods I've had today."),
+        CoachPrompt('🧮', 'Explain my macros',
+            'Explain my macro goals simply. Why do protein, carbs and fat matter?'),
+        CoachPrompt('🚀', 'Motivate me', 'Give me a quick motivation boost for tomorrow.'),
+        CoachPrompt('🐷', 'How do Pots work?',
+            'How do Pots work in The Calorie Card, and how could I use them?'),
+      ]);
+      return prompts;
+    }
 
     if (c != null && c.isOver) {
       prompts.addAll([
@@ -358,6 +404,16 @@ class CoachService {
         CoachPrompt('🍫', 'A snack idea',
             'Suggest a satisfying, sensible snack.'),
       ]);
+    } else if (left < _smallLeft) {
+      // Nearly at the limit: no meal for 29 kcal, but help if hungry.
+      prompts.addAll([
+        CoachPrompt('🥒', 'Still hungry?',
+            "I've only got $left kcal left today but I'm still a bit hungry. "
+                'What very low-calorie, filling things could I have?'),
+        if (left >= 40)
+          CoachPrompt('🍓', 'A snack under $left kcal',
+              'Suggest a snack under $left kcal.'),
+      ]);
     } else {
       prompts.addAll([
         CoachPrompt('🍽️', 'Meal ideas for my $left kcal',
@@ -369,23 +425,30 @@ class CoachService {
       ]);
     }
 
-    prompts.addAll(const [
-      CoachPrompt('🍽️', 'Dining out', '', CoachOuting.diningOut),
-      CoachPrompt('🍻', 'Drinks night out', '', CoachOuting.drinksOut),
-    ]);
+    if (showGoingOut(c)) {
+      prompts.addAll(const [
+        CoachPrompt('🍽️', 'Dining out', '', CoachOuting.diningOut),
+        CoachPrompt('🍻', 'Drinks night out', '', CoachOuting.drinksOut),
+      ]);
+    }
 
-    if ((c?.proteinLeft ?? 0) > 15) {
+    // Protein help needs room to eat something.
+    if ((c?.proteinLeft ?? 0) > 15 && left >= _smallLeft) {
       prompts.add(CoachPrompt('💪', 'Help me hit my protein',
           'I still need about ${c!.proteinLeft.round()}g of protein today. What could I eat?'));
     }
 
-    if (hour >= 15 && !(c?.isOver ?? false)) {
+    if (hour >= 15 && !(c?.isOver ?? false) && left >= 250) {
       prompts.add(const CoachPrompt(
           '🥘', 'Plan my dinner', 'Plan a dinner that fits my numbers for today.'));
     }
     if (hour < 11) {
       prompts.add(const CoachPrompt('🥣', 'Breakfast ideas',
           'Give me a few breakfast ideas that set me up well for today.'));
+    }
+    if (hour >= 20) {
+      prompts.add(const CoachPrompt('🌅', 'Plan tomorrow',
+          'Help me plan a simple day of meals for tomorrow that fits my numbers.'));
     }
 
     // These need details only the person knows, so they start a message

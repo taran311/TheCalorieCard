@@ -1179,6 +1179,67 @@ class _UserSettingsPageState extends State<UserSettingsPage>
           'Changing a macro updates your calories to match.',
           style: TextStyle(fontSize: 12, color: AppColors.muted),
         ),
+        const SizedBox(height: 14),
+        _buildSplitPresets(),
+      ],
+    );
+  }
+
+  /// One tap to a common split (Balanced, High protein, Low carb, Keto),
+  /// keeping the calories as they are.
+  Widget _buildSplitPresets() {
+    final kcal = _manualCalorieGoal ?? cardActiveCalories ?? 0;
+    final current = MacroSplit.matching(
+        _proteinGoal ?? 0, _carbsGoal ?? 0, _fatsGoal ?? 0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Or pick a split',
+          style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: AppColors.ink),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final split in MacroSplit.presets)
+              Tooltip(
+                message: split.hint,
+                child: ChoiceChip(
+                  label: Text(split.label),
+                  selected: current?.id == split.id,
+                  onSelected: kcal <= 0
+                      ? null
+                      : (_) {
+                          final m = split.macrosFor(kcal);
+                          setState(() {
+                            _proteinGoal = m.protein.round();
+                            _carbsGoal = m.carbs.round();
+                            _fatsGoal = m.fat.round();
+                            _proteinController.text = '$_proteinGoal';
+                            _carbsController.text = '$_carbsGoal';
+                            _fatsController.text = '$_fatsGoal';
+                          });
+                        },
+                ),
+              ),
+          ],
+        ),
+        if (current != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            current.id == 'keto'
+                ? '${current.hint}. Keto is a big change for most people: '
+                    'worth checking with your doctor if you have a health '
+                    'condition.'
+                : current.hint,
+            style: TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+        ],
       ],
     );
   }
