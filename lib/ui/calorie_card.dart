@@ -199,6 +199,9 @@ class CalorieCardFront extends StatelessWidget {
   /// See [BalanceTicker.memoryKey].
   final String? balanceMemoryKey;
 
+  /// The day's been closed: a small "CLOSED ✓" stamp sits by the date.
+  final bool closed;
+
   const CalorieCardFront({
     super.key,
     required this.amount,
@@ -209,6 +212,7 @@ class CalorieCardFront extends StatelessWidget {
     this.design = CardDesign.midnight,
     this.tourKeys,
     this.balanceMemoryKey,
+    this.closed = false,
   });
 
   @override
@@ -327,6 +331,10 @@ class CalorieCardFront extends StatelessWidget {
                         ),
                         ),
                 ),
+                if (closed) ...[
+                  const SizedBox(width: 10),
+                  const _ClosedStamp(),
+                ],
                 if (validThru != null) ...[
                   const SizedBox(width: 12),
                   Column(
@@ -952,6 +960,38 @@ class RestDayFrost extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "CLOSED ✓" on a closed day's card: a faint, tilted outline, like a
+/// stamp on a paid bill, small enough to leave the numbers clear.
+class _ClosedStamp extends StatelessWidget {
+  const _ClosedStamp();
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = Colors.white.withValues(alpha: 0.85);
+    return ExcludeSemantics(
+      child: Transform.rotate(
+        angle: -0.14,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: ink, width: 1.6),
+          ),
+          child: Text(
+            'CLOSED ✓',
+            style: TextStyle(
+              color: ink,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
             ),
           ),
         ),

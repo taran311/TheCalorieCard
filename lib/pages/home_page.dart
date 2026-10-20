@@ -2095,6 +2095,7 @@ class _HomePageState extends State<HomePage>
                         validThruDate: validThru,
                         onToggleMacros: _onCardFlipped,
                         restDay: _isRestDay,
+                        closed: _isDayFinished,
                         onBalance: (calories) {
                           if (mounted && calories != _liveBalance) {
                             setState(() => _liveBalance = calories);
@@ -2115,6 +2116,7 @@ class _HomePageState extends State<HomePage>
                         validThruDate: validThru,
                         onToggleMacros: _onCardFlipped,
                         restDay: _isRestDay,
+                        closed: _isDayFinished,
                       ),
               ],
             ),

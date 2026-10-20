@@ -38,6 +38,9 @@ class CreditCard extends StatefulWidget {
   /// A rest day: the card shows as frozen (frosted, "🏖️ Rest day").
   final bool restDay;
 
+  /// The day's closed: the card wears a small "CLOSED ✓" stamp.
+  final bool closed;
+
   const CreditCard({
     super.key,
     this.initialCalories,
@@ -54,6 +57,7 @@ class CreditCard extends StatefulWidget {
     this.tourKeys,
     this.onBalance,
     this.restDay = false,
+    this.closed = false,
   });
 
   @override
@@ -350,6 +354,8 @@ class _CreditCardWidgetState extends State<CreditCard>
           tourKeys: widget.tourKeys,
           // Today's live card remembers its last balance across reloads,
           // so a change rolls from the old number to the new one.
+          // Not on a rest day: the frozen look already says it.
+          closed: widget.closed && !widget.restDay,
           balanceMemoryKey: widget.skipFetch
               ? null
               : '${widget.userIdOverride ?? FirebaseAuth.instance.currentUser?.uid ?? ''}'
@@ -363,7 +369,7 @@ class _CreditCardWidgetState extends State<CreditCard>
 
         return Semantics(
           button: true,
-          label: '${widget.restDay ? 'Rest day. ' : ''}'
+          label: '${widget.restDay ? 'Rest day. ' : widget.closed ? 'Day closed. ' : ''}'
               'Calorie card. $label: ${formatCardKcal(calories)} kcal. '
               'Tap to see macros.',
           child: GestureDetector(

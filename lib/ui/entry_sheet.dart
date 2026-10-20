@@ -200,8 +200,6 @@ class _EntrySheetState extends State<_EntrySheet> {
   /// for, so the receipt reads first.
   bool _editing = false;
 
-  /// "More" opened: direct debit and delete.
-  bool _more = false;
   bool _busy = false;
   String? _error;
 
@@ -707,18 +705,7 @@ class _EntrySheetState extends State<_EntrySheet> {
           label: 'Log again to $logMeal',
           onTap: _busy ? null : _logAgain,
         ),
-      // The rarer ones tucked under More, so the sheet stays short.
-      if (widget.canDirectDebit || widget.canDelete)
-        _actionTile(
-          icon: Icons.more_horiz_rounded,
-          label: 'More',
-          onTap: _busy ? null : () => setState(() => _more = !_more),
-          trailing: Icon(
-            _more ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-            color: AppColors.muted,
-          ),
-        ),
-      if (_more && widget.canDirectDebit)
+      if (widget.canDirectDebit)
         _actionTile(
           icon: Icons.autorenew,
           label: 'Make it a direct debit',
@@ -730,7 +717,7 @@ class _EntrySheetState extends State<_EntrySheet> {
                   ),
         ),
       // Delete is always last, and red. (Swiping a food away deletes too.)
-      if (_more && widget.canDelete)
+      if (widget.canDelete)
         _actionTile(
           icon: Icons.delete_outline,
           label: 'Delete',
