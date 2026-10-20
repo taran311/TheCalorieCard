@@ -424,7 +424,12 @@ class _HomeInboxState extends State<HomeInbox> {
       final left = BalanceService.number(profile['calories']) ?? 0;
       final goal = BalanceService.calorieGoalFrom(profile) ?? 0;
       // Going over is handled by the Coach note under the card.
-      if (left >= 0 && goal > 0 && left <= goal * 0.1 && widget.hasFoodToday) {
+      // Not once the day's closed: there's nothing left to warn about.
+      if (left >= 0 &&
+          goal > 0 &&
+          left <= goal * 0.1 &&
+          widget.hasFoodToday &&
+          !widget.isDayFinished) {
         items.add(_InboxCard(
           icon: Icons.battery_alert,
           color: AppColors.amber700,
@@ -434,7 +439,8 @@ class _HomeInboxState extends State<HomeInbox> {
       }
 
       final pot = BalanceService.potFrom(profile);
-      if (pot > 0) {
+      // A closed (or rest) day can't take the pot; it waits for tomorrow.
+      if (pot > 0 && !widget.isDayFinished) {
         items.add(_InboxCard(
           icon: Icons.savings_outlined,
           color: AppColors.emerald600,
