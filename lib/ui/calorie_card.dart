@@ -646,8 +646,11 @@ class MacroNumber extends StatelessWidget {
   Widget build(BuildContext context) {
     final over = macro.remaining < 0;
     final grams = macro.remaining.abs().round();
+    // The same rule for all three, like the balance: "58g left", then
+    // "10g over" in red.
+    final word = over ? 'over' : 'left';
     return Semantics(
-      label: '${macro.name}: ${grams}g ${over ? 'over' : 'left'}',
+      label: '${macro.name}: ${grams}g $word',
       excludeSemantics: true,
       child: Column(
         key: contentKey,
@@ -682,10 +685,11 @@ class MacroNumber extends StatelessWidget {
           // so it says so.
           Text.rich(
             TextSpan(
-              text: '${over ? '−' : ''}${grams}g',
+              // No minus: "over" already says it.
+              text: '${grams}g',
               children: [
                 TextSpan(
-                  text: over ? ' over' : ' left',
+                  text: ' $word',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.7),
                     fontSize: 10,
