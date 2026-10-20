@@ -14,17 +14,13 @@ import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/food_check_page.dart';
-import 'package:namer_app/pages/hiscores_page.dart';
 import 'package:namer_app/pages/statement_page.dart';
 import 'package:namer_app/pages/stats_page.dart';
 import 'package:namer_app/pages/people_page.dart';
 import 'package:namer_app/pages/user_settings_page.dart';
-import 'package:namer_app/pages/achievements_page.dart';
-import 'package:namer_app/pages/card_design_page.dart';
 import 'package:namer_app/pages/direct_debits_page.dart';
 import 'package:namer_app/pages/pots_page.dart';
-import 'package:namer_app/pages/wrapped_page.dart';
-import 'package:namer_app/pages/games_hub_page.dart';
+import 'package:namer_app/pages/progress_page.dart';
 import 'package:namer_app/pages/gift_codes_page.dart';
 import 'package:namer_app/services/app_update.dart';
 import 'package:namer_app/services/avatar_service.dart';
@@ -574,52 +570,20 @@ class _MenuPageState extends State<MenuPage> {
                       icon: Icons.autorenew,
                       iconColor: AppText.sky,
                       title: 'Direct debits',
-                      subtitle: 'Foods you have every day',
+                      subtitle: 'Foods you have every day, logged for you',
                       onTap: () => _open(const DirectDebitsPage()),
                     ),
-                    _menuRow(
-                      icon: Icons.credit_card,
-                      iconColor: AppText.violet,
-                      title: 'Card design',
-                      subtitle: 'Unlock new finishes with streaks',
-                      onTap: () => _open(const CardDesignPage()),
-                    ),
                   ]),
+                  // Level, streak, badges, card finishes and Wrapped: one
+                  // place for everything earned. (Games and high scores
+                  // live in Friends.)
                   _group('Progress', [
-                    _menuRow(
-                      icon: Icons.sports_esports_outlined,
-                      iconColor: AppText.primary,
-                      title: 'Games',
-                      subtitle: 'Daily Calorie Quiz, more games and your level',
-                      onTap: () => _open(const GamesHubPage()),
-                    ),
                     _menuRow(
                       icon: Icons.emoji_events,
                       iconColor: AppText.amber600,
-                      title: 'Achievements',
-                      subtitle: 'The badges you have unlocked',
-                      onTap: () => _open(const AchievementsPage()),
-                    ),
-                    _menuRow(
-                      icon: Icons.auto_graph,
-                      iconColor: AppText.violet600,
-                      title: 'Monthly Wrapped',
-                      subtitle: 'Your month in review, ready to share',
-                      onTap: () => _open(const WrappedPage()),
-                    ),
-                    _menuRow(
-                      icon: Icons.leaderboard,
-                      iconColor: AppText.rose600,
-                      title: 'High scores',
-                      subtitle: 'See how you rank against friends',
-                      onTap: () {
-                        final open = widget.onOpenHiscores;
-                        if (open != null) {
-                          open();
-                          return;
-                        }
-                        _open(const HiscoresPage());
-                      },
+                      title: 'Progress',
+                      subtitle: 'Your level, streak, badges and card finishes',
+                      onTap: () => _open(const ProgressPage()),
                     ),
                   ]),
                   _group('Settings', [
@@ -633,14 +597,14 @@ class _MenuPageState extends State<MenuPage> {
                     _menuRow(
                       icon: Icons.monitor_weight_outlined,
                       iconColor: AppText.emerald600,
-                      title: 'Update my weight',
+                      title: 'Weight',
                       subtitle: 'Log a weigh-in and see your trend',
                       onTap: _updateWeight,
                     ),
                     _menuRow(
                       icon: Icons.notifications_active_outlined,
                       iconColor: AppText.amber700,
-                      title: 'Evening reminder',
+                      title: 'Reminders',
                       subtitle: "A friendly nudge if you haven't logged",
                       onTap: () => showReminderSheet(context),
                     ),
@@ -652,20 +616,20 @@ class _MenuPageState extends State<MenuPage> {
                       onTap: () => showAppearanceSheet(context),
                     ),
                   ]),
-                  _group('Account', [
-                    _menuRow(
-                      icon: Icons.manage_accounts_outlined,
-                      iconColor: AppText.sky,
-                      title: 'Account and privacy',
-                      subtitle: 'Your name, password, data and account',
-                      onTap: () => _open(const AccountPage()),
-                    ),
+                  _group('Help and account', [
                     _menuRow(
                       icon: Icons.school_outlined,
                       iconColor: AppText.primary,
                       title: 'Tutorials',
                       subtitle: 'Short walk-throughs of each feature',
                       onTap: () => showTutorialsSheet(context),
+                    ),
+                    _menuRow(
+                      icon: Icons.manage_accounts_outlined,
+                      iconColor: AppText.sky,
+                      title: 'Account and privacy',
+                      subtitle: 'Your name, password, data and account',
+                      onTap: () => _open(const AccountPage()),
                     ),
                     if (_giftAdmin)
                       _menuRow(

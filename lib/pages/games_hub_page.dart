@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:namer_app/ui/count_up.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
 import 'package:namer_app/pages/higher_lower_page.dart';
 import 'package:namer_app/services/balance_service.dart';
@@ -94,6 +95,7 @@ class _GamesHubPageState extends State<GamesHubPage> {
                   LevelCard(progress: p),
                   const _Heading('Play solo'),
                   _GameCard(
+                    hero: true,
                     emoji: '📅',
                     title: 'Daily Calorie Quiz',
                     subtitle: dailyDone
@@ -201,6 +203,9 @@ class _GameCard extends StatelessWidget {
   final bool done;
   final bool highlight;
 
+  /// The daily habit (the Daily Calorie Quiz): bigger, first.
+  final bool hero;
+
   const _GameCard({
     required this.emoji,
     required this.title,
@@ -209,6 +214,7 @@ class _GameCard extends StatelessWidget {
     required this.onTap,
     this.done = false,
     this.highlight = false,
+    this.hero = false,
   });
 
   @override
@@ -220,26 +226,30 @@ class _GameCard extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDecor.radius),
           side: BorderSide(
-            color: highlight ? AppColors.primary : AppColors.border,
-            width: highlight ? 1.5 : 1,
+            color: highlight || hero ? AppColors.primary : AppColors.border,
+            width: highlight || hero ? 1.5 : 1,
           ),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+            padding: hero
+                ? const EdgeInsets.fromLTRB(16, 18, 14, 18)
+                : const EdgeInsets.fromLTRB(14, 14, 12, 14),
             child: Row(
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: hero ? 60 : 48,
+                  height: hero ? 60 : 48,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppColors.indigo50,
-                    borderRadius: BorderRadius.circular(14),
+                    color: hero ? null : AppColors.indigo50,
+                    gradient: hero ? AppColors.brandGradient : null,
+                    borderRadius: BorderRadius.circular(hero ? 18 : 14),
                   ),
-                  child: Text(emoji, style: const TextStyle(fontSize: 26)),
+                  child: Text(emoji,
+                      style: TextStyle(fontSize: hero ? 32 : 26)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -249,7 +259,7 @@ class _GameCard extends StatelessWidget {
                       Text(
                         title,
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: hero ? 18 : 16,
                           fontWeight: FontWeight.w800,
                           color: AppColors.ink,
                         ),
@@ -623,6 +633,10 @@ class _SoloGamePageState extends State<SoloGamePage> {
         );
         xp = result.gained;
         if (_guesses.isEmpty) GamesService.countPlay('quiz');
+        // The quiz is where your calorie sense score is earned now (it
+        // used to be guesses in Add food).
+        CalorieSense.record(_uid, score, giveXp: false)
+            .catchError((_) {});
       } else if (_own) {
         result = await GamesService.saveOwnDay(
             _uid, _earnsXp ? Xp.forScore(score) : 0);
@@ -1051,8 +1065,12 @@ class _Reveal extends StatelessWidget {
             decoration: AppDecor.card,
             child: Column(
               children: [
-                Text(
-                  '${q.answer} kcal',
+                // Counts from your guess to the real number.
+                CountUp(
+                  key: ValueKey(q),
+                  from: guess,
+                  value: q.answer,
+                  format: (n) => '$n kcal',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w900,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/skeleton.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/recipe_service.dart';
@@ -636,7 +637,7 @@ class _RecipesPageState extends State<RecipesPage> {
           );
         }
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return const SkeletonList();
         }
         if (snapshot.data!.docs.isEmpty) {
           return _buildMessage(
@@ -826,7 +827,7 @@ class _RecipesPageState extends State<RecipesPage> {
           );
         }
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return const SkeletonList();
         }
         final emptyState = _buildMessage(
           icon: Icons.card_giftcard,
@@ -854,7 +855,7 @@ class _RecipesPageState extends State<RecipesPage> {
               );
             }
             if (!detailSnapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const SkeletonList();
             }
             final recipes = detailSnapshot.data!;
             if (recipes.isEmpty) return emptyState;

@@ -348,6 +348,12 @@ class _CreditCardWidgetState extends State<CreditCard>
           validThru: _validThru(),
           design: widget.design,
           tourKeys: widget.tourKeys,
+          // Today's live card remembers its last balance across reloads,
+          // so a change rolls from the old number to the new one.
+          balanceMemoryKey: widget.skipFetch
+              ? null
+              : '${widget.userIdOverride ?? FirebaseAuth.instance.currentUser?.uid ?? ''}'
+                  '|${BalanceService.dateKey(BalanceService.now())}',
         );
         final back = CalorieCardBack(
           footnote: _shortDate(),

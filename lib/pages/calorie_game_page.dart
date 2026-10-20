@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:namer_app/ui/count_up.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_game.dart';
 import 'package:namer_app/services/calorie_sense.dart';
@@ -1559,7 +1560,13 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
               Row(
                 children: [
                   Expanded(
-                    child: _Figure(label: 'Actually', value: '${food.kcal}'),
+                    child: _Figure(
+                      label: 'Actually',
+                      value: '${food.kcal}',
+                      countFrom: guess,
+                      countTo: food.kcal,
+                      countKey: index,
+                    ),
                   ),
                   Expanded(
                     child: _Figure(label: 'You said', value: '$guess'),
@@ -1829,22 +1836,40 @@ class _Figure extends StatelessWidget {
   final String value;
   final Color? color;
 
-  const _Figure({required this.label, required this.value, this.color});
+  /// Count up from [countFrom] to [countTo] instead of showing [value].
+  final int? countFrom;
+  final int? countTo;
+  final Object? countKey;
+
+  const _Figure({
+    required this.label,
+    required this.value,
+    this.color,
+    this.countFrom,
+    this.countTo,
+    this.countKey,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: 22,
+      fontWeight: FontWeight.w800,
+      color: color ?? AppColors.ink,
+    );
     return Column(
       children: [
         Text(label, style: TextStyle(fontSize: 12, color: AppColors.gray600)),
         const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: color ?? AppColors.ink,
-          ),
-        ),
+        if (countTo != null)
+          CountUp(
+            key: ValueKey(countKey),
+            from: countFrom ?? 0,
+            value: countTo!,
+            style: style,
+          )
+        else
+          Text(value, style: style),
       ],
     );
   }

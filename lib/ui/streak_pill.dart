@@ -61,12 +61,28 @@ class _StreakPillState extends State<StreakPill> {
                           Text(s.current > 0 ? '🔥' : '🌱',
                               style: const TextStyle(fontSize: 16)),
                           const SizedBox(width: 4),
-                          Text(
-                            '${s.current}',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.ink,
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 420),
+                            transitionBuilder: (child, anim) =>
+                                ScaleTransition(
+                              scale: TweenSequence([
+                                TweenSequenceItem(
+                                    tween: Tween(begin: 0.4, end: 1.35),
+                                    weight: 60),
+                                TweenSequenceItem(
+                                    tween: Tween(begin: 1.35, end: 1.0),
+                                    weight: 40),
+                              ]).animate(anim),
+                              child: child,
+                            ),
+                            child: Text(
+                              '${s.current}',
+                              key: ValueKey(s.current),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.ink,
+                              ),
                             ),
                           ),
                           if (s.freezes > 0) ...[

@@ -5,12 +5,15 @@ import 'package:namer_app/services/analytics.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:namer_app/ui/snack.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:namer_app/components/credit_card.dart';
 import 'package:namer_app/pages/achievements_page.dart';
 import 'package:namer_app/pages/add_food_page.dart';
+import 'package:namer_app/pages/statement_page.dart';
 import 'package:namer_app/pages/coach_page.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/achievement_service.dart';
@@ -32,6 +35,7 @@ import 'package:namer_app/ui/coach_nudge.dart';
 import 'package:namer_app/ui/entry_sheet.dart';
 import 'package:namer_app/ui/log_recipe_sheet.dart';
 import 'package:namer_app/ui/streak_pill.dart';
+import 'package:namer_app/ui/confetti.dart';
 import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/home_inbox.dart';
@@ -1008,6 +1012,8 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _isDayFinished = true;
     });
+    HapticFeedback.mediumImpact();
+    showStamp(context, 'CLOSED ✓');
     Analytics.track('day_closed');
     await _upsertDailyLogForDate(_selectedLogDate);
     await _setDailyLogFinished(_selectedLogDate, true);
@@ -1040,6 +1046,12 @@ class _HomePageState extends State<HomePage>
     try {
       await LeaderboardService.refreshMine(_activeUserId);
     } catch (_) {}
+    await MyStreak.load(_activeUserId, force: true);
+    final streak = MyStreak.notifier.value?.current ?? 0;
+    if (mounted && const {7, 30, 100, 365}.contains(streak)) {
+      showConfetti(context);
+      _snack('🔥 $streak days in a row. Brilliant.');
+    }
   }
 
   /// "Spread it over the week": the next few days start a little lower.
@@ -1563,6 +1575,60 @@ class _HomePageState extends State<HomePage>
     Timer(const Duration(seconds: 6), () {
       if (!closed) messenger.hideCurrentSnackBar();
     });
+    unawaited(_maybeSuggestDirectDebit(logged));
+  }
+
+  /// Had the same food at the same meal five days running? Offer to make
+  /// it a direct debit (once per food), instead of hoping people find the
+  /// Direct debits page.
+  Future<void> _maybeSuggestDirectDebit(LoggedFoods logged) async {
+    if (!_isOwnCard || logged.count == 0 || logged.count > 3) return;
+    try {
+      String key(Object? v) => '${v ?? ''}'.trim().toLowerCase();
+      // After the Undo message has had its moment.
+      await Future<void>.delayed(const Duration(seconds: 7));
+      if (!mounted) return;
+      final docs = [
+        for (final d in _foodDocs)
+          if (logged.ids.contains(d.id)) d
+      ];
+      if (docs.isEmpty) return;
+      final prefs = await SharedPreferences.getInstance();
+      final asked = prefs.getStringList('dd_suggested') ?? const <String>[];
+      final today = BalanceService.startOfDay(BalanceService.now());
+      final past = await Future.wait([
+        for (var i = 1; i <= 4; i++)
+          BalanceService.entriesOn(
+              _activeUserId, BalanceService.addDays(today, -i)),
+      ]);
+      final debits = await DirectDebitService.forUser(_activeUserId).first;
+      for (final doc in docs) {
+        final data = doc.data();
+        final name = key(data['food_description']);
+        final meal = FoodLog.mealOf(data['foodCategory']);
+        final id = '$meal|$name';
+        if (name.isEmpty || asked.contains(id)) continue;
+        if (debits.any((d) => key(d.name) == name && d.meal == meal)) continue;
+        final everyDay = past.every((day) => day.any((e) =>
+            key(e.data()['food_description']) == name &&
+            FoodLog.mealOf(e.data()['foodCategory']) == meal));
+        if (!everyDay) continue;
+        await prefs.setStringList('dd_suggested', [...asked, id]);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text("You've had ${data['food_description']} 5 days "
+              'running. Log it automatically each day?'),
+          action: SnackBarAction(
+            label: 'Set up',
+            onPressed: () => _offerDirectDebit(data),
+          ),
+        ));
+        return; // one at a time
+      }
+    } catch (_) {
+      // Only a suggestion.
+    }
   }
   /// Removes a logged food (and refunds the card). [swiped] removals were
   /// checked when the row was swiped and confirmed by the Undo snackbar
@@ -2234,47 +2300,19 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// Empty meals stay small so the whole day fits on screen.
+  /// Empty meals stay small so the whole day fits on screen. On your own
+  /// today, just the header (its + is the way in, and "Again" under Add
+  /// food has yesterday's meal).
   Widget _buildEmptyMeal(String meal) {
-    final String text;
-    if (!_isSelectedDateToday) {
-      text = 'Nothing logged that day.';
-    } else if (!_isOwnCard) {
-      text = 'Nothing logged yet.';
-    } else {
-      text = 'Nothing yet.';
-    }
-    final yesterday = _canEditToday
-        ? _yesterdayFor(meal)
-        : const <Map<String, dynamic>>[];
-    final yesterdayKcal = BalanceService.totalOf(yesterday).calories.round();
+    if (_isOwnCard && _isSelectedDateToday) return const SizedBox(height: 4);
+    final text = !_isSelectedDateToday
+        ? 'Nothing logged that day.'
+        : 'Nothing logged yet.';
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 8, 2),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: AppColors.muted, fontSize: 13),
-            ),
-          ),
-          if (yesterday.isNotEmpty)
-            Flexible(
-              flex: 3,
-              child: TextButton.icon(
-                onPressed: _copyingYesterday
-                    ? null
-                    : () => _copyYesterday(meal, yesterday),
-                style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
-                icon: const Icon(Icons.history, size: 18),
-                label: Text(
-                  'Same as yesterday · ${formatCardKcal(yesterdayKcal)} kcal',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-        ],
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      child: Text(
+        text,
+        style: TextStyle(color: AppColors.muted, fontSize: 13),
       ),
     );
   }
@@ -2584,25 +2622,35 @@ class _HomePageState extends State<HomePage>
   }
 
   /// One-tap chips for what you usually have at this meal.
+  /// "Again": one row of one-tap re-logging for the meal it's time for.
+  /// Yesterday's whole meal first (when this meal's still empty), then your
+  /// usual foods for it.
   Widget? _buildUsuals() {
-    if (_usuals.isEmpty || _usualsMeal != _addMeal) return null;
     // Already had it for this meal today? Don't suggest it again.
     String key(Object? name) => '${name ?? ''}'.trim().toLowerCase();
-    final had = {
+    final inMeal = [
       for (final d in _foodDocs)
-        if (FoodLog.mealOf(d.data()['foodCategory']) == _addMeal)
-          key(d.data()['food_description']),
-    };
-    final usuals = [
-      for (final u in _usuals)
-        if (!had.contains(key(u.name))) u
+        if (!_pendingRemoval.contains(d.id) &&
+            FoodLog.mealOf(d.data()['foodCategory']) == _addMeal)
+          d
     ];
-    if (usuals.isEmpty) return null;
+    final had = {for (final d in inMeal) key(d.data()['food_description'])};
+    final usuals = _usualsMeal != _addMeal
+        ? const <UsualFood>[]
+        : [
+            for (final u in _usuals)
+              if (!had.contains(key(u.name))) u
+          ];
+    final yesterday = inMeal.isEmpty && _canEditToday
+        ? _yesterdayFor(_addMeal)
+        : const <Map<String, dynamic>>[];
+    if (usuals.isEmpty && yesterday.isEmpty) return null;
+    final yesterdayKcal = BalanceService.totalOf(yesterday).calories.round();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Your usual ${_addMeal.toLowerCase()}',
+          'Again for ${_addMeal.toLowerCase()}',
           style: TextStyle(
             color: AppColors.muted,
             fontSize: 12,
@@ -2614,10 +2662,24 @@ class _HomePageState extends State<HomePage>
           height: 48,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: usuals.length,
+            itemCount: usuals.length + (yesterday.isEmpty ? 0 : 1),
             separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (context, i) {
-              final usual = usuals[i];
+            itemBuilder: (context, index) {
+              if (yesterday.isNotEmpty && index == 0) {
+                return Center(
+                  child: ActionChip(
+                    avatar:
+                        Icon(Icons.history, size: 16, color: AppText.primary),
+                    label: Text(
+                        'Same as yesterday · ${formatCardKcal(yesterdayKcal)} kcal'),
+                    tooltip: "Log yesterday's ${_addMeal.toLowerCase()} again",
+                    onPressed: _copyingYesterday
+                        ? null
+                        : () => _copyYesterday(_addMeal, yesterday),
+                  ),
+                );
+              }
+              final usual = usuals[index - (yesterday.isEmpty ? 0 : 1)];
               return Center(
                 child: ActionChip(
                   avatar: Icon(Icons.add, size: 16, color: AppText.primary),
@@ -2680,6 +2742,50 @@ class _HomePageState extends State<HomePage>
         ),
       ],
     );
+  }
+
+  Future<void> _confirmClearToday() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Clear today's food?"),
+        content: const Text(
+            "This removes everything you've logged today and puts your card "
+            'back to your full daily goal. Saved recipes are kept. '
+            "You can't undo this."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.red600,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Clear today'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      final count = await BalanceService.clearToday(_activeUserId);
+      FoodLog.notifyChanged();
+      if (!mounted) return;
+      await _refreshAfterChange();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(count == 0
+              ? 'Nothing logged today'
+              : 'Cleared $count food item${count == 1 ? '' : 's'} from today')));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Couldn't clear today's food. Please try again.")));
+      }
+    }
   }
 
   /// The bottom of today: "Close today" (once there's food) and, beside
@@ -2807,8 +2913,33 @@ class _HomePageState extends State<HomePage>
                     _buildCard(),
                     if (spentLine != null)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                        child: spentLine,
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                        // Tap what you've spent for the statement, like
+                        // tapping a bank balance.
+                        child: _isOwnCard
+                            ? InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => const StatementPage()),
+                                ),
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 6),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Flexible(child: spentLine),
+                                      Icon(Icons.chevron_right,
+                                          size: 18, color: AppColors.muted),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: spentLine,
+                              ),
                       ),
                     if (_isOwnCard && _isSelectedDateToday) _evenOutLine(),
                     // Macros are on the card (what's left; tap it for eaten
@@ -2958,6 +3089,19 @@ class _HomePageState extends State<HomePage>
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                         child: _buildDayActions(visibleFood),
+                      ),
+                    // Start today over (was in Goals and profile).
+                    if (_canEditToday && visibleFood)
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _confirmClearToday,
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppText.red600,
+                          ),
+                          icon: const Icon(Icons.delete_sweep_outlined,
+                              size: 18),
+                          label: const Text("Clear today's food…"),
+                        ),
                       ),
                   ],
                 ),

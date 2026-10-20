@@ -165,15 +165,46 @@ class _PotsPageState extends State<PotsPage> {
                     const Text('Weekly pot',
                         style: TextStyle(color: Colors.white)),
                     const SizedBox(height: 4),
-                    Text(
-                      '${pot.round()} kcal',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    // Fills up from empty when you open the page, and
+                    // drains when you move some to today's card.
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: pot),
+                      duration: MediaQuery.of(context).disableAnimations
+                          ? Duration.zero
+                          : const Duration(milliseconds: 900),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, v, _) {
+                        final cap = BalanceService.potWeeklyCap;
+                        final fill = cap <= 0 ? 0.0 : (v / cap).clamp(0.0, 1.0);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${v.round()} kcal',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 34,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                height: 10,
+                                color: Colors.white.withValues(alpha: 0.25),
+                                alignment: Alignment.centerLeft,
+                                child: FractionallySizedBox(
+                                  widthFactor: fill,
+                                  child: Container(color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
                     Text(
                       'Up to ${BalanceService.potWeeklyCap.round()} kcal · '
                       'empties every Monday',

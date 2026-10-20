@@ -429,10 +429,19 @@ class _AddRecipePageState extends State<AddRecipePage> {
                           : null,
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'This recipe makes',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    Text(
+                      _servingUnit == 'g'
+                          ? 'The whole recipe weighs'
+                          : 'How many servings does it make?',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _servingUnit == 'g'
+                          ? 'Then log it by weight, like "350 g of it".'
+                          : 'Weigh your portions? Switch to grams.',
+                      style: TextStyle(fontSize: 12, color: AppColors.muted),
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -477,11 +486,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
                             items: const [
                               DropdownMenuItem(
                                 value: 'Serving',
-                                child: Text('Servings'),
+                                child: Text('servings'),
                               ),
                               DropdownMenuItem(
                                 value: 'g',
-                                child: Text('Grams'),
+                                child: Text('grams'),
                               ),
                             ],
                             onChanged: (value) {
@@ -524,9 +533,10 @@ class _AddRecipePageState extends State<AddRecipePage> {
                           _buildFreeTextInput(),
                           const SizedBox(height: 4),
                           Wrap(
-                            spacing: 4,
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
-                              TextButton.icon(
+                              OutlinedButton.icon(
                                 icon: const Icon(Icons.qr_code_scanner),
                                 label: Text(_scanningIngredient
                                     ? 'Looking it up…'
@@ -535,11 +545,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                     ? null
                                     : _scanIngredient,
                               ),
-                              TextButton.icon(
+                              OutlinedButton.icon(
                                 icon: const Icon(
                                     Icons.document_scanner_outlined),
                                 label: const Text(
-                                    'Import from a screenshot or photo'),
+                                    'Import a screenshot'),
                                 onPressed: _importFromImage,
                               ),
                             ],

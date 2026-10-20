@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/skeleton.dart';
 import 'package:namer_app/pages/budgets_page.dart';
 import 'package:namer_app/pages/day_statement_page.dart';
+import 'package:namer_app/pages/pots_page.dart';
+import 'package:namer_app/services/even_out.dart';
 import 'package:namer_app/pages/statement_search_page.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/budget_service.dart';
@@ -34,8 +37,21 @@ class _StatementPageState extends State<StatementPage> {
   late Future<WeekDigest>? _digest =
       _uid == null ? null : StatementService.weekDigest(_uid!);
 
-  /// Month calendar instead of the list.
+  /// The profile (pot and any "spread it over the week" plan).
+  Map<String, dynamic>? _profile;
+
+  /// Month calendar instead of the list. Starts on the calendar on big
+  /// screens, where it's the nicest overview.
   bool _calendar = false;
+  bool _viewPicked = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_viewPicked) return;
+    _viewPicked = true;
+    _calendar = MediaQuery.sizeOf(context).width >= 760;
+  }
 
   /// The user's budgets, kept live (they can be changed from Profile too).
   BudgetSettings _budgets = BudgetSettings.empty;
@@ -58,8 +74,8 @@ class _StatementPageState extends State<StatementPage> {
           .listen((snap) {
         if (!mounted) return;
         setState(() {
-          _budgets = BudgetSettings.fromProfile(
-              snap.docs.isEmpty ? null : snap.docs.first.data());
+          _profile = snap.docs.isEmpty ? null : snap.docs.first.data();
+          _budgets = BudgetSettings.fromProfile(_profile);
           _budgetsLoaded = true;
         });
       }, onError: (_) {});
@@ -91,8 +107,7 @@ class _StatementPageState extends State<StatementPage> {
 
   /// List / Calendar, like the views in a banking app's spending trends.
   Widget _viewSwitch() {
-    return Center(
-      child: SegmentedButton<bool>(
+    return SegmentedButton<bool>(
         segments: const [
           ButtonSegment(
             value: false,
@@ -108,8 +123,7 @@ class _StatementPageState extends State<StatementPage> {
         selected: {_calendar},
         showSelectedIcon: false,
         onSelectionChanged: (s) => setState(() => _calendar = s.first),
-      ),
-    );
+      );
   }
 
   @override
@@ -143,7 +157,7 @@ class _StatementPageState extends State<StatementPage> {
           : _calendar
               ? StatementCalendar(
                   userId: uid,
-                  header: _viewSwitch(),
+                  header: Center(child: _viewSwitch()),
                   onOpenDay: (day, summary, fallback) =>
                       _openDay(uid, day, summary, fallback),
                 )
@@ -182,23 +196,54 @@ class _StatementPageState extends State<StatementPage> {
                     return ListView(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
                       children: [
-                        _viewSwitch(),
-                        const SizedBox(height: 12),
-                        Center(
-                          child: SegmentedButton<int>(
-                            segments: const [
-                              ButtonSegment(value: 7, label: Text('7 days')),
-                              ButtonSegment(value: 14, label: Text('14 days')),
-                              ButtonSegment(value: 30, label: Text('30 days')),
-                            ],
-                            selected: {_days},
-                            showSelectedIcon: false,
-                            onSelectionChanged: (s) =>
-                                setState(() => _days = s.first),
-                          ),
+                        // List/Calendar and the period on one row.
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: _viewSwitch(),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            PopupMenuButton<int>(
+                              tooltip: 'Period',
+                              initialValue: _days,
+                              onSelected: (d) => setState(() => _days = d),
+                              itemBuilder: (_) => [
+                                for (final d in const [7, 14, 30])
+                                  CheckedPopupMenuItem(
+                                    value: d,
+                                    checked: d == _days,
+                                    child: Text('$d days'),
+                                  ),
+                              ],
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: AppColors.border),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('$_days days',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.ink)),
+                                    const Icon(Icons.arrow_drop_down),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 16),
-                        if (_digest != null)
+                        // The 7-day view's summary is "Your week" (with the
+                        // week before to compare); longer views get the
+                        // period's own numbers.
+                        if (_digest != null && _days == 7)
                           _WeekDigestCard(
                             digest: _digest!,
                             onRetry: () => setState(() {
@@ -206,14 +251,24 @@ class _StatementPageState extends State<StatementPage> {
                             }),
                           ),
                         if (statement == null)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 80),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
+                          const SkeletonList(rows: 6)
                         else ...[
-                          _SummaryRow(statement: statement),
-                          const SizedBox(height: 16),
-                          if (_budgetsLoaded) ...[
+                          if (_days != 7 || _digest == null) ...[
+                            _SummaryRow(statement: statement),
+                            const SizedBox(height: 16),
+                          ],
+                          // The week's two halves side by side: what's saved
+                          // in the pot, and what's being spread.
+                          _ThisWeekCard(
+                            profile: _profile,
+                            onOpenPots: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const PotsPage()),
+                            ),
+                          ),
+                          // Only when some are set (the pie button up top
+                          // sets them up).
+                          if (_budgetsLoaded && !_budgets.isEmpty) ...[
                             _BudgetsPanel(
                               settings: _budgets,
                               // Every view covers this week (7 days always
@@ -676,6 +731,64 @@ class _DigestRow extends StatelessWidget {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "This week": the pot (saved for a treat) and "spread it over the week"
+/// (paying back a big day) together, as the two halves of one idea. Hidden
+/// when neither has anything.
+class _ThisWeekCard extends StatelessWidget {
+  final Map<String, dynamic>? profile;
+  final VoidCallback onOpenPots;
+
+  const _ThisWeekCard({required this.profile, required this.onOpenPots});
+
+  @override
+  Widget build(BuildContext context) {
+    final data = profile;
+    if (data == null) return const SizedBox.shrink();
+    final pot = BalanceService.potFrom(data).round();
+    final today = BalanceService.dateKey(BalanceService.now());
+    final plan = EvenOutPlan.fromData(data);
+    final spreading = plan != null && !plan.endedBefore(today);
+    if (pot <= 0 && !spreading) return const SizedBox.shrink();
+    final left = spreading
+        ? plan!.daysAfter(today) + (plan.activeOn(today) ? 1 : 0)
+        : 0;
+    Widget line(String emoji, String text, {Widget? trailing}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(text,
+                    style: TextStyle(fontSize: 14, color: AppColors.ink)),
+              ),
+              if (trailing != null) trailing,
+            ],
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: PanelCard(
+        title: 'This week',
+        child: Column(
+          children: [
+            if (pot > 0)
+              line('🌱', 'Pot: $pot kcal saved for a treat',
+                  trailing: TextButton(
+                      onPressed: onOpenPots, child: const Text('Open'))),
+            if (spreading)
+              line(
+                '📅',
+                'Spreading a big day: ${plan!.perDay} kcal less a day, '
+                    '$left day${left == 1 ? '' : 's'} to go',
+              ),
           ],
         ),
       ),

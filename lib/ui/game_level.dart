@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:namer_app/ui/confetti.dart';
 import 'package:namer_app/services/games_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 
@@ -156,9 +158,12 @@ Future<void> celebrateLevelUp(BuildContext context, XpResult result) async {
   final before = Levels.of(result.before);
   final after = result.level;
   final newTitle = after.title != before.title;
+  HapticFeedback.heavyImpact();
   await showDialog<void>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => ConfettiBurst(
+      pieces: 80,
+      child: AlertDialog(
       icon: Text(after.emoji, style: const TextStyle(fontSize: 48)),
       title: Text('Level ${after.level}!', textAlign: TextAlign.center),
       content: Text(
@@ -174,6 +179,7 @@ Future<void> celebrateLevelUp(BuildContext context, XpResult result) async {
           child: const Text('Keep going'),
         ),
       ],
+      ),
     ),
   );
 }

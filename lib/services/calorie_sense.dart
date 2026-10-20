@@ -37,7 +37,8 @@ class CalorieSense {
 
   /// Adds a scored guess to this month's running total, and its Games XP
   /// (for the first [Xp.senseGuessesPerDay] guesses a day).
-  static Future<void> record(String uid, int score) async {
+  static Future<void> record(String uid, int score,
+      {bool giveXp = true}) async {
     final ref = BalanceService.db.collection('users').doc(uid);
     final month = monthKey(BalanceService.now());
     await BalanceService.db.runTransaction<void>((tx) async {
@@ -56,8 +57,9 @@ class CalorieSense {
       final senseToday = g['sense_day'] == day
           ? (BalanceService.number(g['sense_count']) ?? 0).round()
           : 0;
-      final xp =
-          senseToday < Xp.senseGuessesPerDay ? Xp.forScore(score) : 0;
+      final xp = giveXp && senseToday < Xp.senseGuessesPerDay
+          ? Xp.forScore(score)
+          : 0;
       final value = <String, dynamic>{
         'calorie_sense': {
           'month': month,

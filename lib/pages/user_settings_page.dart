@@ -170,32 +170,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
   /// estimate, so switching goal keeps the AI's macros.
   Map<String, dynamic>? _aiTargets;
 
-  Future<void> _clearAllTodaysFoodItems() async {
-    try {
-      final userId = FirebaseAuth.instance.currentUser!.uid;
-      // Removes today's food (recipes you've saved are kept) and puts the
-      // card back to your full daily goals.
-      final count = await BalanceService.clearToday(userId);
-      FoodLog.notifyChanged();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(count == 0
-                  ? 'Nothing logged today'
-                  : 'Cleared $count food item${count == 1 ? '' : 's'} from today')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text("Couldn't clear today's food. Please try again.")),
-        );
-      }
-    }
-  }
-
   /// The calorie goal that Save will store.
   double get _goalToSave {
     if (_selectedTabIndex == 1 && _manualCalorieGoal != null) {
@@ -1209,36 +1183,6 @@ class _UserSettingsPageState extends State<UserSettingsPage>
     );
   }
 
-  Future<void> _confirmClearToday() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Clear today's food?"),
-        content: const Text(
-            "This removes everything you've logged today and puts your card "
-            'back to your full daily goal. Saved recipes are kept. '
-            "You can't undo this."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.red600,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Clear today'),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      await _clearAllTodaysFoodItems();
-    }
-  }
-
   void _selectTab(int index) {
     setState(() {
       _selectedTabIndex = index;
@@ -1493,7 +1437,17 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 8),
+                            Text(
+                              _selectedTabIndex == 0
+                                  ? 'We work out your calories and macros from '
+                                      'your details and goal.'
+                                  : 'Type the calories and macros you want, '
+                                      'for example from a coach or dietitian.',
+                              style: TextStyle(
+                                  fontSize: 12.5, color: AppColors.muted),
+                            ),
+                            const SizedBox(height: 14),
                             if (_selectedTabIndex == 0)
                               _buildAICalculatedTab()
                             else
@@ -1520,25 +1474,9 @@ class _UserSettingsPageState extends State<UserSettingsPage>
                       ),
                       const SizedBox(height: 10),
                       _cardPreview(),
-                      const SizedBox(height: 32),
-                      Divider(color: AppColors.border),
-                      const SizedBox(height: 8),
-                      Center(
-                        child: TextButton.icon(
-                          onPressed: _confirmClearToday,
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppText.red600,
-                          ),
-                          icon: const Icon(Icons.delete_sweep_outlined),
-                          label: const Text("Clear today's food"),
-                        ),
-                      ),
-                      Text(
-                        "Removes everything you've logged today. Saved "
-                        'recipes are kept.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12, color: AppColors.muted),
-                      ),
+                      // (Clearing today's food lives on the Card now, under
+                      // the day, where it belongs.)
+                      const SizedBox(height: 24),
                     ],
                   ),
                 ),

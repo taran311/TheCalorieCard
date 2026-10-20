@@ -961,7 +961,7 @@ class MockApp extends StatelessWidget {
               children: [
                 Expanded(
                   child: _fakeButton(
-                      icon: null, label: 'Reject', filled: false),
+                      icon: null, label: 'Not this', filled: false),
                 ),
                 const SizedBox(width: 8),
                 Expanded(

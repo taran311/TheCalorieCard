@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:namer_app/ui/skeleton.dart';
 import 'package:namer_app/services/avatar_service.dart';
-import 'package:namer_app/ui/user_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
@@ -889,10 +889,7 @@ class _FriendsPageState extends State<FriendsPage> {
   }
 
   Widget _loading() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 16),
-      child: Center(child: CircularProgressIndicator()),
-    );
+    return const SkeletonList(rows: 4, roundLeading: true);
   }
 
   /// The chat button's icon, with a red count when there are unread
@@ -1225,8 +1222,8 @@ class _FriendsPageState extends State<FriendsPage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _activityStrip(friendIds),
-            const SizedBox(height: 12),
+            // One list: each friend's ring shows how their day's going
+            // (it used to be a separate strip above the same people).
             for (final friendId in friendIds)
               FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                 key: ValueKey(friendId),
@@ -1249,67 +1246,6 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 
-  /// Everyone's day at a glance: a ring for how much of their budget
-  /// they've spent, a ✓ once they've finished. Tap for Cheer and Nudge.
-  Widget _activityStrip(List<String> friendIds) {
-    return SizedBox(
-      height: 92,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: friendIds.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
-        itemBuilder: (context, index) {
-          final id = friendIds[index];
-          return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            future: _friendDoc(id),
-            builder: (context, userSnap) {
-              final name = userSnap.hasData
-                  ? FriendsService.nameFromUser(userSnap.data!.data())
-                  : '';
-              return FriendTodayBuilder(
-                userId: id,
-                builder: (context, day) {
-                  final status = day == null ? '' : day.label;
-                  return Semantics(
-                    button: true,
-                    label: name.isEmpty ? status : '$name: $status',
-                    excludeSemantics: true,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: name.isEmpty
-                          ? null
-                          : () => _showFriendSheet(id, name),
-                      child: SizedBox(
-                        width: 68,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            ProgressAvatar(name: name, day: day, uid: id),
-                            const SizedBox(height: 6),
-                            Text(
-                              name.split(' ').first,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.gray700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
   Widget _friendRow(String friendId, String name, {String? username}) {
     // On the narrowest phones the game button goes (it's in ⋮ too), so
     // the name and status keep enough room.
@@ -1320,7 +1256,22 @@ class _FriendsPageState extends State<FriendsPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
         child: Row(
           children: [
-            UidAvatar(uid: friendId, size: 44, fallback: _avatar(name)),
+            // Their day as a ring round their photo (✓ once finished). Tap
+            // it for Cheer and Nudge.
+            FriendTodayBuilder(
+              userId: friendId,
+              builder: (context, day) => Semantics(
+                button: true,
+                label: day == null ? name : '$name: ${day.label}',
+                excludeSemantics: true,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => _showFriendSheet(friendId, name),
+                  child: ProgressAvatar(
+                      name: name, day: day, size: 46, uid: friendId),
+                ),
+              ),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1347,7 +1298,7 @@ class _FriendsPageState extends State<FriendsPage> {
                   color: AppText.primary,
                   size: 22,
                 ),
-                tooltip: 'Play Guess the Calories',
+                tooltip: 'Play a game',
               ),
             IconButton(
               onPressed: () => _startChatWithFriend(friendId, name),
@@ -1377,7 +1328,7 @@ class _FriendsPageState extends State<FriendsPage> {
                 PopupMenuItem(value: 'cheer', child: Text('Send a cheer 👏')),
                 PopupMenuItem(value: 'nudge', child: Text('Nudge to log 👋')),
                 PopupMenuItem(
-                    value: 'game', child: Text('Play Guess the Calories 🎯')),
+                    value: 'game', child: Text('Play a game 🎯')),
                 PopupMenuItem(
                   value: 'remove',
                   child: Text(

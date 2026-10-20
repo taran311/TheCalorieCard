@@ -551,7 +551,10 @@ class _HomeInboxState extends State<HomeInbox> {
     // (or for the rest of the day after "Not today").
     final today = GamesService.dayKey();
     final games = _games;
+    // Only once something's logged today, so a new day starts with the
+    // day, not a game.
     if (games != null &&
+        widget.hasFoodToday &&
         !games.dailyDoneOn(today) &&
         !_hiddenToday('quiz')) {
       final started = games.dailyGuessesOn(today).length;

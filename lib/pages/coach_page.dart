@@ -1081,19 +1081,19 @@ class _ProposalCard extends StatelessWidget {
                   ],
                   const SizedBox(height: 10),
                   if (ready)
+                    // One clear action; saying no is the quieter link.
                     Row(
                       children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => onReject(p),
-                            child: const Text('Reject'),
-                          ),
+                        TextButton(
+                          onPressed: () => onReject(p),
+                          child: const Text('Not this'),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 6),
                         Expanded(
                           child: FilledButton(
                             onPressed: nothingLeft ? null : () => onAccept(p),
                             style: FilledButton.styleFrom(
+                              minimumSize: const Size(0, 48),
                               backgroundColor: prepared.destructive
                                   ? AppColors.red600
                                   : AppColors.emerald600,

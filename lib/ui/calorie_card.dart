@@ -196,6 +196,9 @@ class CalorieCardFront extends StatelessWidget {
   /// Marks each part of the card for the first-time spotlight tour.
   final CardTourKeys? tourKeys;
 
+  /// See [BalanceTicker.memoryKey].
+  final String? balanceMemoryKey;
+
   const CalorieCardFront({
     super.key,
     required this.amount,
@@ -205,6 +208,7 @@ class CalorieCardFront extends StatelessWidget {
     this.validThru,
     this.design = CardDesign.midnight,
     this.tourKeys,
+    this.balanceMemoryKey,
   });
 
   @override
@@ -258,37 +262,10 @@ class CalorieCardFront extends StatelessWidget {
                             letterSpacing: 1.4,
                           ),
                         ),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerRight,
-                        child: Text.rich(
-                          TextSpan(children: [
-                            TextSpan(
-                                text:
-                                    '${over ? '−' : ''}${formatCardKcal(amount)}'),
-                            TextSpan(
-                              text: ' kcal',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: (over
-                                        ? CalorieCardColors.overBudget
-                                        : Colors.white)
-                                    .withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ]),
-                          key: tourKeys?.balance,
-                          style: TextStyle(
-                            color: over
-                                ? CalorieCardColors.overBudget
-                                : Colors.white,
-                            fontSize: 34,
-                            height: 1.0,
-                            fontWeight: FontWeight.w800,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                        ),
+                      BalanceTicker(
+                        amount: amount,
+                        textKey: tourKeys?.balance,
+                        memoryKey: balanceMemoryKey,
                       ),
                     ],
                   ),
@@ -390,6 +367,175 @@ class CalorieCardFront extends StatelessWidget {
 }
 
 /// "TheCalorieCard" in the corner, like a bank's name on its card.
+/// The card's balance. When it changes (food added, something removed) the
+/// number rolls from the old balance to the new one, and a small "−412
+/// kcal" floats up off the card, like a payment going through. Still with
+/// reduce motion.
+class BalanceTicker extends StatefulWidget {
+  final num amount;
+  final Key? textKey;
+
+  /// The card is rebuilt from scratch after each change, so the last
+  /// balance shown is remembered under this key (one per person and day)
+  /// to roll from. Null: only changes while it's on screen animate.
+  final String? memoryKey;
+
+  const BalanceTicker(
+      {super.key, required this.amount, this.textKey, this.memoryKey});
+
+  static final Map<String, double> _memory = {};
+
+  @override
+  State<BalanceTicker> createState() => _BalanceTickerState();
+}
+
+class _BalanceTickerState extends State<BalanceTicker>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _chip = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+  num _change = 0;
+
+  /// Where the number rolls from on first show (the last balance seen).
+  double? _from;
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    final key = widget.memoryKey;
+    final before = key == null ? null : BalanceTicker._memory[key];
+    final now = widget.amount.toDouble();
+    if (before != null &&
+        now.isFinite &&
+        (now - before).abs() >= 1 &&
+        !MediaQuery.of(context).disableAnimations) {
+      _from = before;
+      _change = now - before;
+      _chip.forward(from: 0);
+    }
+    _remember();
+  }
+
+  void _remember() {
+    final key = widget.memoryKey;
+    if (key != null && widget.amount.isFinite) {
+      BalanceTicker._memory[key] = widget.amount.toDouble();
+    }
+  }
+
+  @override
+  void didUpdateWidget(BalanceTicker old) {
+    super.didUpdateWidget(old);
+    final change = widget.amount - old.amount;
+    if (change.abs() >= 1 &&
+        widget.amount.isFinite &&
+        old.amount.isFinite &&
+        !MediaQuery.of(context).disableAnimations) {
+      _change = change;
+      _chip.forward(from: 0);
+    }
+    _remember();
+  }
+
+  @override
+  void dispose() {
+    _chip.dispose();
+    super.dispose();
+  }
+
+  Widget _number(double value) {
+    final over = value < 0;
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerRight,
+      child: Text.rich(
+        TextSpan(children: [
+          TextSpan(text: '${over ? '−' : ''}${formatCardKcal(value)}'),
+          TextSpan(
+            text: ' kcal',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: (over ? CalorieCardColors.overBudget : Colors.white)
+                  .withValues(alpha: 0.8),
+            ),
+          ),
+        ]),
+        key: widget.textKey,
+        style: TextStyle(
+          color: over ? CalorieCardColors.overBudget : Colors.white,
+          fontSize: 34,
+          height: 1.0,
+          fontWeight: FontWeight.w800,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.of(context).disableAnimations;
+    final target = widget.amount.isFinite ? widget.amount.toDouble() : 0.0;
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.centerRight,
+      children: [
+        TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: _from ?? target, end: target),
+          duration: still ? Duration.zero : const Duration(milliseconds: 650),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, _) => _number(value),
+        ),
+        // "−412 kcal" rising off the balance.
+        Positioned(
+          right: 0,
+          top: -4,
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _chip,
+              builder: (context, _) {
+                final t = _chip.value;
+                if (t == 0 || t == 1) return const SizedBox.shrink();
+                final spent = _change < 0;
+                return Opacity(
+                  opacity: (t < 0.2 ? t / 0.2 : 1 - (t - 0.2) / 0.8)
+                      .clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(0, -26 * Curves.easeOut.transform(t)),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${spent ? '−' : '+'}${formatCardKcal(_change)} kcal',
+                        style: TextStyle(
+                          color: spent
+                              ? Colors.white
+                              : const Color(0xFF6EE7B7),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _Wordmark extends StatelessWidget {
   const _Wordmark();
 

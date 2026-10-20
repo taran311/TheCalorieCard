@@ -312,7 +312,7 @@ final List<Tutorial> tutorials = [
       ),
       const TStep(
         title: 'Nothing changes until you say so',
-        body: "Coach shows exactly what it will add. Tap Reject if it's "
+        body: "Coach shows exactly what it will add. Tap “Not this” if it's "
             'not right.',
         target: 'proposalAdd',
       ),

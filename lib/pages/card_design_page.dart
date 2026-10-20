@@ -19,7 +19,7 @@ class CardDesignPage extends StatelessWidget {
     try {
       await CardDesignService.choose(uid, design);
       messenger.showSnackBar(
-        const SnackBar(content: Text('Card design updated')),
+        const SnackBar(content: Text('Card finish updated')),
       );
     } catch (_) {
       messenger.showSnackBar(
@@ -34,7 +34,7 @@ class CardDesignPage extends StatelessWidget {
     final holder = cardholderFromEmail(user.email ?? '');
     return Scaffold(
       backgroundColor: AppColors.canvas,
-      appBar: AppBar(title: const Text('Card design')),
+      appBar: AppBar(title: const Text('Card finishes')),
       body: StreamBuilder(
         stream:
             BalanceService.db.collection('users').doc(user.uid).snapshots(),

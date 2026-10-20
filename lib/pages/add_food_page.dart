@@ -68,6 +68,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
   bool _calculating = false;
   bool _saving = false;
 
+  /// Gives each "Ready to add" item a steady identity, so only new ones
+  /// slide in (not ones that were just edited).
+  int _nextItemId = 0;
+
+  /// Just added: the button shows a tick for a moment before closing.
+  bool _added = false;
+
   /// Saving has taken a while (usually a poor connection).
   bool _slowSave = false;
   Timer? _slowSaveTimer;
@@ -510,51 +517,32 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       spacing: 6,
                       runSpacing: 4,
                       children: [
-                        if (source == 'fatsecret')
-                          badge('Database match', AppText.emerald700,
-                              Icons.verified_outlined),
-                        if (source == 'ai')
-                          badge('AI estimate', AppText.primaryDark,
-                              Icons.auto_awesome),
-                        if (source == 'web')
-                          badge('Label found online', AppText.emerald700,
-                              Icons.public),
-                        if (source == 'label')
-                          badge('Label values', AppText.emerald700,
-                              Icons.verified_outlined),
-                        if (source == 'tables')
-                          badge('UK food tables', AppText.emerald700,
-                              Icons.verified_outlined),
-                        if (source == 'recent')
-                          badge('From your history', AppColors.sky700,
-                              Icons.history),
-                        if (source == 'friend')
+                        // Three kinds, so it's clear what to trust: real
+                        // numbers, an estimate to check, or ones from
+                        // before. (The detail sheet says exactly where.)
+                        if (const {'fatsecret', 'web', 'label', 'tables',
+                                'barcode'}
+                            .contains(source))
+                          badge('Label / database', AppText.emerald700,
+                              Icons.verified_outlined)
+                        else if (source == 'ai' && !review)
+                          badge('Estimate', AppText.primaryDark,
+                              Icons.auto_awesome)
+                        else if (source == 'friend')
                           badge(
                               item['from_friend'] != null
                                   ? "From ${item['from_friend']}'s day"
                                   : "From a friend's day",
                               AppColors.sky700,
-                              Icons.people_outline),
-                        if (source == 'yours')
-                          badge('Your numbers from before', AppColors.sky700,
-                              Icons.history),
-                        if (source == 'barcode')
-                          badge('Scanned', AppText.emerald700,
-                              Icons.qr_code_2),
-                        if (source == 'manual')
-                          badge(
-                              item['edited'] == true
-                                  ? 'Calories set by you'
-                                  : 'Added by you',
-                              AppText.indigo700,
+                              Icons.people_outline)
+                        else if (source == 'recent')
+                          badge('From before', AppColors.sky700,
+                              Icons.history)
+                        else if (source == 'yours' || source == 'manual')
+                          badge('Your numbers', AppText.indigo700,
                               Icons.edit_outlined),
-                        if (item['guess_score'] is int)
-                          badge(
-                              '${item['guess_score']}% · guessed ${(item['guess'] as num).round()}',
-                              AppText.violet600,
-                              Icons.gps_fixed),
                         if (review)
-                          badge('Check this', AppText.amber700,
+                          badge('Estimate · check it', AppText.amber700,
                               Icons.warning_amber_rounded),
                       ],
                     ),
@@ -954,77 +942,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
     }
   }
 
-  /// "Guess the price": asks for a calorie guess while the item is pending.
-  Future<void> _guess(_PendingItem item) async {
-    var value = 300.0;
-    final picked = await showModalBottomSheet<double>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheet) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('How many calories do you reckon?',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
-                Text(item.query,
-                    style: TextStyle(color: AppColors.muted)),
-                const SizedBox(height: 20),
-                Center(
-                  child: Text(
-                    '${value.round()} kcal',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      color: AppText.primaryDark,
-                    ),
-                  ),
-                ),
-                Slider(
-                  value: value,
-                  min: 0,
-                  max: 1500,
-                  divisions: 150,
-                  label: '${value.round()}',
-                  onChanged: (v) => setSheet(() => value = v),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => Navigator.pop(sheetContext, value),
-                    icon: const Icon(Icons.gps_fixed),
-                    label: const Text('Lock in my guess'),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Close guesses earn Games XP and count towards your Calorie Sense.',
-                  style: TextStyle(fontSize: 12, color: AppColors.muted),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    if (picked == null || !mounted) return;
-    if (item.settled) {
-      // The answer came back while the sheet was open.
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Too late, that one came back while you guessed!')),
-      );
-      return;
-    }
-    setState(() => item.guess = picked.roundToDouble());
-  }
-
   /// True on a phone-sized window. Uses the real window width: on desktop
   /// MediaQuery.size is narrowed to the page column.
   bool get _isPhone {
@@ -1306,12 +1223,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                           color: AppText.primaryDark)),
               ],
             )
-          else if (!settled && guess == null)
-            TextButton.icon(
-              onPressed: () => _guess(p),
-              icon: const Icon(Icons.gps_fixed, size: 18),
-              label: const Text('Guess'),
-            )
+          // (Guessing the calories moved to Games: logging stays quick.)
           else if (guess != null)
             Text('Your guess: ${guess.round()}',
                 style: TextStyle(
@@ -1376,7 +1288,14 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        Navigator.pop(context, logged);
+        // A tick and a tap you can feel, then back to the card (where the
+        // balance rolls down to match).
+        HapticFeedback.mediumImpact();
+        if (!MediaQuery.of(context).disableAnimations) {
+          setState(() => _added = true);
+          await Future<void>.delayed(const Duration(milliseconds: 380));
+        }
+        if (mounted) Navigator.pop(context, logged);
       }
     } catch (e) {
       _slowSaveTimer?.cancel();
@@ -1415,6 +1334,36 @@ class _AddFoodPageState extends State<AddFoodPage> {
     final VoidCallback? onPressed;
     final Widget icon;
     final String label;
+    if (_added) {
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.emerald700,
+          borderRadius: BorderRadius.circular(26),
+        ),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.4, end: 1),
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.elasticOut,
+          builder: (context, v, child) =>
+              Transform.scale(scale: v, child: child),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Added',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      );
+    }
     if (_saving) {
       onPressed = null;
       icon = spinner;
@@ -1540,96 +1489,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
         ),
       ),
     ];
-  }
-
-  /// Scan barcode, Photo of meal and Quick add. Three across when there's
-  /// room; on a phone, Quick add goes full width underneath.
-  Widget _buildQuickActions() {
-    final busy = _calculating || _saving || _tutorialMode;
-    final scan = OutlinedButton.icon(
-      onPressed: (busy || _scanning) ? null : _scanBarcode,
-      icon: _scanning
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.qr_code_scanner),
-      label: const Text('Scan barcode'),
-    );
-    final photo = OutlinedButton.icon(
-      onPressed: (busy || _readingPhoto) ? null : _photoOfMeal,
-      icon: _readingPhoto
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.photo_camera_outlined),
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(
-            child: Text(
-              _readingPhoto ? 'Reading photo…' : 'Photo of meal',
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (!Premium.isPremium && !_readingPhoto) ...[
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                gradient: AppColors.brandGradient,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                'PREMIUM',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.4,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 520;
-        final quick = OutlinedButton.icon(
-          onPressed: busy ? null : () => _quickAdd(),
-          icon: const Icon(Icons.bolt),
-          label: Text(wide ? 'Quick add' : 'Quick add calories'),
-        );
-        if (wide) {
-          return Row(
-            children: [
-              Expanded(child: scan),
-              const SizedBox(width: 8),
-              Expanded(child: photo),
-              const SizedBox(width: 8),
-              Expanded(child: quick),
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(child: scan),
-                const SizedBox(width: 8),
-                Expanded(child: photo),
-              ],
-            ),
-            const SizedBox(height: 8),
-            quick,
-          ],
-        );
-      },
-    );
   }
 
   /// A past food's portion, only when its name doesn't already say how
@@ -1821,10 +1680,58 @@ class _AddFoodPageState extends State<AddFoodPage> {
                               if (mounted) _takeItemsFromInput(all: true);
                             },
                           ),
-                          IconButton(
-                            tooltip: 'Add to list',
-                            icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () => _takeItemsFromInput(all: true),
+                          // Typing: + adds it to the list. Empty: scan a
+                          // barcode or snap the plate, right in the box
+                          // (like a search bar), rather than a row of
+                          // buttons underneath.
+                          ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _controller,
+                            builder: (context, value, _) {
+                              if (value.text.trim().isNotEmpty) {
+                                return IconButton(
+                                  tooltip: 'Add to list',
+                                  icon: const Icon(Icons.add_circle_outline),
+                                  onPressed: () =>
+                                      _takeItemsFromInput(all: true),
+                                );
+                              }
+                              final busy =
+                                  _calculating || _saving || _tutorialMode;
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Scan a barcode',
+                                    onPressed: busy || _scanning
+                                        ? null
+                                        : _scanBarcode,
+                                    icon: _scanning
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2))
+                                        : const Icon(Icons.qr_code_scanner),
+                                  ),
+                                  IconButton(
+                                    tooltip: Premium.isPremium
+                                        ? 'Photo of your meal'
+                                        : 'Photo of your meal (Premium)',
+                                    onPressed: busy || _readingPhoto
+                                        ? null
+                                        : _photoOfMeal,
+                                    icon: _readingPhoto
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2))
+                                        : const Icon(
+                                            Icons.photo_camera_outlined),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -1836,9 +1743,23 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     onEditingComplete: () {},
                   ),
                   ..._buildSuggestions(),
-                  const SizedBox(height: 10),
-                  _buildQuickActions(),
-                  const SizedBox(height: 16),
+                  if (_readingPhoto) ...[
+                    const SizedBox(height: 8),
+                    Text('Reading your photo…',
+                        style: TextStyle(color: AppColors.muted)),
+                  ],
+                  // Know the number already: add it straight in.
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _calculating || _saving || _tutorialMode
+                          ? null
+                          : () => _quickAdd(),
+                      icon: const Icon(Icons.bolt, size: 18),
+                      label: const Text('Know the calories? Add them yourself'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   ..._buildRecents(meal),
                   if (_ingredients.isNotEmpty) ...[
                     Text(
@@ -1893,8 +1814,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Looking up ($_progressDone/$_progressTotal done) · '
-                            'guess the calories while you wait',
+                            'Looking up ($_progressDone/$_progressTotal done)',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 color: AppText.primaryDark),
@@ -1920,7 +1840,11 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     ),
                     const SizedBox(height: 8),
                     for (var i = 0; i < _calculatedItems.length; i++)
-                      _buildResultCard(i, _calculatedItems[i]),
+                      _SlideIn(
+                        key: ValueKey(_calculatedItems[i]['_uid'] ??=
+                            _nextItemId++),
+                        child: _buildResultCard(i, _calculatedItems[i]),
+                      ),
                     Text(
                       'Tap an item to change how much you had.',
                       style:
@@ -2015,6 +1939,30 @@ class _AddFoodPageState extends State<AddFoodPage> {
 }
 
 /// "Pending" label that gently pulses, like an unsettled card payment.
+/// Slides and fades a new item in once, when it first appears.
+class _SlideIn extends StatelessWidget {
+  final Widget child;
+  const _SlideIn({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.of(context).disableAnimations) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, child) => Opacity(
+        opacity: v,
+        child: Transform.translate(
+          offset: Offset(0, 14 * (1 - v)),
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 class _PendingPill extends StatefulWidget {
   const _PendingPill();
 
