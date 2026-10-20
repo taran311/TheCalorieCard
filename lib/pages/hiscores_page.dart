@@ -25,6 +25,10 @@ class _Board {
   });
 }
 
+/// "1 day", not "1 days".
+String _unit(String unit, num? v) =>
+    unit == 'days' && v == 1 ? 'day' : unit;
+
 final _boards = <_Board>[
   _Board(
     label: 'Streak',
@@ -35,7 +39,7 @@ final _boards = <_Board>[
   ),
   _Board(
     label: 'Logged',
-    emoji: '📅',
+    emoji: '✅',
     description: 'Finished days this month',
     unit: 'days',
     value: (p) => p.daysLogged,
@@ -57,8 +61,8 @@ final _boards = <_Board>[
   _Board(
     label: 'Games',
     emoji: '🎮',
-    description: 'XP this month: games, plus Calorie Sense guesses when '
-        'you log food. The best judge of calories wins.',
+    description: 'XP from games this month. The best judge of calories '
+        'wins.',
     unit: 'XP',
     value: (p) => p.gamesXp > 0 ? p.gamesXp : null,
   ),
@@ -385,7 +389,7 @@ class _Podium extends StatelessWidget {
                     ),
                     alignment: Alignment.center,
                     child: Text(
-                      '${board.value(ranked[i])}\n${board.unit}',
+                      '${board.value(ranked[i])}\n${_unit(board.unit, board.value(ranked[i]))}',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white,
@@ -478,7 +482,7 @@ class _RankRow extends StatelessWidget {
           ),
           const SizedBox(width: 14),
           Text(
-            v == null ? '—' : '$v $unit',
+            v == null ? '—' : '$v ${_unit(unit, v)}',
             style: TextStyle(
               fontWeight: FontWeight.w800,
               color: AppColors.ink,

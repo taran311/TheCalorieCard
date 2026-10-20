@@ -785,7 +785,7 @@ class _ThisWeekCard extends StatelessWidget {
                       onPressed: onOpenPots, child: const Text('Open'))),
             if (spreading)
               line(
-                '📅',
+                '⚖️',
                 'Spreading a big day: ${plan!.perDay} kcal less a day, '
                     '$left day${left == 1 ? '' : 's'} to go',
               ),

@@ -1323,12 +1323,12 @@ class _AddFoodPageState extends State<AddFoodPage> {
     // "Ready to look up" don't block it.
     final canAdd = _calculatedItems.isNotEmpty;
 
-    // The button is disabled (pale grey) while busy, so the spinner uses
-    // the theme's primary colour rather than white, which wouldn't show.
-    const spinner = SizedBox(
+    // The button is disabled (greyed out) while busy, so the spinner is
+    // muted grey: white wouldn't show, and primary barely did in dark mode.
+    final spinner = SizedBox(
       width: 18,
       height: 18,
-      child: CircularProgressIndicator(strokeWidth: 2),
+      child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.muted),
     );
 
     final VoidCallback? onPressed;
@@ -1377,7 +1377,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
     } else if (_calculating) {
       onPressed = null;
       icon = spinner;
-      label = 'Looking up $_progressDone/$_progressTotal…';
+      label = _progressTotal <= 1
+          ? 'Looking it up…'
+          : 'Looking up $_progressDone of $_progressTotal…';
     } else if (_hasInput) {
       final n = toLookUp < 1 ? 1 : toLookUp;
       onPressed = _calculateWithAI;
@@ -1814,7 +1816,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Looking up ($_progressDone/$_progressTotal done)',
+                            _progressTotal <= 1
+                                ? 'Looking it up'
+                                : 'Looking up ($_progressDone of $_progressTotal done)',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 color: AppText.primaryDark),
@@ -1995,7 +1999,7 @@ class _PendingPillState extends State<_PendingPill>
           border: Border.all(color: AppColors.amber300),
         ),
         child: Text(
-          'Pending',
+          'Looking up…',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,

@@ -90,6 +90,15 @@ class _RecipesPageState extends State<RecipesPage> {
     return serving is String ? serving.trim() : '';
   }
 
+  /// Under the name: "Makes 1990 g" reads better than a bare "1990 g".
+  static String _servingLabel(Map<String, dynamic> data) {
+    final serving = _servingOf(data);
+    return RegExp(r'^\d[\d.,]*\s*(g|kg|ml|l)$', caseSensitive: false)
+            .hasMatch(serving)
+        ? 'Makes $serving'
+        : serving;
+  }
+
   static double _numOf(Map<String, dynamic> data, String key) =>
       BalanceService.number(data[key]) ?? 0;
 
@@ -381,62 +390,6 @@ class _RecipesPageState extends State<RecipesPage> {
 
   // --- Shared building blocks ----------------------------------------------
 
-  Widget _buildMacroChip(String label, Color textColor, Color baseColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-      decoration: BoxDecoration(
-        color: baseColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: textColor,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatTile({
-    required IconData icon,
-    required String value,
-    required String label,
-    required Color fill,
-    required Color border,
-    required Color valueColor,
-    required Color iconColor,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: iconColor, size: 20),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 20,
-              color: valueColor,
-            ),
-          ),
-          Text(
-            label,
-            style: TextStyle(fontSize: 12, color: AppColors.muted),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildRecipeCard({
     required Map<String, dynamic> data,
     required IconData icon,
@@ -512,62 +465,55 @@ class _RecipesPageState extends State<RecipesPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
+                      // One compact line (it was two rows of tiles, so
+                      // only one or two recipes fitted on a screen).
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
                         children: [
-                          Expanded(
-                            child: _buildStatTile(
-                              icon: Icons.local_fire_department,
-                              value: kcal.toStringAsFixed(0),
-                              label: 'kcal',
-                              fill: AppColors.indigo50,
-                              border: AppColors.indigo100,
-                              valueColor: AppText.primaryDark,
-                              iconColor: AppText.primary,
+                          Text(
+                            kcal.toStringAsFixed(0),
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: AppText.primaryDark,
                             ),
                           ),
-                          if (ingredientCount != null) ...[
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildStatTile(
-                                icon: Icons.fastfood,
-                                value: '$ingredientCount',
-                                label: ingredientCount == 1
-                                    ? 'ingredient'
-                                    : 'ingredients',
-                                fill: AppColors.gray50,
-                                border: AppColors.border,
-                                valueColor: AppColors.gray700,
-                                iconColor: AppColors.gray600,
+                          const SizedBox(width: 4),
+                          Text('kcal',
+                              style: TextStyle(
+                                  fontSize: 13, color: AppColors.muted)),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text.rich(
+                              TextSpan(children: [
+                                TextSpan(
+                                    text: 'P ${protein.toStringAsFixed(0)}',
+                                    style:
+                                        TextStyle(color: AppColors.proteinText)),
+                                const TextSpan(text: ' · '),
+                                TextSpan(
+                                    text: 'C ${carbs.toStringAsFixed(0)}',
+                                    style: TextStyle(color: AppColors.carbsText)),
+                                const TextSpan(text: ' · '),
+                                TextSpan(
+                                    text: 'F ${fat.toStringAsFixed(0)}',
+                                    style: TextStyle(color: AppColors.fatText)),
+                                if (ingredientCount != null)
+                                  TextSpan(
+                                    text: '  ·  $ingredientCount '
+                                        '${ingredientCount == 1 ? 'ingredient' : 'ingredients'}',
+                                    style: TextStyle(color: AppColors.muted),
+                                  ),
+                              ]),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.muted,
                               ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildMacroChip(
-                              'Protein ${protein.toStringAsFixed(0)}g',
-                              AppColors.proteinText,
-                              AppColors.protein,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildMacroChip(
-                              'Carbs ${carbs.toStringAsFixed(0)}g',
-                              AppColors.carbsText,
-                              AppColors.carbs,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildMacroChip(
-                              'Fat ${fat.toStringAsFixed(0)}g',
-                              AppColors.fatText,
-                              AppColors.fat,
                             ),
                           ),
                         ],
@@ -695,7 +641,7 @@ class _RecipesPageState extends State<RecipesPage> {
                         return _buildRecipeCard(
                           data: data,
                           icon: Icons.restaurant,
-                          subtitle: _servingOf(data),
+                          subtitle: _servingLabel(data),
                           ingredientCount: ids is List ? ids.length : 0,
                           onTap: () => _openEditor(recipeId: recipeId),
                           menu: PopupMenuButton<String>(

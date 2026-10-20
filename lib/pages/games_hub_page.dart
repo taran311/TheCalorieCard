@@ -96,7 +96,7 @@ class _GamesHubPageState extends State<GamesHubPage> {
                   const _Heading('Play solo'),
                   _GameCard(
                     hero: true,
-                    emoji: '📅',
+                    emoji: '🧠',
                     title: 'Daily Calorie Quiz',
                     subtitle: dailyDone
                         ? 'Done today: ${p.dailyScoreOn(day)} of '

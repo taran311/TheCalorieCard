@@ -581,8 +581,8 @@ class _MenuPageState extends State<MenuPage> {
                     _menuRow(
                       icon: Icons.emoji_events,
                       iconColor: AppText.amber600,
-                      title: 'Progress',
-                      subtitle: 'Your level, streak, badges and card finishes',
+                      title: 'Level, streak and badges',
+                      subtitle: 'Plus card finishes and Monthly Wrapped',
                       onTap: () => _open(const ProgressPage()),
                     ),
                   ]),

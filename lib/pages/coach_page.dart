@@ -82,6 +82,10 @@ class _Item {
 }
 
 class _CoachPageState extends State<CoachPage> {
+  /// Prompt chips shown before "More ideas".
+  static const _firstPrompts = 5;
+  bool _allPrompts = false;
+
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   final _scroll = ScrollController();
@@ -470,16 +474,35 @@ class _CoachPageState extends State<CoachPage> {
                                   .firstWhere((p) => p.outing == outing)),
                             ),
                             const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
+                            // The most useful few first; the rest behind
+                            // "More ideas", so it isn't a wall of buttons.
+                            Builder(builder: (context) {
+                              final chips = [
                                 for (final p in prompts)
-                                  if (p.outing == null)
+                                  if (p.outing == null) p
+                              ];
+                              final shown = _allPrompts
+                                  ? chips
+                                  : chips.take(_firstPrompts).toList();
+                              return Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  for (final p in shown)
                                     _PromptChip(
                                         prompt: p, onTap: () => _tapPrompt(p)),
-                              ],
-                            ),
+                                  if (chips.length > shown.length)
+                                    ActionChip(
+                                      avatar: const Icon(Icons.expand_more,
+                                          size: 18),
+                                      label: Text(
+                                          'More ideas (${chips.length - shown.length})'),
+                                      onPressed: () =>
+                                          setState(() => _allPrompts = true),
+                                    ),
+                                ],
+                              );
+                            }),
                           ],
                           for (final item in _items)
                             if (item.message != null)

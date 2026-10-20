@@ -404,7 +404,7 @@ class CoachService {
     prompts.addAll(const [
       CoachPrompt('📊', 'How did I do today?',
           "Look at what I've eaten today and tell me how I'm doing, kindly and honestly."),
-      CoachPrompt('📅', 'How was my week?',
+      CoachPrompt('📈', 'How was my week?',
           'How has my last week gone? What went well and one thing to try next week?'),
       CoachPrompt('🍬', "I'm craving something sweet",
           "I'm craving something sweet. What could I have that fits?"),
