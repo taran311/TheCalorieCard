@@ -677,6 +677,59 @@ void main() {
       expect(c('Tequila lime tortilla chips'), SpendCategory.snacks);
     });
 
+    test('alcohol as people actually describe it', () {
+      SpendCategory c(String d) => SpendCategory.fromDescription(d);
+      for (final d in [
+        '2 pints',
+        'Half pint',
+        'Large glass of red',
+        'Bottle of white',
+        'Glass of rosé',
+        'Malbec 175ml',
+        'Pinot grigio',
+        'Sauvignon blanc',
+        'Double vodka',
+        '2 shots tequila',
+        'Camden Hells',
+        'Whisky sour',
+      ]) {
+        expect(c(d), SpendCategory.alcohol, reason: d);
+      }
+      // Not alcohol:
+      expect(c('Pint of milk'), isNot(SpendCategory.alcohol));
+      expect(c('Pint of water'), isNot(SpendCategory.alcohol));
+      expect(c('Pint of lemonade'), isNot(SpendCategory.alcohol));
+      expect(c('Sourdough toast'), isNot(SpendCategory.alcohol));
+      expect(c('Sour cream'), isNot(SpendCategory.alcohol));
+      expect(c('Rose harissa chickpeas'), isNot(SpendCategory.alcohol));
+      expect(c('Tiger bread'), isNot(SpendCategory.alcohol));
+      expect(c('Portobello mushroom'), isNot(SpendCategory.alcohol));
+      expect(c('Espresso shot'), isNot(SpendCategory.alcohol));
+      expect(c('Nosecco'), SpendCategory.drinks);
+    });
+
+    test('a category the person picked wins over the name', () {
+      expect(
+          SpendCategory.of({
+            'food_description': 'Mystery bottle',
+            'spend_category': 'alcohol',
+          }),
+          SpendCategory.alcohol);
+      expect(
+          SpendCategory.of({
+            'food_description': 'Pint of lager',
+            'spend_category': 'drinks',
+          }),
+          SpendCategory.drinks);
+      // Something unknown saved there is ignored.
+      expect(
+          SpendCategory.of({
+            'food_description': 'Pint of lager',
+            'spend_category': 'nonsense',
+          }),
+          SpendCategory.alcohol);
+    });
+
     test('breakdown adds up and sorts biggest first', () {
       final rows = SpendInsights.breakdown([
         (description: 'Oat latte', isRecipe: false, calories: 150),

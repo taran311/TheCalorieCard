@@ -4,6 +4,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/portion_amount.dart';
+import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/ui/amount_field.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/home_widgets.dart';
@@ -299,6 +300,63 @@ class _EntrySheetState extends State<_EntrySheet> {
         }
       }
     });
+  }
+
+  /// Where it counts on the Statement and in budgets (Alcohol, Snacks…).
+  late SpendCategory _category = SpendCategory.of(widget.entry);
+
+  Future<void> _setCategory(SpendCategory c) async {
+    if (c == _category) return;
+    final before = _category;
+    setState(() {
+      _category = c;
+      _error = null;
+    });
+    try {
+      await FoodLog.setCategory(widget.entry, widget.entryId, c);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _category = before;
+        _error = "Couldn't change the category. Please try again.";
+      });
+    }
+  }
+
+  Widget _categoryValue() {
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(_category.icon, size: 16, color: _category.color),
+        const SizedBox(width: 6),
+        Flexible(child: _detailText(_category.label)),
+        if (widget.canNote) ...[
+          const SizedBox(width: 2),
+          Icon(Icons.arrow_drop_down, color: AppColors.muted),
+        ],
+      ],
+    );
+    if (!widget.canNote) return row;
+    return PopupMenuButton<SpendCategory>(
+      tooltip: 'Change category',
+      enabled: !_busy,
+      initialValue: _category,
+      onSelected: _setCategory,
+      itemBuilder: (context) => [
+        for (final c in SpendCategory.values)
+          PopupMenuItem(
+            value: c,
+            child: Row(
+              children: [
+                Icon(c.icon, size: 18, color: c.color),
+                const SizedBox(width: 10),
+                Text(c.label),
+              ],
+            ),
+          ),
+      ],
+      child: row,
+    );
   }
 
   Future<void> _saveNote() async {
@@ -851,6 +909,8 @@ class _EntrySheetState extends State<_EntrySheet> {
                       fontSize: 14,
                     ),
                   ),
+                  // For the Statement and budgets; tap to correct it.
+                  _detailRow('Category', _categoryValue()),
                   if (source != null)
                     _detailRow('Source', _detailText(source)),
                 ],

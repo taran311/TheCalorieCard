@@ -385,7 +385,8 @@ class BalanceTicker extends StatefulWidget {
 
   /// The card is rebuilt from scratch after each change, so the last
   /// balance shown is remembered under this key (one per person and day)
-  /// to roll from. Null: only changes while it's on screen animate.
+  /// to roll from. Null (a past day): never animates, since nothing is
+  /// being spent there.
   final String? memoryKey;
 
   const BalanceTicker(
@@ -439,7 +440,12 @@ class _BalanceTickerState extends State<BalanceTicker>
   void didUpdateWidget(BalanceTicker old) {
     super.didUpdateWidget(old);
     final change = widget.amount - old.amount;
-    if (change.abs() >= 1 &&
+    // Only today's live card (the one with a memory key) animates: on a
+    // past day the number changing just means that day's figures loaded,
+    // not that anything was spent.
+    if (widget.memoryKey != null &&
+        widget.memoryKey == old.memoryKey &&
+        change.abs() >= 1 &&
         widget.amount.isFinite &&
         old.amount.isFinite &&
         !MediaQuery.of(context).disableAnimations) {

@@ -41,19 +41,54 @@ enum SpendCategory {
     'budweiser', 'moretti', 'cobra', 'kronenbourg', 'fosters', 'coors',
     'madri', 'desperados', 'strongbow', 'thatchers', 'magners', 'brewdog',
     'g and t', 'g&t',
+    // Wine as people order it: by colour, glass, bottle or grape.
+    'red wine', 'white wine', 'rose', 'glass of red',
+    'glass of white', 'glass of rose', 'bottle of red', 'bottle of white',
+    'bottle of rose', 'large red', 'large white', 'large rose',
+    'small red', 'small white', 'medium red', 'medium white', 'malbec',
+    'merlot', 'shiraz', 'rioja', 'pinot grigio', 'pinot noir',
+    'sauvignon blanc', 'sauvignon', 'chardonnay', 'cabernet', 'tempranillo',
+    'chianti', 'zinfandel', 'riesling', 'albarino', 'picpoul', 'sancerre',
+    'chablis', 'port', 'vermouth', 'mulled wine',
+    // Spirits as people order them.
+    'shot', 'double vodka', 'double gin', 'double rum', 'double whisky',
+    'vodka coke', 'rum and coke', 'jack and coke', 'jack daniels',
+    'gin and tonic', 'espresso martini', 'pornstar martini', 'old fashioned',
+    'long island', 'whisky sour', 'amaretto sour', 'pisco sour', 'amaretto', 'disaronno', 'limoncello', 'ouzo',
+    'soju', 'sake', 'mead', 'tia maria', 'kahlua', 'southern comfort',
+    'malibu', 'captain morgan', 'jameson', 'hennessy', 'absolut',
+    'gordons', 'tanqueray', 'hendricks', 'bombay sapphire',
+    // More beers and ciders.
+    'pils', 'pilsner', 'craft beer', 'camden hells',
+    'hells', 'asahi', 'san miguel', 'estrella', 'birra moretti', 'tiger',
+    'kingfisher', 'carlsberg', 'amstel', 'beck', 'becks', 'cruzcampo',
+    'grolsch', 'staropramen', 'doom bar', 'old speckled hen', 'punk ipa',
+    'neck oil', 'angry orchard', 'old mout', 'aspall', 'westons',
+  ];
+
+  /// A pint (or half) on its own is almost always beer or cider; milk and
+  /// soft drinks by the pint say so.
+  static const _pintOf = ['pint', 'half pint', 'pints'];
+  static const _pintNotAlcohol = [
+    'milk', 'water', 'squash', 'juice', 'coke', 'cola', 'lemonade',
+    'pepsi', 'soda', 'orange', 'lime', 'tonic', 'j2o', 'appletiser',
   ];
 
   /// Alcohol-free versions: drinks, not alcohol.
   static const _alcoholFree = [
     'alcohol free', 'non alcoholic', 'zero alcohol', '0 0', 'ginger beer',
-    'ginger ale', 'root beer',
+    'ginger ale', 'root beer', 'nosecco', 'mocktail', 'virgin', 'shirley temple',
   ];
 
   /// Foods that borrow a drink's name: neither alcohol nor a drink.
   static const _namedAfterDrink = [
     'wine gum', 'rum and raisin', 'beer battered', 'beer batter',
     'wine vinegar', 'cider vinegar', 'wine sauce', 'wine gravy',
-    'tequila lime', 'cola bottle',
+    'tequila lime', 'cola bottle', 'rose harissa', 'rosehip', 'rose water',
+    'rosewater', 'sour cream', 'sourdough', 'sour sweets', 'sour patch',
+    'sweet and sour', 'sweet & sour', 'hot and sour', 'shot of espresso',
+    'espresso shot', 'wheatgrass shot', 'ginger shot', 'port salut',
+    'portobello', 'tiger bread', 'tiger prawn', 'tiger loaf', 'tiger nut',
   ];
 
   static const _drinks = [
@@ -97,19 +132,35 @@ enum SpendCategory {
     return false;
   }
 
-  /// Category for a logged food from its `user_food` fields.
+  /// Category for a logged food from its `user_food` fields: the one the
+  /// person picked (`spend_category`) if they changed it, otherwise worked
+  /// out from the name.
   static SpendCategory of(Map<String, dynamic> entry) {
+    final chosen = byName(entry['spend_category']);
+    if (chosen != null) return chosen;
     if (entry['is_recipe'] == true) return SpendCategory.homeCooked;
     return fromDescription((entry['food_description'] ?? '').toString());
   }
 
+  /// The category called [name] (as saved), or null.
+  static SpendCategory? byName(Object? name) {
+    for (final c in SpendCategory.values) {
+      if (c.name == name) return c;
+    }
+    return null;
+  }
+
   static SpendCategory fromDescription(String description) {
-    final lower = description.toLowerCase();
+    // "rosé" as "rose": accents would otherwise split the word.
+    final lower = description
+        .toLowerCase()
+        .replaceAll(RegExp('[éèê]'), 'e');
     if (lower.startsWith('recipe:')) return SpendCategory.homeCooked;
     final text = ' ${lower.replaceAll(RegExp(r"[^a-z0-9&]+"), ' ')} ';
     if (_hasAny(text, _takeaway)) return SpendCategory.takeaway;
     final borrowed = _hasAny(text, _namedAfterDrink);
-    if (!borrowed && _hasAny(text, _alcohol)) {
+    final pint = _hasAny(text, _pintOf) && !_hasAny(text, _pintNotAlcohol);
+    if (!borrowed && (_hasAny(text, _alcohol) || pint)) {
       // "Alcohol free lager", "Heineken 0.0": a drink, not alcohol.
       return _hasAny(text, _alcoholFree)
           ? SpendCategory.drinks
@@ -138,15 +189,27 @@ class SpendInsights {
 
   /// Totals per category, biggest first. Empty categories are left out.
   static List<CategorySpend> breakdown(
-      Iterable<({String description, bool isRecipe, double calories})>
-          items) {
+          Iterable<({String description, bool isRecipe, double calories})>
+              items) =>
+      breakdownBy([
+        for (final item in items)
+          (
+            category: item.isRecipe
+                ? SpendCategory.homeCooked
+                : SpendCategory.fromDescription(item.description),
+            calories: item.calories,
+          )
+      ]);
+
+  /// The same, for foods whose category is already known (including one
+  /// the person picked).
+  static List<CategorySpend> breakdownBy(
+      Iterable<({SpendCategory category, double calories})> items) {
     final totals = <SpendCategory, double>{};
     final counts = <SpendCategory, int>{};
     var all = 0.0;
     for (final item in items) {
-      final c = item.isRecipe
-          ? SpendCategory.homeCooked
-          : SpendCategory.fromDescription(item.description);
+      final c = item.category;
       final kcal = item.calories > 0 ? item.calories : 0.0;
       totals[c] = (totals[c] ?? 0) + kcal;
       counts[c] = (counts[c] ?? 0) + 1;

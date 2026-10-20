@@ -47,12 +47,18 @@ class CardTransaction {
     this.multiplier = 1,
     String? basePortion,
     this.estimate = false,
+    this.chosenCategory,
   }) : basePortion = basePortion ?? portion;
 
+  /// The category the person picked for it, if they changed it.
+  final SpendCategory? chosenCategory;
+
   /// Its "where it went" category (see [SpendCategory]).
-  SpendCategory get spendCategory => isRecipe
-      ? SpendCategory.homeCooked
-      : SpendCategory.fromDescription(description);
+  SpendCategory get spendCategory =>
+      chosenCategory ??
+      (isRecipe
+          ? SpendCategory.homeCooked
+          : SpendCategory.fromDescription(description));
 }
 
 /// Totals for one calendar day.
@@ -266,6 +272,7 @@ class StatementService {
               multiplier: FoodLog.multiplierOf(data),
               basePortion: FoodLog.basePortionOf(data),
               estimate: data['food_estimate'] == true,
+              chosenCategory: SpendCategory.byName(data['spend_category']),
             ),
           );
     }

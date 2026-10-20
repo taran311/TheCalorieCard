@@ -7,6 +7,7 @@ import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/portion_amount.dart';
+import 'package:namer_app/services/spend_category.dart';
 
 /// What was just logged, so the screen that asked can offer Undo.
 class LoggedFoods {
@@ -439,6 +440,20 @@ class FoodLog {
     if (text.length > maxNoteLength) text = text.substring(0, maxNoteLength);
     await BalanceService.updateEntry(_uid(userId), entryId, fields: {
       'food_note': text.isEmpty ? FieldValue.delete() : text,
+    });
+    notifyChanged();
+  }
+
+  /// Puts a food in [category] for the Statement and budgets ("this was
+  /// alcohol"). Picking what its name already says clears the choice, so
+  /// later improvements to the name matching still apply.
+  static Future<void> setCategory(
+      Map<String, dynamic> entry, String entryId, SpendCategory category,
+      {String? userId}) async {
+    final auto = SpendCategory.of({...entry, 'spend_category': null});
+    await BalanceService.updateEntry(_uid(userId), entryId, fields: {
+      'spend_category':
+          category == auto ? FieldValue.delete() : category.name,
     });
     notifyChanged();
   }

@@ -496,13 +496,9 @@ class _WhereItWent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = SpendInsights.breakdown([
+    final rows = SpendInsights.breakdownBy([
       for (final tx in statement.recent)
-        (
-          description: tx.description,
-          isRecipe: tx.isRecipe,
-          calories: tx.calories
-        )
+        (category: tx.spendCategory, calories: tx.calories)
     ]);
     if (rows.isEmpty) {
       return Padding(

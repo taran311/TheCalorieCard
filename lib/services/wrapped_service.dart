@@ -109,7 +109,7 @@ class WrappedService {
     final loggedDays = <String>{};
     final counts = <String, FoodCount>{};
     var calories = 0.0, protein = 0.0;
-    final items = <({String description, bool isRecipe, double calories})>[];
+    final items = <({SpendCategory category, double calories})>[];
 
     for (final doc in entries) {
       final data = doc.data();
@@ -125,11 +125,7 @@ class WrappedService {
       counts[key] = FoodCount(
           prev?.name ?? name, (prev?.count ?? 0) + 1,
           (prev?.calories ?? 0) + m.calories);
-      items.add((
-        description: name,
-        isRecipe: data['is_recipe'] == true,
-        calories: m.calories,
-      ));
+      items.add((category: SpendCategory.of(data), calories: m.calories));
     }
 
     var finished = 0, onBudget = 0;
@@ -157,7 +153,7 @@ class WrappedService {
       ..sort((a, b) => b.count != a.count
           ? b.count.compareTo(a.count)
           : b.calories.compareTo(a.calories));
-    final categories = SpendInsights.breakdown(items);
+    final categories = SpendInsights.breakdownBy(items);
 
     final isThisMonth =
         CalorieSense.monthKey(start) == CalorieSense.monthKey(today);

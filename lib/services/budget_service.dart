@@ -194,6 +194,52 @@ class BudgetService {
     return '${n < 0 ? '-' : ''}$buf';
   }
 
+  /// What you usually spend on [b], per day (meal) or per week (type of
+  /// food), from [days] (say the last 4 weeks). Only days with something
+  /// logged count, so a new account isn't averaged down by empty days.
+  /// Null with fewer than [minDays] logged days: too little to go on.
+  static double? usualFor(Budget b, List<DaySummary> days,
+      {int minDays = 5}) {
+    final logged = days.where((d) => d.transactions.isNotEmpty).toList();
+    if (logged.length < minDays) return null;
+    var total = 0.0;
+    for (final d in logged) {
+      for (final tx in d.transactions) {
+        if (counts(b, tx) && tx.calories > 0) total += tx.calories;
+      }
+    }
+    final perDay = total / logged.length;
+    return b.weekly ? perDay * 7 : perDay;
+  }
+
+  /// A budget to suggest from what you usually have: a little under it
+  /// (10% less, to the nearest 10 kcal), never more. Null when there's
+  /// nothing to go on or you hardly have it at all.
+  static double? suggestedFrom(double? usual) {
+    if (usual == null || !usual.isFinite || usual < 50) return null;
+    return ((usual * 0.9) / 10).round() * 10.0;
+  }
+
+  /// For treats, a share of your calories that guidance usually allows
+  /// (about 10% for snacks and sweets, in line with the WHO's advice on
+  /// sugar; a little more for takeaways). Deliberately none for alcohol:
+  /// how much is safe doesn't grow with how much you eat.
+  static double? goalShare(SpendCategory c) => switch (c) {
+        SpendCategory.snacks => 0.10,
+        SpendCategory.takeaway => 0.15,
+        _ => null,
+      };
+
+  /// [c]'s [goalShare] of a week on [dailyGoal], to the nearest 50 kcal.
+  static double? suggestedForGoal(SpendCategory c, double? dailyGoal) {
+    final share = goalShare(c);
+    if (share == null || dailyGoal == null || !dailyGoal.isFinite ||
+        dailyGoal <= 0) {
+      return null;
+    }
+    return ((dailyGoal * 7 * share) / 50).round() * 50.0;
+  }
+
   /// True if [tx] counts towards [b].
   static bool counts(Budget b, CardTransaction tx) => switch (b.kind) {
         BudgetKind.meal =>

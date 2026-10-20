@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/budget_service.dart';
 import 'package:namer_app/services/spend_category.dart';
+import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
 
@@ -25,6 +26,9 @@ class _BudgetsPageState extends State<BudgetsPage> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
 
   BudgetSettings _settings = BudgetSettings.empty;
+
+  /// Your daily calorie goal, for "about 10% of your week".
+  double? _goal;
   bool _loaded = false;
   bool _noProfile = false;
   bool _failed = false;
@@ -32,6 +36,13 @@ class _BudgetsPageState extends State<BudgetsPage> {
 
   /// By `kind|key`, for the "240 of 300 kcal today" lines.
   Map<String, BudgetProgress> _progress = const {};
+
+  /// The last 4 weeks, for "you usually have about…" in the limit dialog.
+  late final Future<List<DaySummary>> _history = _uid == null
+      ? Future.value(const <DaySummary>[])
+      : StatementService.load(_uid!, days: 28, withLogs: false)
+          .then((s) => s.days)
+          .catchError((_) => const <DaySummary>[]);
   int _token = 0;
 
   /// What counts in each category, in plain words.
@@ -61,6 +72,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
       final data = snap.docs.isEmpty ? null : snap.docs.first.data();
       setState(() {
         _settings = BudgetSettings.fromProfile(data);
+        _goal = data == null ? null : BalanceService.calorieGoalFrom(data);
         _loaded = true;
         _noProfile = data == null;
         _failed = false;
@@ -121,6 +133,9 @@ class _BudgetsPageState extends State<BudgetsPage> {
         unit: 'kcal a day',
         current: current,
         max: 10000,
+        usual: _history.then((days) => BudgetService.usualFor(
+            Budget(BudgetKind.meal, meal, 0), days)),
+        period: 'a day',
       ),
     );
     if (result == null || !mounted) return;
@@ -144,6 +159,13 @@ class _BudgetsPageState extends State<BudgetsPage> {
         unit: 'kcal a week',
         current: current,
         max: 50000,
+        usual: _history.then((days) => BudgetService.usualFor(
+            Budget(BudgetKind.category, c.name, 0), days)),
+        period: 'a week',
+        forGoal: BudgetService.suggestedForGoal(c, _goal),
+        forGoalLabel: BudgetService.goalShare(c) == null
+            ? ''
+            : 'About ${(BudgetService.goalShare(c)! * 100).round()}% of your week',
       ),
     );
     if (result == null || !mounted) return;
@@ -412,12 +434,25 @@ class _LimitDialog extends StatefulWidget {
   final double? current;
   final double max;
 
+  /// What you usually have (per [period]), for a suggestion under the box.
+  final Future<double?> usual;
+  final String period;
+
+  /// A suggestion from your calorie goal (treats only), and its label
+  /// ("About 10% of your week").
+  final double? forGoal;
+  final String forGoalLabel;
+
   const _LimitDialog({
     required this.title,
     required this.explanation,
     required this.unit,
     required this.current,
     required this.max,
+    required this.usual,
+    required this.period,
+    this.forGoal,
+    this.forGoalLabel = '',
   });
 
   @override
@@ -473,6 +508,60 @@ class _LimitDialogState extends State<_LimitDialog> {
               errorText: _error,
               border: const OutlineInputBorder(),
             ),
+          ),
+          // From your own last 4 weeks: a little under what you usually
+          // have, so it's a nudge you can actually stick to.
+          FutureBuilder<double?>(
+            future: widget.usual,
+            builder: (context, snap) {
+              final usual = snap.data;
+              final suggested = BudgetService.suggestedFrom(usual);
+              final forGoal = widget.forGoal;
+              if (suggested == null && forGoal == null) {
+                return const SizedBox.shrink();
+              }
+              void use(double v) => setState(() {
+                    _text.text = '${v.round()}';
+                    _error = null;
+                  });
+              return Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (usual != null && suggested != null)
+                      Text(
+                        'Lately you have about ${BudgetService.kcal(usual)} '
+                        'kcal ${widget.period}.',
+                        style:
+                            TextStyle(fontSize: 13, color: AppColors.gray700),
+                      ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        if (suggested != null)
+                          ActionChip(
+                            avatar: const Icon(Icons.auto_awesome, size: 16),
+                            label: Text('Try ${BudgetService.kcal(suggested)} '
+                                '(a little less)'),
+                            onPressed: () => use(suggested),
+                          ),
+                        if (forGoal != null)
+                          ActionChip(
+                            avatar: const Icon(Icons.pie_chart_outline,
+                                size: 16),
+                            label: Text('${widget.forGoalLabel}: '
+                                '${BudgetService.kcal(forGoal)}'),
+                            onPressed: () => use(forGoal),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
