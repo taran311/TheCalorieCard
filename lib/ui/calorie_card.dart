@@ -518,8 +518,23 @@ class MacroNumber extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 2),
-          Text(
-            '${over ? '−' : ''}${grams}g',
+          // "58g left": the card shows what's left (eaten is on its back),
+          // so it says so.
+          Text.rich(
+            TextSpan(
+              text: '${over ? '−' : ''}${grams}g',
+              children: [
+                TextSpan(
+                  text: over ? ' over' : ' left',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ],
+            ),
             maxLines: 1,
             style: TextStyle(
               color: over ? CalorieCardColors.overBudget : Colors.white,

@@ -211,14 +211,16 @@ JSFunction? _speechConstructor() {
 
 /// A voice-to-text session in progress (see [startSpeech]).
 class SpeechSession {
-  final _SpeechRec _rec;
+  _SpeechRec? _rec;
+  bool _stopped = false;
 
-  SpeechSession._(this._rec);
+  SpeechSession._();
 
   /// Stops listening; the final words still arrive.
   void stop() {
+    _stopped = true;
     try {
-      _rec.stop();
+      _rec?.stop();
     } catch (_) {}
   }
 }
@@ -228,11 +230,18 @@ bool? _speechSupported;
 /// True when this browser can turn speech into text.
 bool get speechSupported => _speechSupported ??= _speechConstructor() != null;
 
-/// Starts listening (British English). [onText] gets everything heard so
-/// far, again each time it changes, with done = true once it's final.
-/// [onEnd] is called once when listening stops, with the browser's error
-/// code if something went wrong ('not-allowed', 'no-speech', …). Returns
-/// null if speech isn't available. Must be called from a tap.
+/// How long one tap of the mic can listen for, at most.
+const _maxListen = Duration(minutes: 3);
+
+/// Starts listening (British English) until [SpeechSession.stop]: tap to
+/// start, tap to stop. Pauses don't end it. Browsers stop recognition
+/// after a short silence (Safari especially), so it quietly starts again,
+/// keeping everything heard so far, until it's stopped (or after
+/// [_maxListen]). [onText] gets everything heard so far, again each time
+/// it changes, with done = true when that's final. [onEnd] is called once
+/// when listening stops, with the browser's error code if something went
+/// wrong ('not-allowed', …). Returns null if speech isn't available. Must
+/// be called from a tap.
 SpeechSession? startSpeech({
   required void Function(String text, bool done) onText,
   required void Function(String? error) onEnd,
@@ -240,38 +249,70 @@ SpeechSession? startSpeech({
 }) {
   final ctor = _speechConstructor();
   if (ctor == null) return null;
-  try {
-    final rec = ctor.callAsConstructor<_SpeechRec>();
-    rec.lang = lang;
-    rec.interimResults = true;
-    rec.continuous = false;
-    rec.maxAlternatives = 1;
-    String? error;
-    var ended = false;
-    rec.onresult = ((_SpeechEvent event) {
-      final results = event.results;
-      final text = StringBuffer();
-      var done = true;
-      for (var i = 0; i < results.length; i++) {
-        final result = results.item(i);
-        if (!result.isFinal) done = false;
-        if (result.length > 0) text.write(result.item(0).transcript);
-      }
-      onText(text.toString().trim(), done);
-    }).toJS;
-    rec.onerror = ((_SpeechError event) {
-      error = event.error;
-    }).toJS;
-    rec.onend = ((JSAny? _) {
-      if (ended) return;
-      ended = true;
-      onEnd(error);
-    }).toJS;
-    rec.start();
-    return SpeechSession._(rec);
-  } catch (_) {
-    return null;
+  final session = SpeechSession._();
+  final started = DateTime.now();
+  // Words from earlier rounds (each restart begins a fresh transcript).
+  var kept = '';
+  var latest = '';
+  var heardAnything = false;
+
+  String joined(String now) =>
+      [kept, now].where((t) => t.trim().isNotEmpty).join(' ').trim();
+
+  bool begin() {
+    try {
+      final rec = ctor.callAsConstructor<_SpeechRec>();
+      rec.lang = lang;
+      rec.interimResults = true;
+      // Keeps listening through pauses where the browser allows it.
+      rec.continuous = true;
+      rec.maxAlternatives = 1;
+      String? error;
+      var ended = false;
+      rec.onresult = ((_SpeechEvent event) {
+        final results = event.results;
+        final text = StringBuffer();
+        var done = true;
+        for (var i = 0; i < results.length; i++) {
+          final result = results.item(i);
+          if (!result.isFinal) done = false;
+          if (result.length > 0) text.write(result.item(0).transcript);
+        }
+        latest = text.toString().trim();
+        if (latest.isNotEmpty) heardAnything = true;
+        // Only "done" once listening has actually stopped: mid-session
+        // finals are just the end of a phrase.
+        onText(joined(latest), done && session._stopped);
+      }).toJS;
+      rec.onerror = ((_SpeechError event) {
+        error = event.error;
+      }).toJS;
+      rec.onend = ((JSAny? _) {
+        if (ended) return;
+        ended = true;
+        kept = joined(latest);
+        latest = '';
+        // A pause ended it, not a tap: listen again, unless something's
+        // actually wrong (no microphone permission and so on).
+        final pauseOnly = error == null ||
+            error == 'no-speech' ||
+            error == 'network' && heardAnything;
+        // Nothing said at all for a while: probably forgotten, so stop.
+        final limit = heardAnything ? _maxListen : const Duration(seconds: 20);
+        final timeLeft = DateTime.now().difference(started) < limit;
+        if (!session._stopped && pauseOnly && timeLeft && begin()) return;
+        onText(kept, true);
+        onEnd(error == 'no-speech' && heardAnything ? null : error);
+      }).toJS;
+      session._rec = rec;
+      rec.start();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
+
+  return begin() ? session : null;
 }
 
 /// Loads the newest version of the site (window.tccReload in index.html:

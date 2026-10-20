@@ -205,8 +205,9 @@ final List<Tutorial> tutorials = [
         focus: 'mic',
       ),
       TStep(
-        title: 'Stop when you\'re done',
-        body: 'Pause, or tap stop. Every food becomes its own item.',
+        title: 'Tap stop when you\'re done',
+        body: "It keeps listening while you think, so take your time. "
+            'Tap stop and every food becomes its own item.',
         target: 'mic',
         act: TAct.tap,
         apply: (s) {

@@ -19,6 +19,7 @@ import 'package:namer_app/services/card_design_service.dart';
 import 'package:namer_app/services/even_out.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/portion_amount.dart';
 import 'package:namer_app/services/late_close.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/chat_service.dart';
@@ -2312,7 +2313,16 @@ class _HomePageState extends State<HomePage>
       QueryDocumentSnapshot<Map<String, dynamic>> doc, bool canEdit) {
     final data = doc.data();
     final name = (data['food_description'] ?? 'Food').toString();
-    final portion = (data['food_portion'] ?? '').toString();
+    final rawPortion = (data['food_portion'] ?? '').toString();
+    // "200ml Alpro soya milk" over "200 ml" says it twice: the amount
+    // underneath only shows when the name doesn't already say it.
+    final nameSize = PortionAmount.amountsIn(name) == 1
+        ? PortionAmount.sizeOf(name)
+        : null;
+    final portion = nameSize != null &&
+            nameSize == PortionAmount.sizeOf(rawPortion)
+        ? ''
+        : rawPortion;
     final reactions = _foodReactions[doc.id];
     final estimate = data['food_estimate'] == true;
     // Only you see that there's a note (tap the food to read it).
@@ -2645,6 +2655,13 @@ class _HomePageState extends State<HomePage>
       },
     );
     if (plan == null) return null;
+    // "About 910 kcal for dinner" when 910 is all that's left just says
+    // "910 left" again: only shown when it splits things up.
+    if (plan.meals.length == 1 &&
+        plan.snackReserve == 0 &&
+        (plan.perMeal - left).abs() <= 10) {
+      return null;
+    }
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -2775,10 +2792,6 @@ class _HomePageState extends State<HomePage>
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
-      // Tutorials, bottom-left so it never sits under the Coach button.
-      // It hides itself once you've watched a couple.
-      floatingActionButton: ownHome ? const TutorialButton() : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       body: Column(
         children: [
           if (widget.showBanner) _buildBanner(context),
@@ -2787,7 +2800,7 @@ class _HomePageState extends State<HomePage>
               onRefresh: _refreshAfterChange,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.only(top: topGap, bottom: ownHome ? 96 : 48),
+                padding: EdgeInsets.only(top: topGap, bottom: ownHome ? 72 : 48),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -2893,6 +2906,11 @@ class _HomePageState extends State<HomePage>
                             const SizedBox(width: 8),
                             StreakPill(userId: _activeUserId),
                           ],
+                          // Tutorials sit here rather than floating over the
+                          // food list; gone once a couple have been watched.
+                          if (ownHome)
+                            const TutorialButton(
+                                padding: EdgeInsets.only(left: 8)),
                         ],
                       ),
                     ),

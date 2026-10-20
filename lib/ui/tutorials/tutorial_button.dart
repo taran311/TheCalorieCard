@@ -6,7 +6,8 @@ import 'package:namer_app/ui/tutorials/tutorial_player.dart';
 import 'package:namer_app/ui/tutorials/tutorial_scripts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Tutorials button on the Card screen that opens the tutorials.
+/// Tutorials button on the Card screen (in the row with the day and
+/// streak, so it never covers the food list) that opens the tutorials.
 ///
 /// The first time someone sees it, it's a labelled pill with a pulsing
 /// ring so it gets noticed; once they've opened it, it settles into a small
@@ -14,7 +15,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// (they stay in Profile via [showTutorialsSheet]), so it stops covering
 /// the list for people who already know their way round.
 class TutorialButton extends StatefulWidget {
-  const TutorialButton({super.key});
+  /// Around the button while it shows (nothing once it's gone).
+  final EdgeInsetsGeometry padding;
+
+  const TutorialButton({super.key, this.padding = EdgeInsets.zero});
 
   @override
   State<TutorialButton> createState() => _TutorialButtonState();
@@ -150,7 +154,9 @@ class _TutorialButtonState extends State<TutorialButton>
       ),
     );
 
-    return Tooltip(
+    return Padding(
+      padding: widget.padding,
+      child: Tooltip(
       message: 'Tutorials',
       child: AnimatedBuilder(
         animation: _pulse,
@@ -182,6 +188,7 @@ class _TutorialButtonState extends State<TutorialButton>
           );
         },
         child: button,
+      ),
       ),
     );
   }
