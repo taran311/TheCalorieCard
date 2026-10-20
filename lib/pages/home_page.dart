@@ -2688,10 +2688,8 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  /// One-tap chips for what you usually have at this meal.
-  /// "Again": one row of one-tap re-logging for the meal it's time for.
-  /// Yesterday's whole meal first (when this meal's still empty), then your
-  /// usual foods for it.
+  /// "Again for {meal}": one-tap chips for what you usually have at the
+  /// meal you're adding to. (Yesterday's whole meal is in each empty meal.)
   Widget? _buildUsuals() {
     // Already had it for this meal today? Don't suggest it again.
     String key(Object? name) => '${name ?? ''}'.trim().toLowerCase();
@@ -2708,11 +2706,8 @@ class _HomePageState extends State<HomePage>
             for (final u in _usuals)
               if (!had.contains(key(u.name))) u
           ];
-    final yesterday = inMeal.isEmpty && _canEditToday
-        ? _yesterdayFor(_addMeal)
-        : const <Map<String, dynamic>>[];
-    if (usuals.isEmpty && yesterday.isEmpty) return null;
-    final yesterdayKcal = BalanceService.totalOf(yesterday).calories.round();
+    // "Same as yesterday" lives in each empty meal below, not here.
+    if (usuals.isEmpty) return null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2729,24 +2724,10 @@ class _HomePageState extends State<HomePage>
           height: 48,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: usuals.length + (yesterday.isEmpty ? 0 : 1),
+            itemCount: usuals.length,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
-              if (yesterday.isNotEmpty && index == 0) {
-                return Center(
-                  child: ActionChip(
-                    avatar:
-                        Icon(Icons.history, size: 16, color: AppText.primary),
-                    label: Text(
-                        'Same as yesterday · ${formatCardKcal(yesterdayKcal)} kcal'),
-                    tooltip: "Log yesterday's ${_addMeal.toLowerCase()} again",
-                    onPressed: _copyingYesterday
-                        ? null
-                        : () => _copyYesterday(_addMeal, yesterday),
-                  ),
-                );
-              }
-              final usual = usuals[index - (yesterday.isEmpty ? 0 : 1)];
+              final usual = usuals[index];
               return Center(
                 child: ActionChip(
                   avatar: Icon(Icons.add, size: 16, color: AppText.primary),
@@ -2903,11 +2884,10 @@ class _HomePageState extends State<HomePage>
     final visible = _visibleIn(meal);
     final canEdit = _canEditSelectedDay;
     // An empty meal on your own today is just its header, or, if you had
-    // it yesterday, one "Same as yesterday" link. (Not for the meal in the
-    // "Again for…" row above, which already offers it.)
+    // it yesterday, one "Same as yesterday" link: the same for every meal.
     final emptyToday =
         visible.isEmpty && _isOwnCard && _isSelectedDateToday;
-    final copy = emptyToday && _canEditToday && meal != _addMeal
+    final copy = emptyToday && _canEditToday
         ? _yesterdayFor(meal)
         : const <Map<String, dynamic>>[];
 
