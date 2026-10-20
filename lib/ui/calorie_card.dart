@@ -499,12 +499,18 @@ class _BalanceTickerState extends State<BalanceTicker>
       clipBehavior: Clip.none,
       alignment: Alignment.centerRight,
       children: [
-        TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: _from ?? target, end: target),
-          duration: still ? Duration.zero : const Duration(milliseconds: 650),
-          curve: Curves.easeOutCubic,
-          builder: (context, value, _) => _number(value),
-        ),
+        // Only today's live card rolls; a past day (no memory key) just
+        // shows its number, so switching days never looks like spending.
+        if (widget.memoryKey == null)
+          _number(target)
+        else
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: _from ?? target, end: target),
+            duration:
+                still ? Duration.zero : const Duration(milliseconds: 650),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, _) => _number(value),
+          ),
         // "−412 kcal" rising off the balance.
         Positioned(
           right: 0,
