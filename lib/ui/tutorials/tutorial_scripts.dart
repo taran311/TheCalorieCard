@@ -872,10 +872,11 @@ final List<Tutorial> tutorials = [
         target: 'card',
       ),
       TStep(
-        title: 'Swipe your card',
-        body: "When you've finished eating, swipe your card sideways.",
-        target: 'card',
-        act: TAct.swipe,
+        title: 'Close today',
+        body: "When you've finished eating, tap Close today. After 8pm, "
+            'your inbox reminds you too.',
+        target: 'closeButton',
+        act: TAct.tap,
         apply: (s) => s.showCloseDialog = true,
         focus: 'closeDay',
       ),

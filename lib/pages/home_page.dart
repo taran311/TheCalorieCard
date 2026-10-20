@@ -461,7 +461,8 @@ class _HomePageState extends State<HomePage>
   AnimationController? _cardDragResetController;
   double _dragEndDx = 0;
   bool _isResettingCard = false;
-  bool _pendingSwipePrompt = false;
+  /// A card swipe that went far enough: -1 back a day, 1 forward, 0 none.
+  int _pendingSwipeDays = 0;
   bool _isDeletingItem = false;
 
   // Food input
@@ -620,9 +621,9 @@ class _HomePageState extends State<HomePage>
     super.dispose();
   }
 
-  Future<void> _resetCardPosition({required bool promptAfterReset}) async {
+  Future<void> _resetCardPosition({int changeDays = 0}) async {
     if (_cardDragResetController == null) return;
-    _pendingSwipePrompt = promptAfterReset;
+    _pendingSwipeDays = changeDays;
     _dragEndDx = _cardDragDx;
     // Reduce motion: snap back instead of sliding.
     if (!MediaQuery.of(context).disableAnimations) {
@@ -635,9 +636,14 @@ class _HomePageState extends State<HomePage>
       _isResettingCard = false;
       _cardDragDx = 0;
     });
-    if (_pendingSwipePrompt) {
-      _pendingSwipePrompt = false;
-      await _handleCardSwipe();
+    final days = _pendingSwipeDays;
+    _pendingSwipeDays = 0;
+    if (days != 0) {
+      final next = BalanceService.addDays(_selectedLogDate, days);
+      // Never past today (the arrows can't go there either).
+      if (days > 0 && next.isAfter(BalanceService.now())) return;
+      HapticFeedback.selectionClick();
+      await _changeDay(next);
     }
   }
 
@@ -954,16 +960,6 @@ class _HomePageState extends State<HomePage>
     return result ?? false;
   }
 
-  /// The card was swiped: close today, or reopen it if it's closed.
-  Future<void> _handleCardSwipe() async {
-    // A frozen (rest day) card can't be closed; Unfreeze is under it.
-    if (_isRestDay) return;
-    if (_isDayFinished) {
-      await _reopenDay();
-    } else {
-      await _closeDay();
-    }
-  }
 
   Future<void> _reopenDay() async {
     if (_isUpdatingDailyLog) return;
@@ -983,7 +979,7 @@ class _HomePageState extends State<HomePage>
     MyStreak.load(_activeUserId, force: true);
   }
 
-  /// Closes today (from the Close today button, a card swipe, the inbox
+  /// Closes today (from the Close today button, the inbox
   /// or the card's "Close day" accessibility action).
   Future<void> _closeDay() async {
     if (_isUpdatingDailyLog) return;
@@ -2064,12 +2060,16 @@ class _HomePageState extends State<HomePage>
               _cardDragDx += details.delta.dx;
             });
           },
-          onHorizontalDragEnd: (_) {
-            final shouldPrompt = _cardDragDx.abs() > 40;
-            _resetCardPosition(promptAfterReset: shouldPrompt);
+          // Swipe like turning a page: right for the day before, left
+          // for the day after (as the arrows above). A quick flick counts.
+          onHorizontalDragEnd: (details) {
+            final v = details.primaryVelocity ?? 0;
+            final far = _cardDragDx.abs() > 60 || v.abs() > 600;
+            final dir = (_cardDragDx.abs() > 8 ? _cardDragDx : v).sign;
+            _resetCardPosition(changeDays: far ? -dir.toInt() : 0);
           },
           child: Semantics(
-            // Swiping isn't available to everyone: same actions here.
+            // Close and reopen right from the card for screen readers.
             customSemanticsActions: !_isOwnCard || !_isSelectedDateToday
                 ? null
                 : {

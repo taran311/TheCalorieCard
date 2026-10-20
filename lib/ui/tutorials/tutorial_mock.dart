@@ -498,6 +498,19 @@ class MockApp extends StatelessWidget {
                 ),
               ),
             ),
+            if (!s.dayClosed && s.foods.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _mark(
+                  'closeButton',
+                  _fakeButton(
+                      icon: Icons.task_alt_rounded,
+                      label: 'Close today',
+                      filled: false),
+                ),
+              ),
+            ],
             if (s.dayClosed) ...[
               const SizedBox(height: 12),
               _mark(

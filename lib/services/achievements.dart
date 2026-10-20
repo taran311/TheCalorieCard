@@ -80,7 +80,7 @@ class Achievements {
     Achievement(
       id: 'first_finish',
       title: 'First Statement',
-      description: 'Finish your first day (swipe the card at the end of the day).',
+      description: 'Close your first day (Close today, at the end of the day).',
       emoji: '🧾',
       category: AchievementCategory.gettingStarted,
       tier: AchievementTier.bronze,

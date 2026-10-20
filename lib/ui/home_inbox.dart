@@ -341,6 +341,10 @@ class _HomeInboxState extends State<HomeInbox> {
   List<_InboxCard> _items({bool narrow = false}) {
     final items = <_InboxCard>[];
     final uid = widget.userId;
+    final offerClose = BalanceService.now().hour >= 20 &&
+        !widget.isDayFinished &&
+        widget.hasFoodToday &&
+        !_hiddenToday('finish_day');
 
     // A newer version is live (the website): first, and it can't be put
     // off, so nobody stays on an old version the server has moved on from.
@@ -373,6 +377,31 @@ class _HomeInboxState extends State<HomeInbox> {
           _InboxAction(
               'Close yesterday', () => _run('late_close', _closeYesterday),
               primary: true),
+        ],
+        stacked: narrow,
+      ));
+    }
+
+    // In the evening, closing the day comes before everything except the
+    // two above, so it's never hidden behind a low-balance note.
+    final profile0 = _profile;
+    final isTodays = profile0 != null &&
+        profile0['balance_date'] ==
+            BalanceService.dateKey(BalanceService.now());
+    final leftToday =
+        isTodays ? BalanceService.number(profile0['calories']) : null;
+    if (offerClose) {
+      items.add(_InboxCard(
+        icon: Icons.nightlight_round,
+        color: AppColors.indigo700,
+        title: 'Close today?',
+        subtitle: leftToday != null && leftToday >= 0
+            ? '${leftToday.round()} kcal left. Closed days count towards '
+                'your streak.'
+            : 'Closed days count towards your streak and challenges.',
+        actions: [
+          _InboxAction('Later', () => _hideToday('finish_day')),
+          _InboxAction('Close today', widget.onFinishDay, primary: true),
         ],
         stacked: narrow,
       ));
@@ -429,7 +458,9 @@ class _HomeInboxState extends State<HomeInbox> {
           goal > 0 &&
           left <= goal * 0.1 &&
           widget.hasFoodToday &&
-          !widget.isDayFinished) {
+          !widget.isDayFinished &&
+          // In the evening "Close today?" already says what's left.
+          !offerClose) {
         items.add(_InboxCard(
           icon: Icons.battery_alert,
           color: AppColors.amber700,
@@ -531,23 +562,6 @@ class _HomeInboxState extends State<HomeInbox> {
                         'Profile → Evening reminder.')));
                 return null;
               }), primary: true),
-        ],
-        stacked: narrow,
-      ));
-    }
-
-    if (BalanceService.now().hour >= 20 &&
-        !widget.isDayFinished &&
-        widget.hasFoodToday &&
-        !_hiddenToday('finish_day')) {
-      items.add(_InboxCard(
-        icon: Icons.nightlight_round,
-        color: AppColors.indigo700,
-        title: 'Finish your day?',
-        subtitle: 'Finished days count towards streaks and challenges.',
-        actions: [
-          _InboxAction('Later', () => _hideToday('finish_day')),
-          _InboxAction('Finish day', widget.onFinishDay, primary: true),
         ],
         stacked: narrow,
       ));
