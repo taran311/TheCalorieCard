@@ -790,7 +790,7 @@ class GamesService {
       earns = true;
       final sameDay = games is Map && games[dayField] == day;
       final count = sameDay
-          ? (BalanceService.number((games as Map)[countField]) ?? 0).round()
+          ? (BalanceService.number(games[countField]) ?? 0).round()
           : 0;
       tx.set(
         ref,

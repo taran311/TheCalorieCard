@@ -98,6 +98,7 @@ enum SpendCategory {
     'milkshake', 'shake', 'red bull', 'monster', 'lucozade', 'energy drink',
     'squash', 'water', 'kombucha', 'oat milk', 'glass of milk', 'pint',
     'seltzer', 'tonic', 'ginger beer', 'ginger ale', 'root beer',
+    'nosecco', 'mocktail', 'virgin mojito', 'shirley temple',
   ];
 
   static const _snacks = [

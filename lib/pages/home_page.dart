@@ -408,10 +408,6 @@ class _HomePageState extends State<HomePage>
 
   // Category totals tracking
   bool _showMacrosTotal = false;
-  int _totalCalories = 0;
-  double _totalProtein = 0.0;
-  double _totalCarbs = 0.0;
-  double _totalFat = 0.0;
 
   /// The day's food couldn't be loaded: show Retry, not "Nothing yet".
   bool _foodLoadFailed = false;
@@ -695,7 +691,7 @@ class _HomePageState extends State<HomePage>
         !Navigator.of(context, rootNavigator: true).canPop();
 
     Future.delayed(const Duration(milliseconds: 700), () {
-      if (!onScreen()) return;
+      if (!mounted || !onScreen()) return;
       final shell = ShellTourScope.maybeOf(context);
       // Kept short: the four things you need on day one. Same id as
       // before, so anyone who's seen it doesn't get it again.
@@ -1378,16 +1374,11 @@ class _HomePageState extends State<HomePage>
           if (ta == null || tb == null) return 0;
           return ta.compareTo(tb);
         });
-      final mealTotals = BalanceService.totalOf(mealDocs.map((d) => d.data()));
 
       setState(() {
         _foodLoadFailed = false;
         _foodDocs = mealDocs;
         _dayTotals = BalanceService.totalOf(dayDocs.map((d) => d.data()));
-        _totalCalories = mealTotals.calories.round();
-        _totalProtein = mealTotals.protein;
-        _totalCarbs = mealTotals.carbs;
-        _totalFat = mealTotals.fat;
         _foodMacrosVisibility
           ..clear()
           ..addEntries(mealDocs.map((d) => MapEntry(d.id, _showMacrosTotal)));
@@ -1400,10 +1391,6 @@ class _HomePageState extends State<HomePage>
         _foodLoadFailed = true;
         _foodDocs = [];
         _dayTotals = Macros.zero;
-        _totalCalories = 0;
-        _totalProtein = 0;
-        _totalCarbs = 0;
-        _totalFat = 0;
         _foodMacrosVisibility.clear();
       });
     }
@@ -1789,14 +1776,6 @@ class _HomePageState extends State<HomePage>
         Breakpoints.tablet;
   }
 
-  /// True when the desktop Today panel (with its macro bars) is beside
-  /// the page; same rule as the shell (real window width).
-  bool get _todayPanelShowing {
-    final view = View.of(context);
-    return view.physicalSize.width / view.devicePixelRatio >=
-        Breakpoints.wide;
-  }
-
   /// Makes [meal] the one Add food / recipes log to.
   void _useMeal(String meal) {
     Provider.of<CategoryService>(context, listen: false)
@@ -1965,17 +1944,6 @@ class _HomePageState extends State<HomePage>
       _showMacrosTotal = showMacros;
       for (var doc in _foodDocs) {
         _foodMacrosVisibility[doc.id] = showMacros;
-      }
-    });
-  }
-
-  /// The meal header was tapped: switch between kcal and macros.
-  void _toggleMacros() {
-    setState(() {
-      _showMacrosTotal = !_showMacrosTotal;
-      // Flip all food items to match.
-      for (var doc in _foodDocs) {
-        _foodMacrosVisibility[doc.id] = _showMacrosTotal;
       }
     });
   }

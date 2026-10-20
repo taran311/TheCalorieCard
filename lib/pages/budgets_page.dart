@@ -40,7 +40,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
   /// The last 4 weeks, for "you usually have about…" in the limit dialog.
   late final Future<List<DaySummary>> _history = _uid == null
       ? Future.value(const <DaySummary>[])
-      : StatementService.load(_uid!, days: 28, withLogs: false)
+      : StatementService.load(_uid, days: 28, withLogs: false)
           .then((s) => s.days)
           .catchError((_) => const <DaySummary>[]);
   int _token = 0;

@@ -38,7 +38,7 @@ class Analytics {
     final last = _lastActive;
     final newDay = last == null ||
         BalanceService.dateKey(last) != BalanceService.dateKey(now);
-    if (!newDay && now.difference(last!) < const Duration(minutes: 10)) {
+    if (!newDay && now.difference(last) < const Duration(minutes: 10)) {
       return;
     }
     _lastActive = now;

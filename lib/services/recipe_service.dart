@@ -29,7 +29,7 @@ class RecipeService {
 
   static Map<String, dynamic> totalsOf(List<RecipeIngredient> ingredients) {
     final total = ingredients.fold<Macros>(
-        Macros.zero, (sum, ing) => sum + ing.macros);
+        Macros.zero, (total, ing) => total + ing.macros);
     return {
       'total_calories': total.calories,
       'total_protein': total.protein,

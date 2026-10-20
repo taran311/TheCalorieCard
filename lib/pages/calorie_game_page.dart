@@ -1344,7 +1344,7 @@ class _CalorieGamePageState extends State<CalorieGamePage> {
   /// button is on the banner above.
   Widget _pickIntro(CalorieGame game) {
     final name = game.nameOf(game.opponentOf(_uid));
-    final rounds = CalorieGameService.rounds;
+    const rounds = CalorieGameService.rounds;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppDecor.card,

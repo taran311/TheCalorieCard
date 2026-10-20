@@ -65,7 +65,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
     } else if (recent) {
       // One went out moments ago: Resend waits out the rest of the minute.
       _startResendCooldown(
-          seconds: 60 - DateTime.now().difference(last!).inSeconds);
+          seconds: 60 - DateTime.now().difference(last).inSeconds);
     }
     _sentSignal.addListener(_onSentElsewhere);
     // Back from the email app or another tab: check straight away.

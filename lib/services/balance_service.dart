@@ -286,7 +286,7 @@ class BalanceService {
   }
 
   static Macros totalOf(Iterable<Map<String, dynamic>> entries) =>
-      entries.fold(Macros.zero, (sum, e) => sum + Macros.fromEntry(e));
+      entries.fold(Macros.zero, (total, e) => total + Macros.fromEntry(e));
 
   /// Sum of calories/macros logged today (local time).
   static Future<Macros> todaysTotals(String userId) async {
@@ -540,7 +540,7 @@ class BalanceService {
     final ids = <String>[];
     // On an earlier day: that day, at this time of day.
     final time = past
-        ? DateTime(day!.year, day.month, day.day, current.hour,
+        ? DateTime(day.year, day.month, day.day, current.hour,
             current.minute, current.second)
         : current;
     for (final e in entries) {

@@ -29,7 +29,7 @@ class _WeightPageState extends State<WeightPage> {
 
   /// Created once; the page rebuilds from it as weigh-ins change.
   late final Stream<List<WeighIn>>? _history =
-      _uid == null ? null : WeightService.watch(_uid!);
+      _uid == null ? null : WeightService.watch(_uid);
 
   Map<String, dynamic>? _profile;
   bool _loadingProfile = true;

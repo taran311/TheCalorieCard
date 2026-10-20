@@ -33,7 +33,7 @@ class _AchievementsPageState extends State<AchievementsPage> {
   late Stream<DocumentSnapshot<Map<String, dynamic>>>? _stream = _open();
 
   Stream<DocumentSnapshot<Map<String, dynamic>>>? _open() =>
-      _uid == null ? null : AchievementService.streamUserAchievements(_uid!);
+      _uid == null ? null : AchievementService.streamUserAchievements(_uid);
 
   void _retry() {
     setState(() => _stream = _open());

@@ -46,7 +46,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
   final TextEditingController _freeTextController = TextEditingController();
   final List<String> _freeTextIngredients = [];
   bool _calculatingAi = false;
-  bool _isAiLoading = false;
   bool _tutorialMode = false;
 
   /// The recipe as it was when the page opened (or finished loading), so

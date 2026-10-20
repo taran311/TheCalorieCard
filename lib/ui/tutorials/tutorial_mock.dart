@@ -459,7 +459,7 @@ class MockApp extends StatelessWidget {
     final now = DateTime.now();
     final date =
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}';
-    final meals = const ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+    const meals = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 
     return LayoutBuilder(builder: (context, c) {
       final w = (c.maxWidth - 32).clamp(200.0, 380.0).toDouble();

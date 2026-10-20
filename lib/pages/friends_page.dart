@@ -2083,6 +2083,7 @@ class _ShortcutTile extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.note,
+    // ignore: unused_element_parameter
     this.highlighted = false,
   });
 

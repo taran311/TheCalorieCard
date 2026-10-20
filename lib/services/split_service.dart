@@ -33,7 +33,7 @@ class BillSplit {
   });
 
   double get calories => items.fold(
-      0, (sum, i) => sum + (BalanceService.number(i['calories']) ?? 0));
+      0, (total, i) => total + (BalanceService.number(i['calories']) ?? 0));
 
   /// 'pending', 'accepted' or 'declined' for people the bill was split
   /// with; 'none' for anyone else (so they can't accept it).
@@ -202,5 +202,5 @@ class SplitService {
   /// Total calories in one share (what each person, you included, logs).
   static double shareCalories(List<Map<String, dynamic>> items, int people) =>
       shareOf(items, people).fold(
-          0.0, (sum, i) => sum + (BalanceService.number(i['calories']) ?? 0));
+          0.0, (total, i) => total + (BalanceService.number(i['calories']) ?? 0));
 }

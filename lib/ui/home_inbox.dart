@@ -482,6 +482,7 @@ class _HomeInboxState extends State<HomeInbox> {
             _InboxAction('Move to card', () => _run('pot', () async {
                   await BalanceService.spendPot(uid);
                   widget.onBalanceChanged();
+                  return null;
                 }, done: 'Pot moved onto your card'), primary: true),
           ],
         ));
@@ -547,6 +548,7 @@ class _HomeInboxState extends State<HomeInbox> {
           _InboxAction('No thanks', () => _run('reminder', () async {
                 await NotificationService.dismissOffer();
                 if (mounted) setState(() => _offerReminder = false);
+                return null;
               })),
           _InboxAction('Turn on', () => _run('reminder', () async {
                 final error = await NotificationService.enable();

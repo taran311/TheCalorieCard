@@ -281,7 +281,7 @@ class _StatementCalendarState extends State<StatementCalendar> {
           future
               ? 'not yet'
               : logged
-                  ? '${formatKcal(summary?.calories ?? 0)} kcal so far'
+                  ? '${formatKcal(summary.calories)} kcal so far'
                   : 'nothing logged',
         ),
     };

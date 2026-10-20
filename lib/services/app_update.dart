@@ -32,6 +32,8 @@ class AppUpdate {
 
   static Timer? _timer;
   static AppLifecycleListener? _lifecycle;
+  // Kept so the listener has an owner; it works by being registered.
+  // ignore: unused_field
   static AppLifecycleListener? _visibility;
   static DateTime? _lastCheck;
   static DateTime? _hiddenAt;

@@ -260,7 +260,7 @@ class ChallengeService {
 
   /// Total protein (grams) in logged `user_food` entries.
   static double proteinFrom(Iterable<Map<String, dynamic>> entries) =>
-      entries.fold(0.0, (sum, e) => sum + Macros.fromEntry(e).protein);
+      entries.fold(0.0, (total, e) => total + Macros.fromEntry(e).protein);
 
   /// Distinct days with something logged before [earlyHour] (local time).
   static int earlyDaysFrom(Iterable<Map<String, dynamic>> entries) {

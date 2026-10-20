@@ -35,7 +35,7 @@ class _StatementPageState extends State<StatementPage> {
 
   /// Full days only, so it doesn't change during the day: loaded once.
   late Future<WeekDigest>? _digest =
-      _uid == null ? null : StatementService.weekDigest(_uid!);
+      _uid == null ? null : StatementService.weekDigest(_uid);
 
   /// The profile (pot and any "spread it over the week" plan).
   Map<String, dynamic>? _profile;
@@ -753,7 +753,7 @@ class _ThisWeekCard extends StatelessWidget {
     final spreading = plan != null && !plan.endedBefore(today);
     if (pot <= 0 && !spreading) return const SizedBox.shrink();
     final left = spreading
-        ? plan!.daysAfter(today) + (plan.activeOn(today) ? 1 : 0)
+        ? plan.daysAfter(today) + (plan.activeOn(today) ? 1 : 0)
         : 0;
     Widget line(String emoji, String text, {Widget? trailing}) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -782,7 +782,7 @@ class _ThisWeekCard extends StatelessWidget {
             if (spreading)
               line(
                 '⚖️',
-                'Spreading a big day: ${plan!.perDay} kcal less a day, '
+                'Spreading a big day: ${plan.perDay} kcal less a day, '
                     '$left day${left == 1 ? '' : 's'} to go',
               ),
           ],

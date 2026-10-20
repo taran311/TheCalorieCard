@@ -174,7 +174,7 @@ class _PotsPageState extends State<PotsPage> {
                           : const Duration(milliseconds: 900),
                       curve: Curves.easeOutCubic,
                       builder: (context, v, _) {
-                        final cap = BalanceService.potWeeklyCap;
+                        const cap = BalanceService.potWeeklyCap;
                         final fill = cap <= 0 ? 0.0 : (v / cap).clamp(0.0, 1.0);
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

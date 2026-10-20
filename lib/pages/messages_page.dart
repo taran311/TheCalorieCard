@@ -512,7 +512,7 @@ class _MessagesPageState extends State<MessagesPage> {
         });
       }
     } catch (_) {
-      _chatFailed(context);
+      if (context.mounted) _chatFailed(context);
       return;
     }
 
@@ -565,7 +565,7 @@ class _MessagesPageState extends State<MessagesPage> {
         }
       }
     } catch (_) {
-      _chatFailed(context);
+      if (context.mounted) _chatFailed(context);
       return;
     }
 
