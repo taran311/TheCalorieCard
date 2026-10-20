@@ -457,8 +457,11 @@ class _HomePageState extends State<HomePage>
   AnimationController? _cardDragResetController;
   double _dragEndDx = 0;
   bool _isResettingCard = false;
-  /// A card swipe that went far enough: -1 back a day, 1 forward, 0 none.
-  int _pendingSwipeDays = 0;
+  /// Changing day: the card slides out one side and the new day's card in
+  /// from the other (added to the drag offset).
+  AnimationController? _slideController;
+  final ValueNotifier<double> _slideDx = ValueNotifier(0);
+  bool _sliding = false;
   bool _isDeletingItem = false;
 
   // Food input
@@ -494,6 +497,7 @@ class _HomePageState extends State<HomePage>
       vsync: this,
       duration: const Duration(milliseconds: 200),
     );
+    _slideController = AnimationController(vsync: this);
 
     _initializeHome();
     FoodLog.changed.addListener(_onFoodLogChanged);
@@ -614,12 +618,13 @@ class _HomePageState extends State<HomePage>
     _midnightTimer?.cancel();
     _jiggleAnimationController?.dispose();
     _cardDragResetController?.dispose();
+    _slideController?.dispose();
+    _slideDx.dispose();
     super.dispose();
   }
 
-  Future<void> _resetCardPosition({int changeDays = 0}) async {
+  Future<void> _resetCardPosition() async {
     if (_cardDragResetController == null) return;
-    _pendingSwipeDays = changeDays;
     _dragEndDx = _cardDragDx;
     // Reduce motion: snap back instead of sliding.
     if (!MediaQuery.of(context).disableAnimations) {
@@ -632,14 +637,74 @@ class _HomePageState extends State<HomePage>
       _isResettingCard = false;
       _cardDragDx = 0;
     });
-    final days = _pendingSwipeDays;
-    _pendingSwipeDays = 0;
-    if (days != 0) {
-      final next = BalanceService.addDays(_selectedLogDate, days);
-      // Never past today (the arrows can't go there either).
-      if (days > 0 && next.isAfter(BalanceService.now())) return;
-      HapticFeedback.selectionClick();
+  }
+
+  /// Moves [_slideDx] from [from] to [to].
+  Future<void> _slideBetween(
+      double from, double to, int ms, Curve curve) async {
+    final c = _slideController;
+    if (c == null) return;
+    c.duration = Duration(milliseconds: ms);
+    final anim =
+        Tween(begin: from, end: to).chain(CurveTween(curve: curve)).animate(c);
+    void tick() => _slideDx.value = anim.value;
+    c.addListener(tick);
+    try {
+      await c.forward(from: 0).orCancel;
+    } catch (_) {
+      // Stopped (the page closed): nothing to finish.
+    } finally {
+      c.removeListener(tick);
+    }
+  }
+
+  /// Back ([days] -1) or forward (1) a day, like turning a page: the card
+  /// leaves on one side and the new day's arrives from the other.
+  /// (Forward from today springs back: there's nothing after it.)
+  Future<void> _slideToDay(int days) async {
+    if (_sliding) return;
+    final next = BalanceService.addDays(_selectedLogDate, days);
+    if (days > 0 && next.isAfter(BalanceService.now())) {
+      await _resetCardPosition();
+      return;
+    }
+    HapticFeedback.selectionClick();
+    if (MediaQuery.of(context).disableAnimations) {
+      setState(() => _cardDragDx = 0);
       await _changeDay(next);
+      return;
+    }
+    _sliding = true;
+    try {
+      final width = MediaQuery.sizeOf(context).width;
+      // Yesterday lives to the left, so going back the card leaves right.
+      final out = days < 0 ? width : -width;
+      // Carry on from wherever the finger let go.
+      final start = _cardDragDx;
+      setState(() => _cardDragDx = 0);
+      await _slideBetween(start, out, 140, Curves.easeIn);
+      if (!mounted) return;
+      final loading = _changeDay(next);
+      await _slideBetween(-out, 0, 220, Curves.easeOutCubic);
+      await loading;
+    } finally {
+      _slideDx.value = 0;
+      _sliding = false;
+    }
+  }
+
+  /// The ‹ › arrows: one day either way slides like a swipe; a date picked
+  /// from the calendar just switches.
+  Future<void> _stepToDay(DateTime day) async {
+    final from = DateTime(
+        _selectedLogDate.year, _selectedLogDate.month, _selectedLogDate.day);
+    final to = DateTime(day.year, day.month, day.day);
+    // Rounded, so a clocks-change day (23 or 25 hours) still counts as one.
+    final delta = (to.difference(from).inHours / 24).round();
+    if (delta == 1 || delta == -1) {
+      await _slideToDay(delta);
+    } else {
+      await _changeDay(day);
     }
   }
 
@@ -2002,28 +2067,37 @@ class _HomePageState extends State<HomePage>
         animation: Listenable.merge([
           _jiggleAnimationController!,
           _cardDragResetController!,
+          _slideDx,
         ]),
         builder: (context, child) {
           final resetValue = _cardDragResetController?.value ?? 0.0;
-          final effectiveDx = _isResettingCard
-              ? _dragEndDx * (1 - Curves.easeOut.transform(resetValue))
-              : _cardDragDx;
-          return Transform.translate(
-            offset: Offset(effectiveDx, 0),
-            child: Transform.rotate(
-              angle: _jiggleAnimation?.value ?? 0.0,
-              child: child,
+          final effectiveDx = (_isResettingCard
+                  ? _dragEndDx * (1 - Curves.easeOut.transform(resetValue))
+                  : _cardDragDx) +
+              _slideDx.value;
+          // While changing day the card is clipped to its own space, so
+          // on a wide screen it doesn't slide across the side panels.
+          return ClipRect(
+            clipBehavior: _sliding ? Clip.hardEdge : Clip.none,
+            child: Transform.translate(
+              offset: Offset(effectiveDx, 0),
+              child: Transform.rotate(
+                angle: _jiggleAnimation?.value ?? 0.0,
+                child: child,
+              ),
             ),
           );
         },
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onHorizontalDragStart: (_) {
+            if (_sliding) return;
             _cardDragDx = 0;
             _cardDragResetController?.stop();
             _isResettingCard = false;
           },
           onHorizontalDragUpdate: (details) {
+            if (_sliding) return;
             setState(() {
               _cardDragDx += details.delta.dx;
             });
@@ -2031,10 +2105,15 @@ class _HomePageState extends State<HomePage>
           // Swipe like turning a page: right for the day before, left
           // for the day after (as the arrows above). A quick flick counts.
           onHorizontalDragEnd: (details) {
+            if (_sliding) return;
             final v = details.primaryVelocity ?? 0;
             final far = _cardDragDx.abs() > 60 || v.abs() > 600;
             final dir = (_cardDragDx.abs() > 8 ? _cardDragDx : v).sign;
-            _resetCardPosition(changeDays: far ? -dir.toInt() : 0);
+            if (far && dir != 0) {
+              _slideToDay(-dir.toInt());
+            } else {
+              _resetCardPosition();
+            }
           },
           child: Semantics(
             // Close and reopen right from the card for screen readers.
@@ -3000,7 +3079,7 @@ class _HomePageState extends State<HomePage>
                           Expanded(
                             child: DayStepper(
                               selected: _selectedLogDate,
-                              onChanged: _changeDay,
+                              onChanged: _stepToDay,
                             ),
                           ),
                           if (_isOwnCard) ...[
