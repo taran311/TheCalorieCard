@@ -15,6 +15,7 @@ import 'package:namer_app/services/recipe_import.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/premium_sheet.dart';
 import 'package:namer_app/pages/recipe_import_page.dart';
+import 'package:namer_app/pages/barcode_scan_page.dart';
 import 'package:image_picker/image_picker.dart';
 
 class AddRecipePage extends StatefulWidget {
@@ -522,14 +523,26 @@ class _AddRecipePageState extends State<AddRecipePage> {
                           const SizedBox(height: 8),
                           _buildFreeTextInput(),
                           const SizedBox(height: 4),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: TextButton.icon(
-                              icon: const Icon(Icons.document_scanner_outlined),
-                              label: const Text(
-                                  'Import from a screenshot or photo'),
-                              onPressed: _importFromImage,
-                            ),
+                          Wrap(
+                            spacing: 4,
+                            children: [
+                              TextButton.icon(
+                                icon: const Icon(Icons.qr_code_scanner),
+                                label: Text(_scanningIngredient
+                                    ? 'Looking it up…'
+                                    : 'Scan a barcode'),
+                                onPressed: _scanningIngredient
+                                    ? null
+                                    : _scanIngredient,
+                              ),
+                              TextButton.icon(
+                                icon: const Icon(
+                                    Icons.document_scanner_outlined),
+                                label: const Text(
+                                    'Import from a screenshot or photo'),
+                                onPressed: _importFromImage,
+                              ),
+                            ],
                           ),
                           if (_ingredients.isNotEmpty) ...[
                             const SizedBox(height: 16),
@@ -1257,6 +1270,50 @@ class _AddRecipePageState extends State<AddRecipePage> {
         ],
       ],
     );
+  }
+
+  bool _scanningIngredient = false;
+
+  /// Scans a packaged ingredient's barcode and adds it, then opens its
+  /// amount so the grams actually used can be typed straight in (a pack's
+  /// numbers are usually per 100g or per serving).
+  Future<void> _scanIngredient() async {
+    final code = await Navigator.of(context, rootNavigator: true).push<String>(
+      MaterialPageRoute(builder: (_) => const BarcodeScanPage()),
+    );
+    if (code == null || code.isEmpty || !mounted) return;
+    setState(() => _scanningIngredient = true);
+    try {
+      final r = await FoodResolver.fromBarcode(code);
+      if (!mounted) return;
+      if (r == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text("We couldn't find that product. Type it in instead.")));
+        return;
+      }
+      final portion = r.portion.isEmpty ? '1 serving' : r.portion;
+      setState(() {
+        _ingredients.add(_IngredientEntry(
+          name: r.name,
+          calories: r.calories,
+          protein: r.protein,
+          carbs: r.carbs,
+          fat: r.fat,
+          portion: portion,
+        ));
+      });
+      _startEditingIngredient(_ingredients.length - 1, portion);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Added ${r.name}. Set how much the recipe uses.')));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Couldn't look that barcode up. Try again.")));
+      }
+    } finally {
+      if (mounted) setState(() => _scanningIngredient = false);
+    }
   }
 
   /// Reads a recipe from screenshots or photos (another app, a website, a

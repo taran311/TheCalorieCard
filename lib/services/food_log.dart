@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:namer_app/services/achievement_service.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/food_resolver.dart';
 import 'package:namer_app/services/portion_amount.dart';
 
 /// What was just logged, so the screen that asked can offer Undo.
@@ -165,6 +166,9 @@ class FoodLog {
           if (item['source'] != null) 'food_source': '${item['source']}',
           if (item['needs_review'] == true || item['source'] == 'ai')
             'food_estimate': true,
+          // Added with its quick estimate; [upgradeWhenReady] fills in
+          // the real numbers.
+          if (item['upgrade_query'] != null) 'food_estimate_first': true,
         }
     ];
     final ids = await BalanceService.logEntries(uid, entries, day: logDay);
@@ -333,7 +337,51 @@ class FoodLog {
       'food_base': scaled.toEntryFields(),
       'food_portion_base': newPortion,
       'food_multiplier': 1.0,
+      // Its numbers are now for the new amount: a label answer still on
+      // its way (for the old amount) mustn't replace them.
+      'food_estimate_first': false,
     };
+  }
+
+  /// A food added with its quick estimate while its full lookup was still
+  /// checking the label: once the real answer is in, the entry gets its
+  /// numbers (the card is charged or refunded the difference). Left alone
+  /// if the person has changed it since (fixed the calories, looked it up
+  /// again) or deleted it. Fire-and-forget.
+  static void upgradeWhenReady(String entryId, String query,
+      {String? userId}) {
+    final pending = FoodResolver.inFlight[query];
+    if (pending == null) return;
+    pending.then((r) async {
+      if (r == null || r.preliminary || r.calories <= 0) return;
+      final snap =
+          await BalanceService.db.collection('user_food').doc(entryId).get();
+      final entry = snap.data();
+      if (!snap.exists || entry == null) return;
+      if (entry['food_edited'] == true || entry['food_estimate_first'] != true) {
+        return;
+      }
+      final base = baseOf(entry);
+      final same = (base.calories - r.calories).abs() < 1 &&
+          (base.protein - r.protein).abs() < 0.5 &&
+          (base.carbs - r.carbs).abs() < 0.5 &&
+          (base.fat - r.fat).abs() < 0.5;
+      if (same) return;
+      await replaceWithLookup(
+        entryId,
+        entry: entry,
+        one: Macros(
+          calories: r.calories,
+          protein: r.protein,
+          carbs: r.carbs,
+          fat: r.fat,
+        ),
+        portion: r.portion,
+        source: r.source,
+        estimate: r.needsReview,
+        userId: userId,
+      );
+    }).catchError((_) {});
   }
 
   /// Swaps a logged food's numbers for a fresh lookup ("Numbers look
@@ -370,6 +418,7 @@ class FoodLog {
         'food_source': source,
         'food_estimate': estimate,
         'food_edited': false,
+        'food_estimate_first': false,
       },
     );
     notifyChanged();

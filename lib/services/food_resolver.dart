@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:namer_app/services/food_country.dart';
@@ -17,6 +18,10 @@ class ResolvedFood {
   final String source;
   final double confidence;
 
+  /// A quick first answer (the AI's estimate) while the full lookup is
+  /// still checking the label; see [FoodResolver.resolveAll].
+  final bool preliminary;
+
   const ResolvedFood({
     required this.query,
     required this.name,
@@ -27,6 +32,7 @@ class ResolvedFood {
     required this.fat,
     required this.source,
     required this.confidence,
+    this.preliminary = false,
   });
 
   bool get fromDatabase => source == 'fatsecret';
@@ -119,8 +125,30 @@ class FoodResolver {
     if (response.statusCode != 200) {
       throw Exception('Lookup failed (${response.statusCode})');
     }
-    final j = json.decode(response.body) as Map<String, dynamic>;
+    return _fromJson(query, json.decode(response.body) as Map<String, dynamic>);
+  }
 
+  /// A quick first answer while [resolve] is still working: the AI's
+  /// estimate, or the real answer if the food was looked up before (then
+  /// not [ResolvedFood.preliminary]). Null if there isn't one yet.
+  static Future<ResolvedFood?> estimate(String query) async {
+    try {
+      await FoodCountry.ensureLoaded();
+      final response = await ProxyClient.post('/food/estimate', {
+        'food': query,
+        'country': FoodCountry.code,
+      }).timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) return null;
+      final j = json.decode(response.body) as Map<String, dynamic>;
+      final r = _fromJson(query, j, preliminary: j['final'] != true);
+      return r.calories > 0 ? r : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static ResolvedFood _fromJson(String query, Map<String, dynamic> j,
+      {bool preliminary = false}) {
     final mode = j['mode'];
     String portion = '';
     if (mode == 'serving' && j['serving_description'] != null) {
@@ -141,8 +169,18 @@ class FoodResolver {
       fat: _n(j['fat']),
       source: (j['source'] ?? 'ai').toString(),
       confidence: j['confidence'] is num ? _n(j['confidence']) : 0.7,
+      preliminary: preliminary,
     );
   }
+
+  /// Full lookups started by [resolveAll], by query, until they finish
+  /// (and a little after): so a food added with its estimate can get its
+  /// real numbers once they're in, even after Add food has closed.
+  static final Map<String, Future<ResolvedFood?>> inFlight = {};
+
+  /// After this long without an answer, [resolveAll] asks for a quick
+  /// estimate to show meanwhile.
+  static const estimateAfter = Duration(milliseconds: 2500);
 
   /// Where a looked-up answer came from (not a person's own numbers).
   static const lookupSources = {
@@ -170,16 +208,43 @@ class FoodResolver {
   /// Looks up several foods at once (a few at a time, to stay well inside
   /// the server's rate limit of 30 a minute). Results keep the input
   /// order; failures are returned as null.
+  ///
+  /// With [onEstimate], a food still being looked up after [estimateAfter]
+  /// gets a quick estimate first (shown while the label is checked); its
+  /// real answer still arrives through [onResult].
   static Future<List<ResolvedFood?>> resolveAll(
     List<String> queries, {
     int concurrency = 5,
     Set<String> refresh = const {},
     void Function(int done, int total)? onProgress,
     void Function(int index, ResolvedFood? result)? onResult,
+    void Function(int index, ResolvedFood estimate)? onEstimate,
   }) async {
     final results = List<ResolvedFood?>.filled(queries.length, null);
+    final finished = List<bool>.filled(queries.length, false);
+    final completers = [
+      for (final _ in queries) Completer<ResolvedFood?>(),
+    ];
+    for (var i = 0; i < queries.length; i++) {
+      inFlight[queries[i]] = completers[i].future;
+    }
     var next = 0;
     var done = 0;
+
+    Timer? estimates;
+    if (onEstimate != null) {
+      estimates = Timer(estimateAfter, () {
+        for (var i = 0; i < queries.length; i++) {
+          if (finished[i]) continue;
+          final index = i;
+          estimate(queries[i]).then((e) {
+            // (Not preliminary when it had been looked up before: then
+            // it's the real answer, arriving early.)
+            if (e != null && !finished[index]) onEstimate(index, e);
+          });
+        }
+      });
+    }
 
     Future<void> worker() async {
       while (true) {
@@ -191,6 +256,8 @@ class FoodResolver {
         } catch (_) {
           results[i] = null;
         }
+        finished[i] = true;
+        completers[i].complete(results[i]);
         done++;
         onResult?.call(i, results[i]);
         onProgress?.call(done, queries.length);
@@ -200,6 +267,15 @@ class FoodResolver {
     await Future.wait([
       for (var w = 0; w < concurrency && w < queries.length; w++) worker(),
     ]);
+    estimates?.cancel();
+    // Kept a little while for foods added with their estimate.
+    Timer(const Duration(minutes: 2), () {
+      for (var i = 0; i < queries.length; i++) {
+        if (identical(inFlight[queries[i]], completers[i].future)) {
+          inFlight.remove(queries[i]);
+        }
+      }
+    });
     return results;
   }
 

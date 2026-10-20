@@ -35,9 +35,18 @@ class _PendingItem {
   bool failed = false;
   int? score;
 
+  /// A quick first answer while the label's still being checked.
+  ResolvedFood? estimate;
+
+  /// Its answer is in, and it's moved to "Ready to add".
+  bool moved = false;
+
   _PendingItem(this.query);
 
   bool get settled => result != null || failed;
+
+  /// Still being looked up (not moved, not failed).
+  bool get waiting => !moved && !failed;
 }
 
 class AddFoodPage extends StatefulWidget {
@@ -622,7 +631,20 @@ class _AddFoodPageState extends State<AddFoodPage> {
 
   double get _totalCalories {
     return _calculatedItems.fold(
-        0.0, (total, item) => total + (item['calories'] as num).toDouble());
+            0.0, (total, item) => total + (item['calories'] as num).toDouble()) +
+        _pending.fold(
+            0.0,
+            (total, p) => p.waiting && p.estimate != null
+                ? total + p.estimate!.calories
+                : total);
+  }
+
+  /// Everything still being looked up has at least an estimate, and
+  /// there's something to add: Add works now, without waiting.
+  bool get _canAddNow {
+    final waiting = [for (final p in _pending) if (p.waiting) p];
+    if (waiting.any((p) => p.estimate == null)) return false;
+    return _calculatedItems.isNotEmpty || waiting.isNotEmpty;
   }
 
   double get _totalProtein {
@@ -841,7 +863,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       queries,
       refresh: fresh,
       onResult: (i, r) {
-        if (!mounted || i >= _pending.length) return;
+        if (!mounted || _saving || i >= _pending.length) return;
         setState(() {
           final p = _pending[i];
           if (r == null) {
@@ -853,8 +875,24 @@ class _AddFoodPageState extends State<AddFoodPage> {
               // Shown now; it only counts once the food is actually logged.
               p.score = CalorieSense.score(guess, r.calories);
             }
+            // Ready straight away: no waiting for the slowest food.
+            _calculatedItems.add({
+              ..._itemFromResolved(r),
+              if (p.guess != null) 'guess': p.guess,
+              if (p.score != null) 'guess_score': p.score,
+            });
+            p.moved = true;
           }
         });
+      },
+      // Taking a while (usually a brand's label being checked online):
+      // the AI's estimate meanwhile, so there's something to see and the
+      // food can be added now.
+      onEstimate: (i, e) {
+        if (!mounted || _saving || i >= _pending.length) return;
+        final p = _pending[i];
+        if (p.settled) return;
+        setState(() => p.estimate = e);
       },
       onProgress: (done, _) {
         if (mounted) setState(() => _progressDone = done);
@@ -870,15 +908,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
         if (p.result == null) p.query
     ];
     setState(() {
-      for (final p in _pending) {
-        final r = p.result;
-        if (r == null) continue;
-        _calculatedItems.add({
-          ..._itemFromResolved(r),
-          if (p.guess != null) 'guess': p.guess,
-          if (p.score != null) 'guess_score': p.score,
-        });
-      }
+      // (Each answer moved to "Ready to add" as it arrived.)
       // Anything that failed stays in the list so it can be retried
       // (alongside anything typed while the lookups ran).
       _ingredients.addAll(failed);
@@ -1207,7 +1237,27 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       fontWeight: FontWeight.w700, color: AppColors.ink),
                 ),
                 const SizedBox(height: 4),
-                if (r != null)
+                if (r == null && p.estimate != null && !p.failed)
+                  Row(
+                    children: [
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 1.5),
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'Estimate for now · checking the label',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.muted),
+                        ),
+                      ),
+                    ],
+                  )
+                else if (r != null)
                   Text(
                     [r.name, if (r.portion.isNotEmpty) r.portion].join(' · '),
                     maxLines: 1,
@@ -1241,6 +1291,21 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   ),
               ],
             )
+          else if (!settled && p.estimate != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('~${p.estimate!.calories.round()} kcal',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800, color: AppColors.ink)),
+                if (guess != null)
+                  Text('Your guess: ${guess.round()}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppText.primaryDark)),
+              ],
+            )
           else if (!settled && guess == null)
             TextButton.icon(
               onPressed: () => _guess(p),
@@ -1260,11 +1325,22 @@ class _AddFoodPageState extends State<AddFoodPage> {
   Future<void> _saveItems() async {
     // _saving is set before the first await, so a double tap can't log
     // the same food twice.
-    if (_calculatedItems.isEmpty || _saving || _calculating) return;
+    if (_saving || !_canAddNow) return;
 
     final items = [
-      for (final item in _calculatedItems) Map<String, dynamic>.from(item)
+      for (final item in _calculatedItems) Map<String, dynamic>.from(item),
+      // Still being checked: added with the estimate, and the real numbers
+      // follow once they're in (FoodLog.upgradeWhenReady).
+      for (final p in _pending)
+        if (p.waiting && p.estimate != null)
+          {
+            ..._itemFromResolved(p.estimate!),
+            'name': p.query,
+            'needs_review': true,
+            'upgrade_query': p.query,
+          },
     ];
+    if (items.isEmpty) return;
     final category =
         Provider.of<CategoryService>(context, listen: false).selectedCategory;
     setState(() {
@@ -1293,6 +1369,10 @@ class _AddFoodPageState extends State<AddFoodPage> {
       final logged = await FoodLog.logFoods(items: items, meal: category);
       _slowSaveTimer?.cancel();
       _recordGuesses(items);
+      for (var i = 0; i < items.length && i < logged.ids.length; i++) {
+        final q = items[i]['upgrade_query'];
+        if (q is String) FoodLog.upgradeWhenReady(logged.ids[i], q);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -1339,6 +1419,12 @@ class _AddFoodPageState extends State<AddFoodPage> {
       onPressed = null;
       icon = spinner;
       label = _slowSave ? 'Still saving… check your connection' : 'Adding…';
+    } else if (_calculating && _canAddNow && !_hasInput) {
+      // The rest are estimates being checked: add now, the real numbers
+      // follow on their own.
+      onPressed = _saveItems;
+      icon = const Icon(Icons.check_circle_outline, size: 20);
+      label = 'Add ~${_totalCalories.round()} kcal to $meal';
     } else if (_calculating) {
       onPressed = null;
       icon = spinner;
@@ -1807,7 +1893,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Pending ($_progressDone/$_progressTotal settled) · '
+                            'Looking up ($_progressDone/$_progressTotal done) · '
                             'guess the calories while you wait',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700,
@@ -1817,7 +1903,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    for (final p in _pending) _buildPendingRow(p),
+                    for (final p in _pending)
+                      if (!p.moved) _buildPendingRow(p),
                   ],
                   if (_calculatedItems.isNotEmpty) ...[
                     const SizedBox(height: 16),
