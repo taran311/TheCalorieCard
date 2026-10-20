@@ -2352,6 +2352,24 @@ class _HomePageState extends State<HomePage>
   /// Empty meals stay small so the whole day fits on screen. On your own
   /// today, just the header (its + is the way in, and "Again" under Add
   /// food has yesterday's meal).
+  /// "Same as yesterday · 612 kcal" inside an empty meal.
+  Widget _yesterdayLink(String meal, List<Map<String, dynamic>> entries) {
+    final kcal = BalanceService.totalOf(entries).calories.round();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 2, 6, 2),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed:
+              _copyingYesterday ? null : () => _copyYesterday(meal, entries),
+          style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
+          icon: const Icon(Icons.history, size: 18),
+          label: Text('Same as yesterday · ${formatCardKcal(kcal)} kcal'),
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptyMeal(String meal) {
     if (_isOwnCard && _isSelectedDateToday) return const SizedBox(height: 4);
     final text = !_isSelectedDateToday
@@ -2884,6 +2902,14 @@ class _HomePageState extends State<HomePage>
   Widget _buildFoodPanel(String meal) {
     final visible = _visibleIn(meal);
     final canEdit = _canEditSelectedDay;
+    // An empty meal on your own today is just its header, or, if you had
+    // it yesterday, one "Same as yesterday" link. (Not for the meal in the
+    // "Again for…" row above, which already offers it.)
+    final emptyToday =
+        visible.isEmpty && _isOwnCard && _isSelectedDateToday;
+    final copy = emptyToday && _canEditToday && meal != _addMeal
+        ? _yesterdayFor(meal)
+        : const <Map<String, dynamic>>[];
 
     return Container(
       decoration: AppDecor.card,
@@ -2892,8 +2918,13 @@ class _HomePageState extends State<HomePage>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildMealHeader(meal, visible),
-          Divider(height: 1, thickness: 1, color: AppColors.border),
-          if (visible.isEmpty)
+          if (!emptyToday || copy.isNotEmpty)
+            Divider(height: 1, thickness: 1, color: AppColors.border),
+          if (emptyToday)
+            if (copy.isNotEmpty) _yesterdayLink(meal, copy)
+            else
+              const SizedBox.shrink()
+          else if (visible.isEmpty)
             _buildEmptyMeal(meal)
           else
             for (var i = 0; i < visible.length; i++) ...[
@@ -2901,7 +2932,7 @@ class _HomePageState extends State<HomePage>
                 Divider(height: 1, thickness: 1, color: AppColors.border),
               _buildFoodRow(visible[i], canEdit),
             ],
-          const SizedBox(height: 8),
+          if (!emptyToday) const SizedBox(height: 8),
         ],
       ),
     );
