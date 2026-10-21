@@ -213,23 +213,27 @@ class _AddFoodPageState extends State<AddFoodPage> {
   /// this" if it was an estimate.
   Map<String, dynamic> _itemFromHistory(CardTransaction tx,
       {String source = 'recent', bool onePortion = false}) {
-    final m = onePortion && tx.multiplier > 0 ? tx.multiplier : 1.0;
-    return {
-      'name': tx.description,
+    // Keep the amount it was logged at ("1.67 × 30g serving") as a
+    // multiple of one portion, so changing it goes from the real amount:
+    // ×0.5 is half of 30g, not "0.5 × 1.67 × 30g". [onePortion]: start
+    // from a single portion instead.
+    final m = tx.multiplier > 0 ? tx.multiplier : 1.0;
+    final take = onePortion ? 1.0 : m;
+    final one = {
       'calories': tx.calories / m,
       'protein': tx.protein / m,
       'carbs': tx.carbs / m,
       'fat': tx.fat / m,
+    };
+    return {
+      'name': tx.description,
+      for (final e in one.entries) e.key: e.value * take,
       'portion': onePortion ? tx.basePortion : tx.portion,
+      'base_portion': tx.basePortion,
       'source': source,
       'needs_review': onePortion && tx.estimate,
-      'multiplier': 1.0,
-      'base': {
-        'calories': tx.calories / m,
-        'protein': tx.protein / m,
-        'carbs': tx.carbs / m,
-        'fat': tx.fat / m,
-      },
+      'multiplier': take,
+      'base': one,
     };
   }
 
@@ -480,9 +484,11 @@ class _AddFoodPageState extends State<AddFoodPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      multiplier == 1.0
+                      // "×1.67" only when the amount under it doesn't
+                      // already say so ("1.67 × 30g serving").
+                      (multiplier - 1).abs() < 1e-9 || portion.contains('×')
                           ? item['name'].toString()
-                          : '${item['name']}  ×${multiplier == multiplier.roundToDouble() ? multiplier.toStringAsFixed(0) : multiplier}',
+                          : '${item['name']}  ×${FoodLog.formatAmount(multiplier)}',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 15,

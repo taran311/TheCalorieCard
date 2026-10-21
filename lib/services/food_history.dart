@@ -31,9 +31,12 @@ class FoodHistory {
     ]);
   }
 
-  /// Same food, same portion: one suggestion.
+  /// Same food, same kind of portion: one suggestion. Compared by one
+  /// portion ("30g serving"), so "1.67 × 30g serving" and "30g serving" of
+  /// the same food are one chip (the latest amount is the one offered).
   static String keyOf(CardTransaction tx) =>
-      '${tx.description.trim().toLowerCase()}|${tx.portion.trim().toLowerCase()}';
+      '${tx.description.trim().toLowerCase()}|'
+      '${tx.basePortion.trim().toLowerCase()}';
 
   /// Up to [limit] foods to offer again for [meal]: the ones logged most
   /// often for that meal first, then the most recent. Each food appears

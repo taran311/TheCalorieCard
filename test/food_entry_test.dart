@@ -119,6 +119,41 @@ void main() {
       expect(lunch.last.portion, '2 bowls');
     });
 
+    test('the same food at another amount of the same portion is one chip',
+        () {
+      final pistachios = [
+        CardTransaction(
+          id: 'a',
+          description: 'Amazon Pistachios',
+          portion: '1.67 × 30g serving',
+          basePortion: '30g serving',
+          multiplier: 1.67,
+          category: 'Snacks',
+          time: day,
+          calories: 290,
+          protein: 10,
+          carbs: 8,
+          fat: 23,
+        ),
+        CardTransaction(
+          id: 'b',
+          description: 'Amazon Pistachios',
+          portion: '30g serving',
+          category: 'Snacks',
+          time: day.subtract(const Duration(days: 1)),
+          calories: 174,
+          protein: 6,
+          carbs: 5,
+          fat: 14,
+        ),
+      ];
+      final ranked = FoodHistory.rankForMeal(pistachios, 'Snacks');
+      expect(ranked, hasLength(1));
+      // The latest amount is the one offered.
+      expect(ranked.single.calories, 290);
+      expect(FoodHistory.search(pistachios, 'pistach'), hasLength(1));
+    });
+
     test('search matches part of the name, ignoring case, each food once',
         () {
       final hits = FoodHistory.search(foods, 'PORR');
