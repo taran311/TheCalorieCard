@@ -22,8 +22,9 @@ class _IntroPageState extends State<IntroPage> {
   static const _slides = [
     (
       title: 'Treat calories like money',
-      body: 'Your card gets a fresh balance every day. Everything you eat and '
-          'drink is spent from it, so you always know what\'s left.',
+      body: 'Your card lives in the app and gets a fresh balance every day. '
+          'Everything you eat and drink is spent from it, so you always know '
+          'what\'s left.',
     ),
     (
       title: 'Log food in seconds',
