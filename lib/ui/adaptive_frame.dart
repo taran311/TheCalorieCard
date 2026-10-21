@@ -119,7 +119,7 @@ class _BrandPanel extends StatelessWidget {
               ),
               const SizedBox(height: 48),
               const Text(
-                'Spend calories\nlike currency.',
+                'Treat calories\nlike money.',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 48,
@@ -130,8 +130,8 @@ class _BrandPanel extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               Text(
-                'Your daily budget lives on a card. Describe what you ate in '
-                'plain words and watch the balance update.',
+                'Your daily calories live on a card in the app. Type what you '
+                'ate in plain words and watch the balance update.',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.9),
                   fontSize: 17,
@@ -147,7 +147,7 @@ class _BrandPanel extends StatelessWidget {
               ),
               const _Benefit(
                 icon: Icons.account_balance_wallet_outlined,
-                text: 'A fresh balance every morning: calories, protein, '
+                text: 'A fresh balance every day: calories, protein, '
                     'carbs and fat.',
               ),
               const _Benefit(

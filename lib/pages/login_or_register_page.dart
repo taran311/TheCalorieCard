@@ -3,6 +3,7 @@ import 'package:namer_app/pages/intro_page.dart';
 import 'package:namer_app/pages/login_page.dart';
 import 'package:namer_app/pages/register_page.dart';
 import 'package:namer_app/ui/auth_ui.dart';
+import 'package:namer_app/ui/responsive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Sign-in and sign-up share this spot; the switch fades between them.
@@ -95,16 +96,25 @@ class _LoginOrRegisterPageState extends State<LoginOrRegisterPage> {
     });
   }
 
+  /// On a wide window the brand panel beside the form already says what
+  /// the app is, so the intro slides would repeat it. Measured on the whole
+  /// window: this page itself sits in a phone-width panel there.
+  bool _brandPanelShowing(BuildContext context) {
+    final window = MediaQueryData.fromView(View.of(context)).size;
+    return window.width >= Breakpoints.desktop;
+  }
+
   @override
   Widget build(BuildContext context) {
     final login = showLoginPage;
+    final intro = _showIntro && !_brandPanelShowing(context);
     return AnimatedSwitcher(
       duration: MediaQuery.of(context).disableAnimations
           ? Duration.zero
           : const Duration(milliseconds: 220),
       child: login == null
           ? const AuthSplash(key: ValueKey('splash'))
-          : _showIntro
+          : intro
               ? IntroPage(
                   key: const ValueKey('intro'),
                   onCreate: () => _leaveIntro(login: false),
