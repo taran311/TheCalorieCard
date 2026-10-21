@@ -58,9 +58,9 @@ class _IntroPageState extends State<IntroPage> {
   }
 
   Widget _picture(int i) => switch (i) {
-        0 => const ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 340),
-            child: CalorieCardPreview(cardholder: 'YOUR NAME'),
+        0 => ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 340),
+            child: const CalorieCardPreview(cardholder: 'YOUR NAME'),
           ),
         1 => const _LoggingPicture(),
         _ => const _FriendsPicture(),
