@@ -203,3 +203,84 @@ Map<String, dynamic> withSafeLoseTarget(
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Goal weight and pace ("lose 0.5 kg a week, reach 70 kg by 14 March")
+// ---------------------------------------------------------------------------
+
+/// Roughly how many calories a kilo of body weight holds: a 550 kcal a day
+/// deficit is about 0.5 kg a week.
+const double kcalPerKg = 7700;
+
+/// How fast to lose or gain.
+enum GoalPace {
+  relaxed(0.25, 'Relaxed'),
+  steady(0.5, 'Steady'),
+  faster(0.75, 'Faster');
+
+  final double kgPerWeek;
+  final String label;
+  const GoalPace(this.kgPerWeek, this.label);
+
+  /// The paces offered for [mode]: gaining tops out at Steady (lean gain).
+  static List<GoalPace> forMode(String? mode) =>
+      mode == 'gain' ? const [relaxed, steady] : values;
+
+  /// The saved `goal_pace` (kg a week) as a pace, or [steady].
+  static GoalPace from(Object? kgPerWeek, {String? mode}) {
+    final v = kgPerWeek is num ? kgPerWeek.toDouble() : null;
+    for (final p in forMode(mode)) {
+      if (v != null && (p.kgPerWeek - v).abs() < 0.01) return p;
+    }
+    return steady;
+  }
+}
+
+/// The daily calorie goal for [mode] at [kgPerWeek]: maintenance minus (or
+/// plus) the energy in that much weight. "Lose" never goes below [floor]
+/// (see [safeMinimumCalories]).
+int paceCalories(double maintenance, String? mode, double kgPerWeek,
+    {double? floor}) {
+  if (mode == 'maintain') return maintenance.round();
+  final delta = kgPerWeek * kcalPerKg / 7;
+  if (mode == 'gain') return (maintenance + delta).round();
+  final lose = maintenance - delta;
+  if (floor != null && floor.isFinite && lose < floor) return floor.round();
+  return lose.round();
+}
+
+/// How fast [calories] a day really moves you, given [maintenance] (it can
+/// be slower than the pace picked when the safe floor kicks in).
+double kgPerWeekAt(double maintenance, num calories) =>
+    (maintenance - calories).abs() * 7 / kcalPerKg;
+
+/// Whether [goalKg] is the right way from [currentKg] for [mode].
+bool goalWeightFits(String? mode, double currentKg, double goalKg) =>
+    switch (mode) {
+      'lose' => goalKg < currentKg - 0.05,
+      'gain' => goalKg > currentKg + 0.05,
+      _ => false,
+    };
+
+/// The lowest healthy weight for [heightCm] (a BMI of 18.5). Goals below
+/// it aren't offered.
+double minHealthyKg(double heightCm) {
+  final m = heightCm / 100;
+  return 18.5 * m * m;
+}
+
+/// When [goalKg] is reached from [fromKg] at [kgPerWeek], starting [start].
+/// Null without a pace, or if it's more than five years away.
+DateTime? goalReachedBy({
+  required double fromKg,
+  required double goalKg,
+  required double kgPerWeek,
+  required DateTime start,
+}) {
+  if (!kgPerWeek.isFinite || kgPerWeek < 0.01) return null;
+  final diff = (goalKg - fromKg).abs();
+  if (diff < 0.05) return start;
+  final days = (diff / kgPerWeek * 7).ceil();
+  if (days > 365 * 5) return null;
+  return DateTime(start.year, start.month, start.day + days);
+}

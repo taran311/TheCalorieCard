@@ -148,6 +148,10 @@ class _WeightPageState extends State<WeightPage> {
     try {
       final doc = await BalanceService.userDataDoc(uid);
       final data = doc?.data();
+      final goalKg = asDouble(data?['goal_weight']);
+      final mode = data?['calorie_mode'];
+      final reached = goalKg != null &&
+          ((mode == 'lose' && kg <= goalKg) || (mode == 'gain' && kg >= goalKg));
       final currentGoals = data == null ? null : BalanceService.goalsFrom(data);
       if (doc != null && data != null) {
         Macros? newGoals;
@@ -167,6 +171,10 @@ class _WeightPageState extends State<WeightPage> {
           done = 'Weight and goal saved. Your card is up to date.';
         } else {
           await doc.reference.update({'weight': Units.storeKg(kg)});
+        }
+        if (reached) {
+          done = "🎉 You've reached your goal weight! Set a new goal in "
+              'Profile → Goals and profile.';
         }
       }
     } catch (_) {
@@ -192,9 +200,14 @@ class _WeightPageState extends State<WeightPage> {
       exerciseLevel: asDouble(data['exercise_level']) ?? 0,
     );
     if (base == null || !base.isFinite || base <= 0) return null;
-    final suggested = suggestedCalorieGoal(
+    // Your own number (or Coach's) isn't second-guessed.
+    if (data['goal_source'] == 'manual') return null;
+    final m = mode is String ? mode : null;
+    // The same sums as Goals and profile: your pace from your new weight.
+    final suggested = paceCalories(
       base,
-      mode is String ? mode : null,
+      m,
+      GoalPace.from(data['goal_pace'], mode: m).kgPerWeek,
       floor: _floorFor(kg),
     );
     if (suggested < 500 || suggested > 10000) return null;

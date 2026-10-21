@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:namer_app/ui/responsive.dart';
-import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/components/measurement_input_field.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/main_shell.dart';
@@ -17,125 +16,203 @@ import 'package:namer_app/services/weight_service.dart';
 import 'package:namer_app/ui/body_inputs.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/card_reveal.dart';
-import 'dart:convert';
+import 'package:namer_app/ui/profile_editors.dart';
 
+/// Setting up a new card, one question per screen: about you, your goal
+/// (with a goal weight and pace), then your plan and "Print my card".
 class GetStartedPage extends StatefulWidget {
-  GetStartedPage({
-    super.key,
-  });
+  GetStartedPage({super.key});
 
   @override
   State<GetStartedPage> createState() => _GetStartedPageState();
 }
 
+enum _Step { sex, age, height, weight, activity, goal, target, pace, plan }
+
 class _GetStartedPageState extends State<GetStartedPage> {
-  final user = FirebaseAuth.instance.currentUser!;
-
-  double _exerciseLevel = 0;
-
-  /// Shown under the activity slider. Display only: the value sent to the
-  /// server comes from [_getExerciseLevelText].
-  static const List<String> _exerciseLabels = [
-    'No exercise',
-    'Light: 1–3 hours a week',
-    'Moderate: 4–6 hours a week',
-    'Active: 7–9 hours a week',
-    'Very active: 10+ hours a week',
-  ];
-
-  String get _exerciseText {
-    final i = _exerciseLevel.round();
-    if (i < 0 || i >= _exerciseLabels.length) return _exerciseLabels.first;
-    return _exerciseLabels[i];
-  }
-  int? _selectedAge;
-  final TextEditingController _ageController = TextEditingController();
-  late FocusNode _ageFocusNode;
-
-  int? calorieDeficit = 0;
-  int? calorieMaintenance = 0;
-  int? calorieSurplus = 0;
-  int? cardActiveCalories = 0;
-  String? calorieMode = 'lose'; // Default to match calorieSelections
-
-  List<bool> genderSelections = [true, false];
-  List<bool> calorieSelections = [true, false, false];
-
-  /// Always cm and kg; [_units] only changes what's shown.
-  double? _selectedHeight;
-  double? _selectedWeight;
+  // About you
+  bool? _male;
+  int? _age;
+  final _ageController = TextEditingController();
+  double? _heightCm;
+  double? _weightKg;
+  double? _activity;
 
   /// kg/cm or stones/pounds/feet. Starts from the device's country.
   UnitPrefs _units = UnitPrefs.forCountry(
       WidgetsBinding.instance.platformDispatcher.locale.countryCode);
 
-  // Macro input fields
-  /// Keeps the macro split while a calorie goal is typed.
-  final _scaler = MacroScaler();
-  int? _proteinGoal;
-  final TextEditingController _proteinController = TextEditingController();
-  late FocusNode _proteinFocusNode;
+  // Goal
+  String? _mode;
+  double? _goalKg;
+  GoalPace _pace = GoalPace.steady;
 
-  int? _carbsGoal;
-  final TextEditingController _carbsController = TextEditingController();
-  late FocusNode _carbsFocusNode;
+  // Plan
+  bool _ownCalories = false;
+  final _caloriesController = TextEditingController();
+  int? _manualCalories;
 
-  int? _fatsGoal;
-  final TextEditingController _fatsController = TextEditingController();
-  late FocusNode _fatsFocusNode;
+  /// Macros once they've been changed; until then a default split of the
+  /// plan's calories.
+  ({int p, int c, int f})? _macros;
+  bool _editingMacros = false;
 
-  // AI estimation state
-  bool _isEstimatingWithAI = false;
-  bool _canEstimateWithAI = false;
-  Map<String, dynamic>? _lastAIData;
+  int _index = 0;
+  bool _goingBack = false;
 
-  /// AI targets per goal ('lose', 'maintain', 'gain') from Coach, so
-  /// switching goal keeps Coach's macros.
-  Map<String, dynamic>? _aiTargets;
-
-  /// "Set my own" instead of "Calculate for me".
-  bool _ownMode = false;
-  final TextEditingController _manualCalorieController =
-      TextEditingController();
-  int? _manualCalorieGoal;
+  /// A tapped option is about to move on: ignore a second tap meanwhile.
+  bool _advancing = false;
+  bool _finishing = false;
 
   @override
   void initState() {
     super.initState();
     // Wake the lookup server early (it sleeps when idle).
     ProxyClient.warmUp();
-    _ageFocusNode = FocusNode();
-    _proteinFocusNode = FocusNode();
-    _carbsFocusNode = FocusNode();
-    _fatsFocusNode = FocusNode();
   }
 
   @override
   void dispose() {
-    _ageFocusNode.dispose();
-    _proteinFocusNode.dispose();
-    _carbsFocusNode.dispose();
-    _fatsFocusNode.dispose();
     _ageController.dispose();
-    _proteinController.dispose();
-    _carbsController.dispose();
-    _fatsController.dispose();
-    _manualCalorieController.dispose();
+    _caloriesController.dispose();
     super.dispose();
   }
 
-  final date = DateTime.now().add(const Duration(days: 31));
+  List<_Step> get _steps => [
+        _Step.sex,
+        _Step.age,
+        _Step.height,
+        _Step.weight,
+        _Step.activity,
+        _Step.goal,
+        if (_mode == 'lose' || _mode == 'gain') ...[_Step.target, _Step.pace],
+        _Step.plan,
+      ];
 
-  bool _finishingSetup = false;
+  _Step get _step => _steps[_index.clamp(0, _steps.length - 1)];
+
+  // --- Numbers ---------------------------------------------------------------
+
+  double? get _maintenance => maintenanceCalories(
+        age: _age,
+        heightCm: _heightCm,
+        weightKg: _weightKg,
+        male: _male ?? true,
+        exerciseLevel: _activity ?? 0,
+      );
+
+  double get _floor => safeMinimumCalories(
+        male: _male ?? true,
+        resting: restingCalories(
+          age: _age,
+          heightCm: _heightCm,
+          weightKg: _weightKg,
+          male: _male ?? true,
+        ),
+      );
+
+  int get _planCalories {
+    if (_ownCalories) return _manualCalories ?? 0;
+    final m = _maintenance;
+    if (m == null || !m.isFinite || m <= 0) return 0;
+    return paceCalories(m, _mode, _pace.kgPerWeek, floor: _floor);
+  }
+
+  ({int p, int c, int f}) get _planMacros {
+    final set = _macros;
+    if (set != null) return set;
+    final m = defaultMacrosFor(_planCalories);
+    return (p: m.protein.round(), c: m.carbs.round(), f: m.fat.round());
+  }
+
+  bool get _hasGoalWeight => _mode == 'lose' || _mode == 'gain';
+
+  /// Why this goal weight can't be used, or null if it's fine.
+  String? get _goalProblem {
+    final g = _goalKg;
+    final w = _weightKg;
+    if (g == null || w == null) return null;
+    if (!ProfileLimits.weightOk(g)) return Units.weightRangeMessage(_units);
+    if (!goalWeightFits(_mode, w, g)) {
+      return _mode == 'lose'
+          ? 'Your goal needs to be below your weight now '
+              '(${Units.formatWeight(w, _units)}).'
+          : 'Your goal needs to be above your weight now '
+              '(${Units.formatWeight(w, _units)}).';
+    }
+    final h = _heightCm;
+    if (_mode == 'lose' && h != null && g < minHealthyKg(h)) {
+      return "That's below a healthy weight for your height "
+          '(${Units.formatWeight(minHealthyKg(h), _units)}). Try a goal at '
+          'or above it.';
+    }
+    return null;
+  }
+
+  bool get _canContinue => switch (_step) {
+        _Step.sex => _male != null,
+        _Step.age => ProfileLimits.ageOk(_age),
+        _Step.height => ProfileLimits.heightOk(_heightCm),
+        _Step.weight => ProfileLimits.weightOk(_weightKg),
+        _Step.activity => _activity != null,
+        _Step.goal => _mode != null,
+        _Step.target => _goalKg != null && _goalProblem == null,
+        _Step.pace => true,
+        _Step.plan => _planCalories >= 500 && _planCalories <= 10000,
+      };
+
+  // --- Navigation ------------------------------------------------------------
+
+  void _next() {
+    if (!_canContinue) return;
+    if (_step == _Step.plan) {
+      _finishSetup();
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    HapticFeedback.selectionClick();
+    setState(() {
+      _goingBack = false;
+      _index = (_index + 1).clamp(0, _steps.length - 1);
+    });
+  }
+
+  void _back() {
+    if (_index == 0) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _goingBack = true;
+      _index--;
+    });
+  }
+
+  /// Picking an option moves straight on (nothing else to do there).
+  void _pickThenNext(VoidCallback pick) {
+    if (_advancing) return;
+    setState(pick);
+    _advancing = true;
+    Future.delayed(const Duration(milliseconds: 180), () {
+      _advancing = false;
+      if (mounted) _next();
+    });
+  }
+
+  Future<void> _signOutAndLeave() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AuthPage()),
+      (route) => false,
+    );
+  }
+
+  // --- Saving ----------------------------------------------------------------
 
   Future<void> saveData() async {
     final userId = FirebaseAuth.instance.currentUser!.uid;
-
-    final finalCalories = _ownMode ? _manualCalorieGoal : cardActiveCalories;
-
-    if (finalCalories == null || finalCalories <= 0) {
-      throw StateError('No calorie goal set');
-    }
+    final calories = _planCalories;
+    if (calories <= 0) throw StateError('No calorie goal set');
+    final macros = _planMacros;
 
     // One profile per user. If a previous attempt got as far as creating
     // it, update that one instead of adding a duplicate (two profiles
@@ -146,26 +223,29 @@ class _GetStartedPageState extends State<GetStartedPage> {
 
     await profileRef.set({
       'user_id': userId,
-      'age': _selectedAge,
-      'gender': genderSelections.first ? 'male' : 'female',
-      'height': _selectedHeight,
-      'weight': _selectedWeight,
-      'exercise_level': _exerciseLevel,
-      'calories': finalCalories,
-      'calorie_goal': finalCalories,
+      'age': _age,
+      'gender': (_male ?? true) ? 'male' : 'female',
+      'height': _heightCm,
+      'weight': _weightKg,
+      'exercise_level': _activity ?? 0,
+      'calories': calories,
+      'calorie_goal': calories,
       'balance_date': BalanceService.dateKey(DateTime.now()),
-      'calorie_mode': calorieMode,
-      'protein_goal': _proteinGoal ?? 0,
-      'carbs_goal': _carbsGoal ?? 0,
-      'fats_goal': _fatsGoal ?? 0,
-      'protein_balance': _proteinGoal ?? 0,
-      'carbs_balance': _carbsGoal ?? 0,
-      'fats_balance': _fatsGoal ?? 0,
+      'calorie_mode': _mode ?? 'lose',
+      'goal_weight': _hasGoalWeight ? _goalKg : null,
+      'goal_pace': _hasGoalWeight ? _pace.kgPerWeek : null,
+      'goal_source': _ownCalories ? 'manual' : 'calculated',
+      'protein_goal': macros.p,
+      'carbs_goal': macros.c,
+      'fats_goal': macros.f,
+      'protein_balance': macros.p,
+      'carbs_balance': macros.c,
+      'fats_balance': macros.f,
       ..._units.toFields(),
     });
 
     // Starts the weight log, so the trend has a first point.
-    final kg = _selectedWeight;
+    final kg = _weightKg;
     if (kg != null && ProfileLimits.weightOk(kg)) {
       try {
         await WeightService.log(userId, kg);
@@ -174,1069 +254,28 @@ class _GetStartedPageState extends State<GetStartedPage> {
       }
     }
 
-    // Create user document with friends list
     await FirebaseFirestore.instance.collection('users').doc(userId).set({
       'email': FirebaseAuth.instance.currentUser!.email,
       'friends': [],
     }, SetOptions(merge: true));
   }
 
-  void updateCardActiveCalories() {
-    cardActiveCalories =
-        calorieSelections[0] == true ? calorieDeficit : cardActiveCalories;
-    cardActiveCalories =
-        calorieSelections[1] == true ? calorieMaintenance : cardActiveCalories;
-    cardActiveCalories =
-        calorieSelections[2] == true ? calorieSurplus : cardActiveCalories;
-
-    final mode = calorieSelections[0]
-        ? 'lose'
-        : calorieSelections[1]
-            ? 'maintain'
-            : 'gain';
-    final aiTarget = _aiTargets?[mode];
-    if (aiTarget is Map && aiTarget['protein_g'] != null) {
-      setState(() {
-        _proteinGoal = asInt(aiTarget['protein_g']);
-        _carbsGoal = asInt(aiTarget['carbs_g']);
-        _fatsGoal = asInt(aiTarget['fat_g']);
-        _proteinController.text = _proteinGoal?.toString() ?? '';
-        _carbsController.text = _carbsGoal?.toString() ?? '';
-        _fatsController.text = _fatsGoal?.toString() ?? '';
-      });
-    } else {
-      _prefillMacrosFromCalories();
-    }
-  }
-
-  void _prefillMacrosFromCalories() {
-    if (cardActiveCalories == null || (cardActiveCalories ?? 0) <= 0) {
-      return;
-    }
-
-    final int calories = cardActiveCalories ?? 0;
-
-    // Keep the split they have (30/40/30 if there isn't one yet).
-    final m = _scaler.scale(
-        _proteinGoal ?? 0, _carbsGoal ?? 0, _fatsGoal ?? 0, calories);
-    final int protein = m.protein.round();
-    final int carbs = m.carbs.round();
-    final int fats = m.fat.round();
-
-    setState(() {
-      _proteinGoal = protein;
-      _proteinController.text = protein.toString();
-      _carbsGoal = carbs;
-      _carbsController.text = carbs.toString();
-      _fatsGoal = fats;
-      _fatsController.text = fats.toString();
-    });
-  }
-
-  void _updateCaloriesFromMacros() {
-    if (_proteinGoal == null || _carbsGoal == null || _fatsGoal == null) {
-      return;
-    }
-
-    // Calculate calories from macros: Protein & Carbs = 4 cal/g, Fat = 9 cal/g
-    final int calculatedCalories = caloriesFromMacros(
-        _proteinGoal ?? 0, _carbsGoal ?? 0, _fatsGoal ?? 0);
-
-    setState(() {
-      cardActiveCalories = calculatedCalories;
-      _manualCalorieGoal = calculatedCalories;
-      _manualCalorieController.text = calculatedCalories.toString();
-    });
-  }
-
-  void signOut() async {
-    await FirebaseAuth.instance.signOut();
-  }
-
-  /// Signs out and goes back to the sign-in screen.
-  Future<void> _signOutAndLeave() async {
-    await FirebaseAuth.instance.signOut();
-    if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const AuthPage()),
-      (route) => false,
-    );
-  }
-
-  /// Age, height and weight are all filled in and believable.
-  bool get _inputsValid =>
-      ProfileLimits.ageOk(_selectedAge) &&
-      ProfileLimits.heightOk(_selectedHeight) &&
-      ProfileLimits.weightOk(_selectedWeight);
-
-  /// The lowest "Lose" goal for these details (see [safeMinimumCalories]).
-  double get _safeFloor => safeMinimumCalories(
-        male: genderSelections.first,
-        resting: restingCalories(
-          age: _selectedAge,
-          heightCm: _selectedHeight,
-          weightKg: _selectedWeight,
-          male: genderSelections.first,
-        ),
-      );
-
-  void _markFieldsChanged() {
-    if (!_isEstimatingWithAI && _lastAIData != null) {
-      setState(() {
-        _canEstimateWithAI = true;
-      });
-    }
-  }
-
-  String _getExerciseLevelText() {
-    if (_exerciseLevel == 0) return 'No activity';
-    if (_exerciseLevel == 1) return '1-3 hours per week';
-    if (_exerciseLevel == 2) return '4-6 hours per week';
-    if (_exerciseLevel == 3) return '7-9 hours per week';
-    if (_exerciseLevel == 4) return '10+ hours per week';
-    return 'No activity';
-  }
-
-  /// Asks Coach for targets. Returns true only when targets were set.
-  Future<bool> _estimateWithAI() async {
-    if (_selectedAge == null ||
-        _selectedHeight == null ||
-        _selectedWeight == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add your age, height and weight first')),
-      );
-      return false;
-    }
-
-    bool gotTargets = false;
-
-    setState(() {
-      _isEstimatingWithAI = true;
-    });
-
-    try {
-      final response = await ProxyClient.post('/macro-targets', {
-          'age': _selectedAge,
-          'gender': genderSelections.first ? 'male' : 'female',
-          'height_cm': _selectedHeight,
-          'weight_kg': _selectedWeight,
-          'exercise_level': _getExerciseLevelText(),
-        });
-      if (!mounted) return false;
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final raw =
-            data['ai']?['final']?['targets'] ?? data['baseline']?['targets'];
-
-        if (raw is Map) {
-          final targets = withSafeLoseTarget(
-              Map<String, dynamic>.from(raw), _safeFloor);
-          setState(() {
-            _aiTargets = targets;
-            calorieDeficit = asInt(targets['lose']?['calories']);
-            calorieMaintenance = asInt(targets['maintain']?['calories']);
-            calorieSurplus = asInt(targets['gain']?['calories']);
-
-            // Set macros based on selected goal
-            final selectedTarget = calorieSelections[0]
-                ? targets['lose']
-                : calorieSelections[1]
-                    ? targets['maintain']
-                    : targets['gain'];
-
-            _proteinGoal = asInt(selectedTarget?['protein_g']);
-            _carbsGoal = asInt(selectedTarget?['carbs_g']);
-            _fatsGoal = asInt(selectedTarget?['fat_g']);
-
-            _proteinController.text = _proteinGoal?.toString() ?? '0';
-            _carbsController.text = _carbsGoal?.toString() ?? '0';
-            _fatsController.text = _fatsGoal?.toString() ?? '0';
-
-            updateCardActiveCalories();
-            _canEstimateWithAI = false;
-            _lastAIData = {
-              'age': _selectedAge,
-              'gender': genderSelections.first,
-              'height': _selectedHeight,
-              'weight': _selectedWeight,
-              'exercise': _exerciseLevel,
-            };
-          });
-          gotTargets = true;
-        } else {
-          throw Exception('No targets in response');
-        }
-      } else {
-        throw Exception('Failed to estimate macros');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                "Coach couldn't work out your numbers just now. Try again, or enter them yourself."),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isEstimatingWithAI = false;
-        });
-      }
-    }
-    return gotTargets;
-  }
-
-  void updateCalories() {
-    _markFieldsChanged();
-    // New details: back to the formula until Coach is asked again.
-    _aiTargets = null;
-
-    // Same sums as Goals and profile, so the two never disagree.
-    final base = maintenanceCalories(
-      age: _selectedAge,
-      heightCm: _selectedHeight,
-      weightKg: _selectedWeight,
-      male: genderSelections.first,
-      exerciseLevel: _exerciseLevel,
-    );
-    if (base != null && base.isFinite && base > 0) {
-      calorieDeficit = suggestedCalorieGoal(base, 'lose', floor: _safeFloor);
-      calorieMaintenance = suggestedCalorieGoal(base, 'maintain');
-      calorieSurplus = suggestedCalorieGoal(base, 'gain');
-    } else {
-      calorieDeficit = 0;
-      calorieMaintenance = 0;
-      calorieSurplus = 0;
-    }
-
-    // "Set my own" keeps the numbers they typed.
-    if (!_ownMode) updateCardActiveCalories();
-  }
-
-  Widget _buildSectionHeader({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            gradient: AppColors.brandGradient,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.ink,
-                ),
-              ),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.gray600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// One option in a row of equal tiles (gender, goal).
-  Widget _choiceTile({
-    required bool selected,
-    required IconData icon,
-    required String label,
-    String? detail,
-    required VoidCallback onTap,
-  }) {
-    final Color fg = selected ? AppText.primaryDark : AppColors.gray700;
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: Material(
-        color: selected ? AppColors.indigo50 : AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: selected ? AppColors.primary : AppColors.border,
-            width: selected ? 2 : 1,
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 56),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 20, color: fg),
-                  const SizedBox(height: 4),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: fg,
-                      ),
-                    ),
-                  ),
-                  if (detail != null)
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        detail,
-                        maxLines: 1,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.muted,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _selectGoal(int index) {
-    setState(() {
-      for (int i = 0; i < calorieSelections.length; i++) {
-        calorieSelections[i] = i == index;
-      }
-    });
-    if (calorieSelections.first) {
-      calorieMode = 'lose';
-    } else if (calorieSelections[1]) {
-      calorieMode = 'maintain';
-    } else if (calorieSelections[2]) {
-      calorieMode = 'gain';
-    }
-    updateCardActiveCalories();
-  }
-
-  void _selectGender(int index) {
-    setState(() {
-      for (int i = 0; i < genderSelections.length; i++) {
-        genderSelections[i] = i == index;
-      }
-      updateCalories();
-    });
-  }
-
-  /// Slim "About you → Goal → Your card" progress line under the header.
-  Widget _buildProgress() {
-    final int step = _canFinish ? 2 : ((_inputsValid || _ownMode) ? 1 : 0);
-    const labels = ['About you', 'Goal', 'Your card'];
-    return Semantics(
-      label: 'Step ${step + 1} of 3: ${labels[step]}',
-      child: ExcludeSemantics(
-        child: Row(
-          children: [
-            for (int i = 0; i < labels.length; i++) ...[
-              if (i > 0) const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: i <= step
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      labels[i],
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight:
-                            i == step ? FontWeight.w700 : FontWeight.w500,
-                        color: i <= step
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    // Short screens, or the keyboard is up: keep the header small so the
-    // form keeps most of the space.
-    final bool compact = MediaQuery.viewInsetsOf(context).bottom > 0 ||
-        MediaQuery.sizeOf(context).height < 640;
-
-    final Widget signOut = SizedBox(
-      width: 80,
-      child: Align(
-        alignment: Alignment.topRight,
-        child: TextButton(
-          onPressed: _signOutAndLeave,
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.white,
-            minimumSize: const Size(44, 44),
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-          ),
-          child: const Text('Sign out'),
-        ),
-      ),
-    );
-
-    final Widget badge = compact
-        ? const FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              'Welcome to The Calorie Card',
-              maxLines: 1,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
-            ),
-          )
-        : Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.3),
-                width: 2,
-              ),
-            ),
-            child: const Icon(
-              Icons.credit_card_rounded,
-              size: 36,
-              color: Colors.white,
-            ),
-          );
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 8, 16, compact ? 12 : 20),
-      child: Column(
-        children: [
-          // Sign out sits top-right, level with the badge.
-          Row(
-            children: [
-              const SizedBox(width: 80),
-              Expanded(child: Center(child: badge)),
-              signOut,
-            ],
-          ),
-          if (!compact) ...[
-            const SizedBox(height: 12),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                'Welcome to The Calorie Card',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  height: 1.2,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                "Let's set up your card. It takes about a minute.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.white.withValues(alpha: 0.95),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-          SizedBox(height: compact ? 8 : 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: _buildProgress(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Imperial heights and weights need two boxes each, so they get a row
-  /// of their own; metric ones sit side by side.
-  Widget _bodyFields() {
-    final height = HeightInput(
-      units: _units,
-      valueCm: _selectedHeight,
-      onChanged: (cm) {
-        setState(() {
-          _selectedHeight = cm;
-          if (ProfileLimits.heightOk(cm)) updateCalories();
-        });
-      },
-    );
-    final weight = WeightInput(
-      units: _units,
-      valueKg: _selectedWeight,
-      onChanged: (kg) {
-        setState(() {
-          _selectedWeight = kg;
-          if (ProfileLimits.weightOk(kg)) updateCalories();
-        });
-      },
-    );
-    if (_units.isMetric) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: height),
-          Expanded(child: weight),
-        ],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [height, weight],
-    );
-  }
-
-  Widget _buildAboutYou() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader(
-          icon: Icons.person_outline,
-          title: 'About you',
-          subtitle: 'We use this to work out your daily budget',
-        ),
-        const SizedBox(height: 16),
-        // Age & sex
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: AppDecor.card,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              MeasurementInputField(
-                label: 'Age',
-                controller: _ageController,
-                focusNode: _ageFocusNode,
-                hintText: 'E.g. 30',
-                unit: 'years',
-                min: ProfileLimits.minAge.toDouble(),
-                max: ProfileLimits.maxAge.toDouble(),
-                rangeMessage: ProfileLimits.ageRangeMessage,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedAge = value?.round();
-                    if (ProfileLimits.ageOk(_selectedAge)) {
-                      updateCalories();
-                    }
-                  });
-                },
-              ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
-                child: Text(
-                  'Sex (used to work out your calories)',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _choiceTile(
-                        selected: genderSelections[0],
-                        icon: Icons.man,
-                        label: 'Male',
-                        onTap: () => _selectGender(0),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _choiceTile(
-                        selected: genderSelections[1],
-                        icon: Icons.woman,
-                        label: 'Female',
-                        onTap: () => _selectGender(1),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        // Height & weight, in the units they think in
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: AppDecor.card,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: UnitsPicker(
-                  value: _units,
-                  onChanged: (u) => setState(() => _units = u),
-                ),
-              ),
-              const SizedBox(height: 4),
-              _bodyFields(),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        // Activity level
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: AppDecor.card,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'How active are you?',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                  color: AppColors.ink,
-                ),
-              ),
-              Slider(
-                value: _exerciseLevel,
-                min: 0,
-                max: 4,
-                divisions: 4,
-                activeColor: AppColors.primary,
-                onChanged: (double value) {
-                  setState(() {
-                    _exerciseLevel = value;
-                    updateCalories();
-                  });
-                },
-              ),
-              Center(
-                child: Text(
-                  _exerciseText,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppText.primaryDark,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// A goal has been set and the card can be printed.
-  bool get _canFinish {
-    final calories = _ownMode ? _manualCalorieGoal : cardActiveCalories;
-    return calories != null &&
-        calories >= 500 &&
-        calories <= 10000 &&
-        (_ownMode || _inputsValid);
-  }
-
-  bool get _personalised => _lastAIData != null && !_canEstimateWithAI;
-
-  void _setOwnMode(bool own) {
-    if (own == _ownMode) return;
-    setState(() {
-      _ownMode = own;
-      if (own) {
-        // Start from the calculated numbers, so it's a tweak, not a blank.
-        final start = cardActiveCalories;
-        if (start != null && start > 0 && _manualCalorieGoal == null) {
-          _manualCalorieGoal = start;
-          _manualCalorieController.text = start.toString();
-        }
-      }
-    });
-    if (!own) updateCardActiveCalories();
-  }
-
-  Widget _modeButton(bool own, IconData icon, String label) {
-    final selected = _ownMode == own;
-    return Expanded(
-      child: Material(
-        color: selected ? AppColors.primaryDark : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => _setOwnMode(own),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon,
-                    size: 18,
-                    color: selected ? Colors.white : AppColors.gray600),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    label,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: selected ? Colors.white : AppColors.gray700,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _coachButton() {
-    if (_isEstimatingWithAI) {
-      return OutlinedButton.icon(
-        onPressed: null,
-        icon: const SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-        label: const Text('Coach is working it out…'),
-      );
-    }
-    if (_personalised) {
-      return OutlinedButton.icon(
-        onPressed: null,
-        icon: Icon(Icons.check_circle, color: AppText.emerald600, size: 20),
-        label: Text(
-          'Personalised by Coach',
-          style: TextStyle(color: AppText.emerald600),
-        ),
-      );
-    }
-    return OutlinedButton.icon(
-      onPressed: _inputsValid ? () => _estimateWithAI() : null,
-      icon: const Icon(Icons.auto_awesome, size: 20),
-      label: Text(
-          _lastAIData != null ? 'Update with Coach' : 'Personalise with Coach'),
-    );
-  }
-
-  Widget _macroChip(String label, int? grams, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: AppDecor.inset,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration:
-                      BoxDecoration(color: color, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  label,
-                  style: TextStyle(fontSize: 12, color: AppColors.muted),
-                ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            Text(
-              grams == null ? '–' : '${grams}g',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: AppColors.ink,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _macroField({
-    required String label,
-    required TextEditingController controller,
-    required FocusNode focusNode,
-    required String hintText,
-    required void Function(int?) onValue,
-  }) {
-    return Expanded(
-      child: MeasurementInputField(
-        label: label,
-        controller: controller,
-        focusNode: focusNode,
-        hintText: hintText,
-        unit: 'g',
-        onChanged: (value) {
-          setState(() {
-            onValue(value?.round());
-          });
-          _updateCaloriesFromMacros();
-        },
-      ),
-    );
-  }
-
-  /// Your goal: worked out as you type, or your own numbers.
-  Widget _buildGoal() {
-    final hasNumbers = _inputsValid && (calorieMaintenance ?? 0) > 0;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppDecor.card,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: AppColors.gray100,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                _modeButton(false, Icons.auto_awesome, 'Calculate for me'),
-                _modeButton(true, Icons.edit_note, 'Set my own'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (!_ownMode) ...[
-            Text(
-              hasNumbers
-                  ? 'Pick a goal. The numbers update as you change your details.'
-                  : 'Fill in your age, height and weight to see your numbers.',
-              style: TextStyle(fontSize: 13, color: AppColors.muted),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _choiceTile(
-                    selected: calorieSelections[0],
-                    icon: Icons.trending_down,
-                    label: 'Lose',
-                    detail: hasNumbers
-                        ? '${formatCardKcal(calorieDeficit ?? 0)} kcal'
-                        : '–',
-                    onTap: () => _selectGoal(0),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _choiceTile(
-                    selected: calorieSelections[1],
-                    icon: Icons.horizontal_rule,
-                    label: 'Maintain',
-                    detail: hasNumbers
-                        ? '${formatCardKcal(calorieMaintenance ?? 0)} kcal'
-                        : '–',
-                    onTap: () => _selectGoal(1),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _choiceTile(
-                    selected: calorieSelections[2],
-                    icon: Icons.trending_up,
-                    label: 'Gain',
-                    detail: hasNumbers
-                        ? '${formatCardKcal(calorieSurplus ?? 0)} kcal'
-                        : '–',
-                    onTap: () => _selectGoal(2),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Daily macros',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: AppColors.ink,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _macroChip('Protein', hasNumbers ? _proteinGoal : null,
-                    CalorieCardColors.protein),
-                const SizedBox(width: 8),
-                _macroChip('Carbs', hasNumbers ? _carbsGoal : null,
-                    CalorieCardColors.carbs),
-                const SizedBox(width: 8),
-                _macroChip('Fat', hasNumbers ? _fatsGoal : null,
-                    CalorieCardColors.fat),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _coachButton(),
-            const SizedBox(height: 6),
-            Text(
-              'Optional. Coach fine-tunes your calories and macros from '
-              'your details.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: AppColors.muted),
-            ),
-          ] else ...[
-            Text(
-              'Daily calorie budget',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-                color: AppColors.ink,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _manualCalorieController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(5),
-              ],
-              decoration: InputDecoration(
-                labelText: 'kcal',
-                hintText: 'E.g. 2000',
-                floatingLabelBehavior: FloatingLabelBehavior.always,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _manualCalorieGoal = int.tryParse(value);
-                  cardActiveCalories = _manualCalorieGoal;
-                  _prefillMacrosFromCalories();
-                });
-              },
-            ),
-            LowCalorieNote(calories: _manualCalorieGoal),
-            const SizedBox(height: 16),
-            Text(
-              'Daily macros',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-                color: AppColors.ink,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                _macroField(
-                  label: 'Protein',
-                  controller: _proteinController,
-                  focusNode: _proteinFocusNode,
-                  hintText: 'E.g. 150',
-                  onValue: (value) => _proteinGoal = value,
-                ),
-                _macroField(
-                  label: 'Carbs',
-                  controller: _carbsController,
-                  focusNode: _carbsFocusNode,
-                  hintText: 'E.g. 200',
-                  onValue: (value) => _carbsGoal = value,
-                ),
-                _macroField(
-                  label: 'Fat',
-                  controller: _fatsController,
-                  focusNode: _fatsFocusNode,
-                  hintText: 'E.g. 65',
-                  onValue: (value) => _fatsGoal = value,
-                ),
-              ],
-            ),
-            Text(
-              'Changing a macro updates your calories to match.',
-              style: TextStyle(fontSize: 12, color: AppColors.muted),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   /// Opens the card reveal, which saves the card while it "prints".
   Future<void> _finishSetup() async {
-    if (_finishingSetup || !_canFinish) return;
+    if (_finishing || !_canContinue) return;
     FocusScope.of(context).unfocus();
-    setState(() => _finishingSetup = true);
-    final calories =
-        (_ownMode ? _manualCalorieGoal : cardActiveCalories) ?? 0;
+    setState(() => _finishing = true);
+    final macros = _planMacros;
     final email = FirebaseAuth.instance.currentUser?.email ?? '';
     final holder = cardholderFromEmail(email);
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (revealContext) => CardRevealPage(
           save: saveData,
-          calories: calories,
-          protein: _proteinGoal ?? 0,
-          carbs: _carbsGoal ?? 0,
-          fat: _fatsGoal ?? 0,
+          calories: _planCalories,
+          protein: macros.p,
+          carbs: macros.c,
+          fat: macros.f,
           holder: holder.isEmpty ? 'You' : holder,
           onDone: () {
             Analytics.track('card_created');
@@ -1252,143 +291,527 @@ class _GetStartedPageState extends State<GetStartedPage> {
       ),
     );
     // Back from a failed save: let them try again.
-    if (mounted) setState(() => _finishingSetup = false);
+    if (mounted) setState(() => _finishing = false);
   }
 
-  Widget _buildFinish() {
-    final int calories =
-        (_ownMode ? _manualCalorieGoal : cardActiveCalories) ?? 0;
+  // --- Screens ---------------------------------------------------------------
+
+  ({String title, String? subtitle}) get _heading => switch (_step) {
+        _Step.sex => (
+            title: 'Which best describes you?',
+            subtitle: 'Bodies burn calories a little differently, so this '
+                'helps us get your numbers right.'
+          ),
+        _Step.age => (title: 'How old are you?', subtitle: null),
+        _Step.height => (title: 'How tall are you?', subtitle: null),
+        _Step.weight => (
+            title: 'What do you weigh now?',
+            subtitle: 'Only you can see this.'
+          ),
+        _Step.activity => (
+            title: 'How active are you?',
+            subtitle: 'Think of a normal week, including exercise.'
+          ),
+        _Step.goal => (title: "What's your goal?", subtitle: null),
+        _Step.target => (
+            title: "What's your goal weight?",
+            subtitle: _weightKg == null
+                ? null
+                : "You're ${Units.formatWeight(_weightKg!, _units)} now."
+          ),
+        _Step.pace => (
+            title: 'How fast?',
+            subtitle: 'You can change this any time in Profile.'
+          ),
+        _Step.plan => (
+            title: 'Your plan',
+            subtitle: 'This is your card each morning. Change anything '
+                'later in Profile → Goals and profile.'
+          ),
+      };
+
+  Widget _body() => switch (_step) {
+        _Step.sex => Column(children: [
+            ProfileChoice(
+              icon: Icons.man,
+              title: 'Male',
+              selected: _male == true,
+              onTap: () => _pickThenNext(() => _male = true),
+            ),
+            ProfileChoice(
+              icon: Icons.woman,
+              title: 'Female',
+              selected: _male == false,
+              onTap: () => _pickThenNext(() => _male = false),
+            ),
+          ]),
+        _Step.age => MeasurementInputField(
+            label: 'Age',
+            controller: _ageController,
+            hintText: 'E.g. 30',
+            unit: 'years',
+            autofocus: true,
+            min: ProfileLimits.minAge.toDouble(),
+            max: ProfileLimits.maxAge.toDouble(),
+            rangeMessage: ProfileLimits.ageRangeMessage,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _next(),
+            onChanged: (v) => setState(() => _age = v?.round()),
+          ),
+        _Step.height => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              UnitsPicker(
+                value: _units,
+                onChanged: (u) => setState(() => _units = u),
+              ),
+              const SizedBox(height: 8),
+              HeightInput(
+                key: ValueKey('h${_units.unitsField}'),
+                units: _units,
+                valueCm: _heightCm,
+                onChanged: (cm) => setState(() => _heightCm = cm),
+              ),
+            ],
+          ),
+        _Step.weight => WeightInput(
+            key: ValueKey('w${_units.weightField}'),
+            units: _units,
+            valueKg: _weightKg,
+            autofocus: true,
+            onSubmitted: (_) => _next(),
+            onChanged: (kg) => setState(() => _weightKg = kg),
+          ),
+        _Step.activity => Column(children: [
+            for (var i = 0; i < activityLevels.length; i++)
+              ProfileChoice(
+                title: activityLevels[i].title,
+                subtitle: activityLevels[i].subtitle,
+                selected: _activity?.round() == i,
+                onTap: () => _pickThenNext(() => _activity = i.toDouble()),
+              ),
+          ]),
+        _Step.goal => GoalModeChoices(
+            mode: _mode,
+            onChanged: (m) => _pickThenNext(() {
+              if (m != _mode) _goalKg = null;
+              _mode = m;
+              _pace = GoalPace.from(_pace.kgPerWeek, mode: m);
+            }),
+          ),
+        _Step.target => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              WeightInput(
+                key: ValueKey('g${_units.weightField}'),
+                label: 'Goal weight',
+                units: _units,
+                valueKg: _goalKg,
+                autofocus: true,
+                onSubmitted: (_) => _next(),
+                onChanged: (kg) => setState(() => _goalKg = kg),
+              ),
+              if (_goalProblem != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                  child: Text(
+                    _goalProblem!,
+                    style: TextStyle(fontSize: 13, color: AppText.amber700),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => setState(() {
+                    _goalKg = null;
+                    _goingBack = false;
+                    _index++;
+                  }),
+                  child: const Text("I don't have a goal weight"),
+                ),
+              ),
+            ],
+          ),
+        _Step.pace => PaceChoices(
+            mode: _mode,
+            value: _pace,
+            units: _units,
+            maintenance: _maintenance ?? 0,
+            floor: _floor,
+            fromKg: _weightKg,
+            goalKg: _goalKg,
+            onChanged: (p) => setState(() => _pace = p),
+          ),
+        _Step.plan => _planBody(),
+      };
+
+  Widget _planBody() {
+    final kcal = _planCalories;
+    final m = _planMacros;
+    final maintenance = _maintenance;
+    String? goalLine;
+    if (!_ownCalories && maintenance != null) {
+      if (_mode == 'maintain') {
+        goalLine = 'About what your body burns each day';
+      } else {
+        final o = paceOutcome(
+          pace: _pace,
+          mode: _mode,
+          maintenance: maintenance,
+          floor: _floor,
+          fromKg: _weightKg,
+          goalKg: _goalKg,
+        );
+        final verb = _mode == 'gain' ? 'Gain' : 'Lose';
+        goalLine = [
+          '$verb ${paceRate(_pace, _units)}',
+          if (_goalKg != null && o.date != null)
+            'reach ${Units.formatWeight(_goalKg!, _units)} by '
+                '${formatGoalDate(o.date!)}',
+        ].join(' · ');
+      }
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_canFinish)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              '${formatCardKcal(calories)} kcal a day · '
-              '${_proteinGoal ?? 0}g protein · '
-              '${_carbsGoal ?? 0}g carbs · '
-              '${_fatsGoal ?? 0}g fat',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.gray700,
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: AppColors.brandGradient,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            children: [
+              Text(
+                '${formatCardKcal(kcal)} kcal',
+                style: const TextStyle(
+                  fontSize: 40,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+              Text(
+                'to spend each day',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.9)),
+              ),
+              if (goalLine != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  goalLine,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Protein ${m.p}g · Carbs ${m.c}g · Fat ${m.f}g',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700, color: AppColors.ink),
+              ),
+            ),
+            TextButton(
+              onPressed: () =>
+                  setState(() => _editingMacros = !_editingMacros),
+              child: Text(_editingMacros ? 'Done' : 'Change'),
+            ),
+          ],
+        ),
+        if (_editingMacros)
+          MacroEditor(
+            key: ValueKey('macros$kcal'),
+            calories: kcal,
+            protein: m.p,
+            carbs: m.c,
+            fat: m.f,
+            onChanged: (p, c, f) => setState(() => _macros = (p: p, c: c, f: f)),
+          ),
+        const SizedBox(height: 8),
+        if (!_ownCalories)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => setState(() {
+                _ownCalories = true;
+                _manualCalories ??= kcal > 0 ? kcal : null;
+                _caloriesController.text = '${_manualCalories ?? ''}';
+              }),
+              icon: const Icon(Icons.edit_note),
+              label: const Text('Set my own calories instead'),
+            ),
+          )
+        else ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: _caloriesController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(5),
+            ],
+            decoration: InputDecoration(
+              labelText: 'Calories a day',
+              suffixText: 'kcal',
+              helperText: 'For example from a coach or dietitian.',
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onChanged: (v) => setState(() {
+              _manualCalories = int.tryParse(v);
+              _macros = null; // re-split for the new number
+            }),
+          ),
+          LowCalorieNote(calories: _manualCalories),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() {
+                _ownCalories = false;
+                _macros = null;
+              }),
+              child: const Text('Use the calculated number'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // --- Layout ----------------------------------------------------------------
+
+  Widget _header() {
+    final steps = _steps;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 8, 14),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 64,
+                child: _index > 0
+                    ? IconButton(
+                        tooltip: 'Back',
+                        onPressed: _back,
+                        icon: const Icon(Icons.arrow_back,
+                            color: Colors.white),
+                      )
+                    : null,
+              ),
+              const Expanded(
+                child: Text(
+                  'Set up your card',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 64,
+                child: TextButton(
+                  onPressed: _signOutAndLeave,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                  ),
+                  child: const Text('Sign out'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Semantics(
+            label: 'Step ${_index + 1} of ${steps.length}',
+            child: ExcludeSemantics(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(end: (_index + 1) / steps.length),
+                    duration: MediaQuery.of(context).disableAnimations
+                        ? Duration.zero
+                        : const Duration(milliseconds: 300),
+                    builder: (context, v, _) => LinearProgressIndicator(
+                      value: v,
+                      minHeight: 6,
+                      backgroundColor: Colors.white.withValues(alpha: 0.25),
+                      valueColor:
+                          const AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
-        SizedBox(
-          height: 56,
-          child: FilledButton(
-            onPressed: _finishingSetup || !_canFinish ? null : _finishSetup,
-            style: FilledButton.styleFrom(
-              disabledBackgroundColor:
-                  AppColors.primaryDark.withValues(alpha: 0.6),
-              disabledForegroundColor: Colors.white,
-            ),
-            child: _finishingSetup
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.credit_card_rounded, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'Print my card',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
+        ],
+      ),
+    );
+  }
+
+  Widget _page() {
+    final h = _heading;
+    return SingleChildScrollView(
+      key: ValueKey(_step),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                h.title,
+                style: TextStyle(
+                  fontSize: 26,
+                  height: 1.15,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+              if (h.subtitle != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  h.subtitle!,
+                  style: TextStyle(fontSize: 15, color: AppColors.muted),
+                ),
+              ],
+              const SizedBox(height: 22),
+              _body(),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          Container(
-            decoration: const BoxDecoration(gradient: AppColors.brandGradient),
-            child: SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(),
-                  // Main content sheet
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.canvas,
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(32),
-                          topRight: Radius.circular(32),
-                        ),
+    final still = MediaQuery.of(context).disableAnimations;
+    final plan = _step == _Step.plan;
+    return PopScope(
+      canPop: _index == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(gradient: AppColors.brandGradient),
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                _header(),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.canvas,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(28),
+                        topRight: Radius.circular(28),
                       ),
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(32),
-                          topRight: Radius.circular(32),
-                        ),
-                        child: ScrollConfiguration(
-                          behavior: ScrollConfiguration.of(context)
-                              .copyWith(scrollbars: false),
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: <Widget>[
-                                _buildAboutYou(),
-                                const SizedBox(height: 24),
-                                _buildSectionHeader(
-                                  icon: Icons.track_changes,
-                                  title: 'Your goal',
-                                  subtitle:
-                                      'How many calories a day, and how to split them',
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: still
+                                ? Duration.zero
+                                : const Duration(milliseconds: 240),
+                            transitionBuilder: (child, anim) {
+                              final incoming =
+                                  child.key == ValueKey(_step);
+                              final from = Offset(
+                                  (_goingBack ? -1 : 1) *
+                                      (incoming ? 0.15 : -0.15),
+                                  0);
+                              return FadeTransition(
+                                opacity: anim,
+                                child: SlideTransition(
+                                  position: Tween(
+                                          begin: from, end: Offset.zero)
+                                      .animate(anim),
+                                  child: child,
                                 ),
-                                const SizedBox(height: 16),
-                                _buildGoal(),
-                                const SizedBox(height: 24),
-                                _buildFinish(),
-                                if (!_canFinish)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: Text(
-                                      _ownMode
-                                          ? 'Enter a daily budget between '
-                                              '500 and 10,000 kcal.'
-                                          : 'Fill in your details above to '
-                                              'print your card.',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          color: AppColors.muted),
-                                    ),
+                              );
+                            },
+                            child: _page(),
+                          ),
+                        ),
+                        SafeArea(
+                          top: false,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                            child: Center(
+                              heightFactor: 1,
+                              child: ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 520),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  height: 56,
+                                  child: FilledButton(
+                                    onPressed: _canContinue && !_finishing
+                                        ? _next
+                                        : null,
+                                    child: _finishing
+                                        ? const SizedBox(
+                                            width: 22,
+                                            height: 22,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.5,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (plan) ...[
+                                                const Icon(
+                                                    Icons.credit_card_rounded,
+                                                    size: 20),
+                                                const SizedBox(width: 8),
+                                              ],
+                                              Text(
+                                                plan
+                                                    ? 'Print my card'
+                                                    : 'Continue',
+                                                style: const TextStyle(
+                                                  fontSize: 17,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                   ),
-                              ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
