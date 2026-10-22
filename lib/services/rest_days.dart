@@ -9,13 +9,23 @@ class RestDayLimitReached implements Exception {
   String toString() => "You've used all your rest days this month.";
 }
 
-/// Rest days: "freeze the card" for a holiday or a celebration.
+/// Thrown by [RestDays.start] and [RestDays.end] for a day that can't be
+/// changed any more (only today and yesterday can).
+class RestDayTooLate implements Exception {
+  const RestDayTooLate();
+
+  @override
+  String toString() => 'Only today or yesterday can be a rest day.';
+}
+
+/// Rest days: "freeze the card" for a holiday, a celebration or a refeed.
 ///
-/// Today is marked with `rest_day: true` on its `daily_logs/{uid}_{date}`
+/// A day is marked with `rest_day: true` on its `daily_logs/{uid}_{date}`
 /// doc. While it's on, food can't be added, and streaks skip the day (see
 /// Streaks.compute): paused, not broken. Up to [maxPerMonth] per calendar
-/// month, taken together (a long weekend away) or spread out. Only today
-/// can be started or ended.
+/// month, taken together (a long weekend away) or spread out. Today can be
+/// started or ended, and so can yesterday until midnight (forgot to take
+/// it), like closing yesterday late. Nothing further back.
 class RestDays {
   RestDays._();
 
@@ -58,29 +68,43 @@ class RestDays {
     };
   }
 
-  /// How many more rest days can be taken this month. Today counts as
-  /// taken if it already is one.
-  static Future<int> leftThisMonth(String uid) async {
-    final taken = await takenInMonth(uid);
+  /// How many more rest days can be taken in [day]'s month (default this
+  /// month). A day that already is one counts as taken.
+  static Future<int> leftThisMonth(String uid, {DateTime? day}) async {
+    final taken = await takenInMonth(uid, day: day);
     final left = maxPerMonth - taken.length;
     return left < 0 ? 0 : left;
   }
 
-  /// Makes today a rest day. Throws [RestDayLimitReached] if this month's
-  /// are used up (doing it again on a day that already is one is fine).
-  static Future<void> start(String uid) async {
+  /// [day] (default today) as the start of its day, if it can still be
+  /// changed: today or yesterday. Otherwise throws [RestDayTooLate].
+  static DateTime _changeable(DateTime? day) {
     final today = BalanceService.startOfDay(BalanceService.now());
-    final key = BalanceService.dateKey(today);
-    final taken = await takenInMonth(uid, day: today);
+    final d = BalanceService.startOfDay(day ?? today);
+    final key = BalanceService.dateKey(d);
+    if (key != BalanceService.dateKey(today) &&
+        key != BalanceService.dateKey(BalanceService.addDays(today, -1))) {
+      throw const RestDayTooLate();
+    }
+    return d;
+  }
+
+  /// Makes [day] (today, or yesterday) a rest day. Throws
+  /// [RestDayLimitReached] if that month's are used up (doing it again on
+  /// a day that already is one is fine), or [RestDayTooLate].
+  static Future<void> start(String uid, {DateTime? day}) async {
+    final d = _changeable(day);
+    final key = BalanceService.dateKey(d);
+    final taken = await takenInMonth(uid, day: d);
     if (!taken.contains(key) && taken.length >= maxPerMonth) {
       throw const RestDayLimitReached();
     }
-    await _write(uid, today, true);
+    await _write(uid, d, true);
   }
 
-  /// Ends today's rest day ("Unfreeze"): today is a normal day again.
-  static Future<void> end(String uid) =>
-      _write(uid, BalanceService.startOfDay(BalanceService.now()), false);
+  /// Ends [day]'s rest day (today, or yesterday): a normal day again.
+  static Future<void> end(String uid, {DateTime? day}) =>
+      _write(uid, _changeable(day), false);
 
   /// Merged into the day's doc, with the same user_id / date_key / date
   /// fields as the Card screen's other daily_logs writes.

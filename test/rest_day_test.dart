@@ -1,4 +1,4 @@
-// Rest days ("freeze card"): today only, at most 4 per calendar month,
+// Rest days ("freeze card"): today or yesterday, at most 4 per calendar month,
 // saved on daily_logs without touching the rest of the day's history, and
 // skipped by streaks.
 
@@ -119,7 +119,45 @@ void main() {
     expect(r.frozen, isEmpty);
   });
 
-  test('dateKey helper agrees with the test clock', () {
+  test('yesterday can be made a rest day (forgot to take it)', () async {
+    await setLog('2026-10-08', {
+      'finished': true,
+      'totals': {'calories': 3200},
+    });
+    await RestDays.start(uid, day: DateTime(2026, 10, 8));
+    final data = (await log('2026-10-08'))!;
+    expect(data['rest_day'], isTrue);
+    expect((data['totals'] as Map)['calories'], 3200,
+        reason: "yesterday's food stays in the diary");
+    expect(await RestDays.leftThisMonth(uid), 3);
+    expect(RestDays.isRest(await log(w.today)), isFalse,
+        reason: "today isn't touched");
+    // And undone, until midnight.
+    await RestDays.end(uid, day: DateTime(2026, 10, 8));
+    expect((await log('2026-10-08'))!['rest_day'], isFalse);
+  });
+
+  test('two days ago is too late', () async {
+    await expectLater(RestDays.start(uid, day: DateTime(2026, 10, 7)),
+        throwsA(isA<RestDayTooLate>()));
+    await expectLater(RestDays.end(uid, day: DateTime(2026, 10, 7)),
+        throwsA(isA<RestDayTooLate>()));
+    expect(await log('2026-10-07'), isNull);
+  });
+
+  test("yesterday counts against its own month's rest days", () async {
+    // Thursday 1 Oct: yesterday was 30 Sep, whose four are used up.
+    w.now = DateTime(2026, 10, 1, 9);
+    await setLog('2026-09-10', {'rest_day': true});
+    await setLog('2026-09-11', {'rest_day': true});
+    await setLog('2026-09-12', {'rest_day': true});
+    await setLog('2026-09-13', {'rest_day': true});
+    await expectLater(RestDays.start(uid, day: DateTime(2026, 9, 30)),
+        throwsA(isA<RestDayLimitReached>()));
+    expect(await RestDays.leftThisMonth(uid), 4, reason: 'October is fresh');
+  });
+
+    test('dateKey helper agrees with the test clock', () {
     expect(BalanceService.dateKey(w.now), '2026-10-09');
   });
 }

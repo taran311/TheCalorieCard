@@ -1242,16 +1242,32 @@ class _HomePageState extends State<HomePage>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  /// Today (not closed) or yesterday (until midnight) can be made a rest
+  /// day, or have one ended.
+  bool get _canChangeRestDay =>
+      _isOwnCard &&
+      ((_isSelectedDateToday && !_isDayFinished) || _isSelectedDateYesterday);
+
+  /// After a rest day starts or ends: streaks and, for yesterday, the
+  /// leaderboard (its streak and "on budget" change with it).
+  void _afterRestDayChange({required bool yesterday}) {
+    MyStreak.load(_activeUserId, force: true);
+    if (yesterday) {
+      LeaderboardService.refreshMine(_activeUserId).catchError((_) {});
+    }
+  }
+
   /// "🏖️ Rest day" (like freezing a bank card): explains it, then marks
-  /// today as a rest day. Four a calendar month; once they're used up the
-  /// sheet says so instead.
+  /// the day as a rest day: today, or yesterday if you forgot. Four a
+  /// calendar month; once they're used up the sheet says so instead.
   Future<void> _startRestDay() async {
-    if (_restBusy || !_isOwnCard || !_isSelectedDateToday) return;
-    if (_isDayFinished || _isRestDay) return;
+    if (_restBusy || !_canChangeRestDay || _isRestDay) return;
+    final day = _selectedLogDate;
+    final yesterday = _isSelectedDateYesterday;
     setState(() => _restBusy = true);
     int? left;
     try {
-      left = await RestDays.leftThisMonth(_activeUserId);
+      left = await RestDays.leftThisMonth(_activeUserId, day: day);
     } catch (_) {
       left = null;
     }
@@ -1262,26 +1278,32 @@ class _HomePageState extends State<HomePage>
       return;
     }
     setState(() => _restBusy = false);
-    final yes = await _showRestDaySheet(left);
+    final yes = await _showRestDaySheet(left, yesterday: yesterday);
     if (yes != true || !mounted) return;
 
     setState(() => _restBusy = true);
     try {
-      await RestDays.start(_activeUserId);
+      await RestDays.start(_activeUserId, day: day);
       if (!mounted) return;
       // Freeze straight away; the reload below confirms it.
-      setState(() {
-        _selectedDailyLog = <String, dynamic>{
-          ...?_selectedDailyLog,
-          'rest_day': true,
-        };
-      });
-      await _fetchDailyLogForDate(_selectedLogDate);
-      MyStreak.load(_activeUserId, force: true);
-      _snack('Rest day on. Your streak is paused, not broken.');
+      if (_isSameDay(_selectedLogDate, day)) {
+        setState(() {
+          _selectedDailyLog = <String, dynamic>{
+            ...?_selectedDailyLog,
+            'rest_day': true,
+          };
+        });
+        await _fetchDailyLogForDate(_selectedLogDate);
+      }
+      _afterRestDayChange(yesterday: yesterday);
+      _snack(yesterday
+          ? "Yesterday's now a rest day. Your streak is paused, not broken."
+          : 'Rest day on. Your streak is paused, not broken.');
     } on RestDayLimitReached {
       _snack("You've used all ${RestDays.maxPerMonth} rest days this "
           'month. They come back on the 1st.');
+    } on RestDayTooLate {
+      _snack("It's too late to change that day now.");
     } catch (_) {
       _snack("Couldn't start your rest day. Please try again.");
     } finally {
@@ -1289,24 +1311,32 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  /// "Unfreeze": today is a normal day again (only today can be undone).
+  /// "Unfreeze": the day is a normal day again (today, or yesterday until
+  /// midnight).
   Future<void> _endRestDay() async {
-    if (_restBusy || !_isOwnCard || !_isSelectedDateToday || !_isRestDay) {
-      return;
-    }
+    final restYesterday = _isOwnCard && _isSelectedDateYesterday;
+    if (_restBusy || !_isRestDay) return;
+    if (!restYesterday && !(_isOwnCard && _isSelectedDateToday)) return;
+    final day = _selectedLogDate;
     setState(() => _restBusy = true);
     try {
-      await RestDays.end(_activeUserId);
+      await RestDays.end(_activeUserId, day: day);
       if (!mounted) return;
-      setState(() {
-        _selectedDailyLog = <String, dynamic>{
-          ...?_selectedDailyLog,
-          'rest_day': false,
-        };
-      });
-      await _fetchDailyLogForDate(_selectedLogDate);
-      MyStreak.load(_activeUserId, force: true);
-      _snack('Rest day ended. Add food as normal.');
+      if (_isSameDay(_selectedLogDate, day)) {
+        setState(() {
+          _selectedDailyLog = <String, dynamic>{
+            ...?_selectedDailyLog,
+            'rest_day': false,
+          };
+        });
+        await _fetchDailyLogForDate(_selectedLogDate);
+      }
+      _afterRestDayChange(yesterday: restYesterday);
+      _snack(restYesterday
+          ? 'Yesterday is a normal day again.'
+          : 'Rest day ended. Add food as normal.');
+    } on RestDayTooLate {
+      _snack("It's too late to change that day now.");
     } catch (_) {
       _snack("Couldn't end your rest day. Please try again.");
     } finally {
@@ -1314,9 +1344,9 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  /// Explains a rest day before starting one ([left] this month). Returns
-  /// true to go ahead.
-  Future<bool?> _showRestDaySheet(int left) {
+  /// Explains a rest day before starting one ([left] this month), for
+  /// today or [yesterday]. Returns true to go ahead.
+  Future<bool?> _showRestDaySheet(int left, {bool yesterday = false}) {
     final usedUp = left <= 0;
     return showModalBottomSheet<bool>(
       context: context,
@@ -1333,7 +1363,9 @@ class _HomePageState extends State<HomePage>
               Text(
                 usedUp
                     ? '🏖️ No rest days left this month'
-                    : '🏖️ Take a rest day?',
+                    : yesterday
+                        ? '🏖️ Make yesterday a rest day?'
+                        : '🏖️ Take a rest day?',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
@@ -1345,9 +1377,10 @@ class _HomePageState extends State<HomePage>
                 usedUp
                     ? "You've taken all ${RestDays.maxPerMonth} of this "
                         "month's rest days. They come back on the 1st. Until "
-                        'then, track today as normal.'
-                    : "Rest days are for holidays and celebrations. You won't "
-                        'track today, and your streak is paused, not broken. '
+                        'then, track as normal.'
+                    : 'Rest days are for holidays, celebrations or a planned '
+                        "refeed. ${yesterday ? "Yesterday won't count" : "You won't track today"}"
+                        ', and your streak is paused, not broken. '
                         'You can take ${RestDays.maxPerMonth} a month, '
                         'together or spread out.',
                 style: TextStyle(
@@ -1374,9 +1407,13 @@ class _HomePageState extends State<HomePage>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Food you've already logged today stays in your "
-                        "diary. Changed your mind? Tap End rest day any time "
-                        'today.',
+                        yesterday
+                            ? 'Food you logged yesterday stays in your diary. '
+                                'Changed your mind? Tap End rest day before '
+                                'midnight.'
+                            : "Food you've already logged today stays in your "
+                                'diary. Changed your mind? Tap End rest day '
+                                'any time today.',
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.gray700,
@@ -1400,8 +1437,8 @@ class _HomePageState extends State<HomePage>
                   onPressed: () => Navigator.pop(sheetContext, true),
                   style: FilledButton.styleFrom(
                       minimumSize: const Size(0, 52)),
-                  child: const Text(
-                    'Start rest day',
+                  child: Text(
+                    yesterday ? 'Make it a rest day' : 'Start rest day',
                     style:
                         TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
@@ -3032,11 +3069,15 @@ class _HomePageState extends State<HomePage>
                         padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                         child: usuals,
                       ),
-                    // Rest day: food is paused until it's unfrozen.
-                    if (_isOwnCard && _isSelectedDateToday && _isRestDay)
+                    // Rest day: food is paused until it's unfrozen (today,
+                    // or yesterday until midnight).
+                    if (_isOwnCard &&
+                        (_isSelectedDateToday || _isSelectedDateYesterday) &&
+                        _isRestDay)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                         child: _RestDayStrip(
+                          yesterday: _isSelectedDateYesterday,
                           onUnfreeze: _restBusy ? null : _endRestDay,
                         ),
                       )
@@ -3118,12 +3159,17 @@ class _HomePageState extends State<HomePage>
                         ),
                       ),
                     const SizedBox(height: 16),
-                    if (_isOwnCard && !_isSelectedDateToday)
+                    if (_isOwnCard &&
+                        !_isSelectedDateToday &&
+                        !(_isSelectedDateYesterday && _isRestDay))
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                         child: _PastDayNotice(
-                          yesterday: _isSelectedDateYesterday && !_isRestDay,
+                          yesterday: _isSelectedDateYesterday,
                           onToday: () => _changeDay(BalanceService.now()),
+                          onRestDay: _isSelectedDateYesterday && !_restBusy
+                              ? _startRestDay
+                              : null,
                         ),
                       ),
                     if (_isDeletingItem || _copyingYesterday || _loggingUsual)
@@ -3228,7 +3274,10 @@ class _ClosedDayStrip extends StatelessWidget {
 class _RestDayStrip extends StatelessWidget {
   final VoidCallback? onUnfreeze;
 
-  const _RestDayStrip({required this.onUnfreeze});
+  /// Yesterday's rest day (can be ended until midnight).
+  final bool yesterday;
+
+  const _RestDayStrip({required this.onUnfreeze, this.yesterday = false});
 
   @override
   Widget build(BuildContext context) {
@@ -3247,7 +3296,9 @@ class _RestDayStrip extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Rest day · End it to add food',
+              yesterday
+                  ? 'Yesterday was a rest day · End it to change it'
+                  : 'Rest day · End it to add food',
               style: TextStyle(
                 color: AppColors.gray700,
                 fontWeight: FontWeight.w600,
@@ -3273,17 +3324,18 @@ class _PastDayNotice extends StatelessWidget {
   /// Yesterday can still be fixed (until midnight).
   final bool yesterday;
 
-  const _PastDayNotice({required this.onToday, this.yesterday = false});
+  /// Make yesterday a rest day (forgot to take it). Null hides it.
+  final VoidCallback? onRestDay;
+
+  const _PastDayNotice({
+    required this.onToday,
+    this.yesterday = false,
+    this.onRestDay,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
-      decoration: BoxDecoration(
-        color: AppColors.indigo50,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
+    final notice = Row(
         children: [
           Icon(yesterday ? Icons.edit_calendar_outlined : Icons.lock_clock,
               color: AppText.primary, size: 20),
@@ -3303,7 +3355,30 @@ class _PastDayNotice extends StatelessWidget {
             child: const Text('Go to today'),
           ),
         ],
+      );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: AppColors.indigo50,
+        borderRadius: BorderRadius.circular(14),
       ),
+      child: !yesterday
+          ? notice
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                notice,
+                // Forgot to take a rest day (a holiday, a refeed)?
+                TextButton(
+                  onPressed: onRestDay,
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 0),
+                  ),
+                  child: const Text('🏖️ Make yesterday a rest day'),
+                ),
+              ],
+            ),
     );
   }
 }
