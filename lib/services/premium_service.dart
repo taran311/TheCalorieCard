@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:namer_app/services/play_billing.dart';
+import 'package:namer_app/services/store_billing.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -37,8 +37,9 @@ class Entitlement {
   /// Premium for good, from a gift code (see [GiftCodes]).
   final bool lifetime;
 
-  /// Where the plan was bought: 'stripe' (the website) or 'play' (Google
-  /// Play, in the Android app). Null if they've never paid.
+  /// Where the plan was bought: 'stripe' (the website), 'play' (Google
+  /// Play, in the Android app) or 'apple' (the App Store, in the iPhone
+  /// app). Null if they've never paid.
   final String? store;
 
   /// The Google Play product, for "Manage subscription".
@@ -89,7 +90,8 @@ class Entitlement {
 
   bool subscribedAt(DateTime now) => lifetime || payingAt(now);
 
-  /// A subscription (Stripe or Google Play) that's still running.
+  /// A subscription (Stripe, Google Play or the App Store) that's still
+  /// running.
   bool payingAt(DateTime now) =>
       _paid.contains(status) && periodEnd != null && periodEnd!.isAfter(now);
 
@@ -142,19 +144,27 @@ class Premium {
   static final ValueNotifier<Entitlement> notifier =
       ValueNotifier(Entitlement.unknown);
 
-  /// Whether Premium can be bought here: on the website with Stripe, and
-  /// in the Android app with Google Play (Google doesn't allow Android apps
-  /// to sell subscriptions any other way). Premium bought in one works in
-  /// the other, and gift codes work everywhere.
-  static bool get sellsHere => kIsWeb || PlayBilling.supported;
+  /// Whether Premium can be bought here: on the website with Stripe, in
+  /// the Android app with Google Play and in the iPhone app with the App
+  /// Store (neither allows apps to sell subscriptions any other way).
+  /// Premium bought in one works in all of them.
+  static bool get sellsHere => kIsWeb || StoreBilling.supported;
 
-  /// Buying through Google Play here (the Android app), not Stripe.
-  static bool get viaPlay => PlayBilling.supported;
+  /// Buying through the phone's store here (Google Play or the App
+  /// Store), not Stripe.
+  static bool get viaStore => StoreBilling.supported;
+
+  /// The iPhone app: Apple doesn't allow gift codes to unlock Premium in
+  /// the app, or pointing people to the website to pay (App Review 3.1.1).
+  static bool get onIOS =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   /// Whether this plan can be changed or cancelled from here: a website
-  /// plan on the website, a Google Play plan in the Android app.
-  static bool canManage(Entitlement e) =>
-      e.store == 'play' ? PlayBilling.supported : kIsWeb;
+  /// plan on the website, a store plan in that store's app.
+  static bool canManage(Entitlement e) => switch (e.store) {
+        'play' || 'apple' => StoreBilling.store == e.store,
+        _ => kIsWeb,
+      };
 
   static Entitlement get current => notifier.value;
   static bool get isPremium => notifier.value.isPremium;
@@ -170,7 +180,7 @@ class Premium {
     _sub?.cancel();
     _uid = uid;
     notifier.value = Entitlement.unknown;
-    PlayBilling.start(uid);
+    StoreBilling.start(uid);
     _sub = FirebaseFirestore.instance
         .collection('billing')
         .doc(uid)
@@ -200,7 +210,7 @@ class Premium {
   }
 
   static void stop() {
-    PlayBilling.stop();
+    StoreBilling.stop();
     _sub?.cancel();
     _sub = null;
     _uid = null;
@@ -255,19 +265,19 @@ class Premium {
     if (!ok) throw const PremiumException("Couldn't open the page.");
   }
 
-  /// Buys [plan] (monthly, yearly or founder): Google Play's payment sheet
-  /// in the Android app, otherwise Stripe's payment page.
+  /// Buys [plan] (monthly, yearly or founder): the store's payment sheet
+  /// in the phone apps, otherwise Stripe's payment page.
   static Future<void> checkout(String plan) async {
-    if (viaPlay) return PlayBilling.buy(plan);
+    if (viaStore) return StoreBilling.buy(plan);
     return _open(await _url('/billing/checkout', {'plan': plan}));
   }
 
-  /// Change plan, update payment or cancel: Google Play's page for a plan
+  /// Change plan, update payment or cancel: the store's page for a plan
   /// bought there, otherwise Stripe's.
   static Future<void> manage() async {
     final e = current;
-    if (e.store == 'play') {
-      return PlayBilling.manage(productId: e.playProductId);
+    if (e.store == 'play' || e.store == 'apple') {
+      return StoreBilling.manage(productId: e.playProductId);
     }
     return _open(await _url('/billing/portal', const {}));
   }

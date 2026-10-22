@@ -247,8 +247,8 @@ class _MenuPageState extends State<MenuPage> {
       // never sees an upsell flash past.
       title = 'Premium';
       subtitle = 'Unlimited Coach, photo logging and more';
-    } else if (Premium.viaPlay) {
-      // Google Play sets the price in each country, shown on the Premium
+    } else if (Premium.viaStore) {
+      // The store sets the price in each country, shown on the Premium
       // page, so none here.
       title = 'Go Premium';
       subtitle = 'Unlimited Coach, photo logging and more';

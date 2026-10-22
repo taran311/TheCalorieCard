@@ -1,0 +1,43 @@
+# Builds the iPhone app in the cloud (iOS apps can only be built on a Mac)
+# and uploads it to TestFlight. Start it by hand from codemagic.io:
+# Start new build → ios-testflight.
+#
+# One-time setup (see claude/ios-launch-checklist.md in the project):
+#   1. codemagic.io: sign in with GitHub and add this repository.
+#   2. Team settings → Integrations → Developer Portal: add an App Store
+#      Connect API key (App Store Connect → Users and Access →
+#      Integrations → App Store Connect API, role "App Manager") and name
+#      it "Hayer Software". Codemagic then signs the app itself.
+#
+# The version and build number come from pubspec.yaml (e.g. 1.2.1+15).
+# Each upload needs a higher build number than the last.
+
+workflows:
+  ios-testflight:
+    name: iPhone app → TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: Hayer Software
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.thecaloriecard.app
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Get packages
+        script: flutter pub get
+      - name: Install iOS plugins
+        script: cd ios && pod install --repo-update
+      - name: Use Codemagic's signing
+        script: xcode-project use-profiles
+      - name: Build
+        script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

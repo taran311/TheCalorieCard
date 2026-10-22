@@ -2,26 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-<!-- Put me in the [my_project]/ios/Runner/Info.plist file -->
-<!-- Google Sign-in Section -->
-<key>CFBundleURLTypes</key>
-<array>
-	<dict>
-		<key>CFBundleTypeRole</key>
-		<string>Editor</string>
-		<key>CFBundleURLSchemes</key>
-		<array>
-			<!-- TODO Replace this value: -->
-			<!-- Copied from GoogleService-Info.plist key REVERSED_CLIENT_ID -->
-			<string>com.googleusercontent.apps.406099696497-134k3722m01rtrsklhf3b7k8sqa5r7in</string>
-		</array>
-	</dict>
-</array>
-<!-- End of the Google Sign-in Section -->
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>My First Flutter Project</string>
+	<string>Calorie Card</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -29,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>my_first_flutter_project</string>
+	<string>CalorieCard</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -47,8 +31,6 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
@@ -65,5 +47,13 @@
 	<string>Scan barcodes and take photos of meals to log food.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a photo of a meal to log what's in it.</string>
+	<!-- Push notifications arrive while the app is closed. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<!-- Only standard HTTPS encryption: no export paperwork per upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

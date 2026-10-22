@@ -560,6 +560,19 @@ class _DeleteDialogState extends State<_DeleteDialog> {
               "Premium subscription. It can't be undone.\n\n"
               'Want a copy first? Use "Download my data".',
             ),
+            // Only you can cancel an App Store subscription: Apple doesn't
+            // let us stop it for you.
+            if (Premium.current.store == 'apple' && Premium.current.paying) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Your Premium is through the App Store, which only you can '
+                'cancel: on your iPhone, open Settings, tap your name, then '
+                "Subscriptions. Deleting your account doesn't stop Apple "
+                'charging you.',
+                style: TextStyle(
+                    fontWeight: FontWeight.w600, color: AppText.amber700),
+              ),
+            ],
             const SizedBox(height: 16),
             TextField(
               controller: _confirm,

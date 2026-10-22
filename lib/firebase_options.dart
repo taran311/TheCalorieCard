@@ -65,7 +65,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '795453323864',
     projectId: 'auth-af04a',
     storageBucket: 'auth-af04a.appspot.com',
-    iosBundleId: 'com.example.myFirstFlutterProject',
+    iosBundleId: 'com.thecaloriecard.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(

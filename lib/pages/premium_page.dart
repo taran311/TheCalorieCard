@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:namer_app/services/play_billing.dart';
+import 'package:namer_app/services/store_billing.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/responsive.dart';
@@ -22,7 +23,8 @@ class _PremiumPageState extends State<PremiumPage> {
   bool _busy = false;
   String? _error;
 
-  /// Google's plans and prices (Android app). Null while loading.
+  /// The store's plans and prices (Android and iPhone apps). Null while
+  /// loading.
   Map<String, ProductDetails>? _playPlans;
 
   /// Billing can be slow to load (or unreadable). After a while we show
@@ -36,8 +38,8 @@ class _PremiumPageState extends State<PremiumPage> {
     _waitTimer = Timer(const Duration(seconds: 8), () {
       if (mounted) setState(() => _waitedLong = true);
     });
-    if (Premium.viaPlay) {
-      PlayBilling.plans().then((p) {
+    if (Premium.viaStore) {
+      StoreBilling.plans().then((p) {
         if (mounted) setState(() => _playPlans = p);
       });
       return; // the early-supporter price is only on the website
@@ -99,7 +101,7 @@ class _PremiumPageState extends State<PremiumPage> {
             : r.stillPaying
                 ? "Lifetime Premium is yours! 💜 Your paid plan is still "
                     'running: cancel it under Manage subscription '
-                    '${Premium.canManage(Premium.current) ? '' : Premium.current.store == 'play' ? 'in Google Play ' : 'on thecaloriecard.com '}'
+                    '${Premium.canManage(Premium.current) ? '' : _whereManaged(Premium.current.store)}'
                     "so you're not charged."
                 : 'Lifetime Premium is yours! 💜 Your Aurora card '
                     'appears in a few seconds.'),
@@ -113,6 +115,15 @@ class _PremiumPageState extends State<PremiumPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Where a plan bought elsewhere is managed, for "cancel it …" (ends
+  /// with a space). The iPhone app doesn't point to the website.
+  static String _whereManaged(String? store) {
+    if (store == 'play' || store == 'apple') {
+      return '${StoreBilling.manageWhere(store)} ';
+    }
+    return Premium.onIOS ? 'where you bought it ' : 'on thecaloriecard.com ';
   }
 
   static const _months = [
@@ -232,20 +243,29 @@ class _PremiumPageState extends State<PremiumPage> {
                     ],
                     if (!Premium.canManage(e))
                       Text(
-                        e.store == 'play'
+                        e.store == 'play' || e.store == 'apple'
                             ? (e.lifetime
-                                ? 'Cancel it in the Play Store on your '
-                                    'Android phone: Profile → Payments and '
-                                    'subscriptions.'
+                                ? 'Cancel it '
+                                    '${StoreBilling.manageWhere(e.store)}.'
                                 : 'Thanks for your support. You bought '
-                                    'Premium through Google Play, so you '
-                                    'can change or cancel it in the Play '
-                                    'Store on your Android phone.')
-                            : (e.lifetime
-                                ? 'Sign in on thecaloriecard.com and go to '
-                                    'Premium → Manage subscription to cancel it.'
-                                : 'Thanks for your support. Your plan is '
-                                    'managed on thecaloriecard.com.'),
+                                    'Premium through '
+                                    '${StoreBilling.nameOf(e.store)}, so you '
+                                    'can change or cancel it '
+                                    '${StoreBilling.manageWhere(e.store)}.')
+                            : Premium.onIOS
+                                // Apple doesn't allow pointing to the
+                                // website from the iPhone app.
+                                ? (e.lifetime
+                                    ? 'Cancel it where you bought it.'
+                                    : 'Thanks for your support. You can '
+                                        'change or cancel your plan where '
+                                        'you bought it.')
+                                : (e.lifetime
+                                    ? 'Sign in on thecaloriecard.com and go '
+                                        'to Premium → Manage subscription to '
+                                        'cancel it.'
+                                    : 'Thanks for your support. Your plan '
+                                        'is managed on thecaloriecard.com.'),
                         textAlign: TextAlign.center,
                         style:
                             TextStyle(fontSize: 12.5, color: AppColors.muted),
@@ -268,10 +288,11 @@ class _PremiumPageState extends State<PremiumPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      e.store == 'play'
+                      e.store == 'play' || e.store == 'apple'
                           ? 'Change plan, update your payment or cancel in '
-                              'Google Play. You keep Premium until the end of '
-                              'the period you\'ve paid for.'
+                              '${StoreBilling.nameOf(e.store)}. You keep '
+                              'Premium until the end of the period you\'ve '
+                              'paid for.'
                           : 'Change plan, update your card or cancel. It '
                               'takes one tap and you keep Premium until the '
                               'end of the period you\'ve paid for.',
@@ -287,13 +308,17 @@ class _PremiumPageState extends State<PremiumPage> {
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13, color: AppColors.gray700),
                     ),
-                  ] else if (Premium.viaPlay && _playPlans == null) ...[
+                  ] else if (Premium.viaStore && _playPlans == null) ...[
                     const _PlansSkeleton(),
-                  ] else if (Premium.viaPlay && _playPlans!.isEmpty) ...[
+                  ] else if (Premium.viaStore && _playPlans!.isEmpty) ...[
                     Text(
-                      "Couldn't reach Google Play to show the plans. Check "
-                      "you're signed in to the Play Store, then come back "
-                      'to this page.',
+                      Premium.onIOS
+                          ? "Couldn't reach the App Store to show the plans. "
+                              "Check you're signed in to the App Store, then "
+                              'come back to this page.'
+                          : "Couldn't reach Google Play to show the plans. "
+                              "Check you're signed in to the Play Store, then "
+                              'come back to this page.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13, color: AppColors.gray700),
                     ),
@@ -351,7 +376,17 @@ class _PremiumPageState extends State<PremiumPage> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      Premium.viaPlay
+                      Premium.onIOS
+                          // What Apple asks every subscription screen to
+                          // say (App Review 3.1.2).
+                          ? 'Paid through your Apple ID. Subscriptions renew '
+                              'automatically at the price shown unless '
+                              'cancelled at least 24 hours before the end of '
+                              'the period. Cancel any time in Settings and '
+                              'keep Premium until the end of the period '
+                              'you\'ve paid for. If you don\'t choose a plan, '
+                              'you simply stay on the free plan.'
+                          : Premium.viaStore
                           ? 'Paid through your Google Play account. Cancel any '
                               'time in the Play Store and keep Premium until '
                               'the end of the period you\'ve paid for. If you '
@@ -364,27 +399,32 @@ class _PremiumPageState extends State<PremiumPage> {
                       style: TextStyle(fontSize: 12.5, color: AppColors.muted),
                     ),
                   ],
+                  if (Premium.onIOS && !subscribed)
+                    const _AppleTermsLinks(),
                   if (!checking && !(e.loaded && e.lifetime)) ...[
                     const SizedBox(height: 14),
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: _busy ? null : _redeem,
-                        icon: const Icon(Icons.redeem_outlined),
-                        label: const Text('Have a code?'),
+                    // Apple doesn't allow codes to unlock Premium in the
+                    // iPhone app (App Review 3.1.1).
+                    if (!Premium.onIOS)
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _busy ? null : _redeem,
+                          icon: const Icon(Icons.redeem_outlined),
+                          label: const Text('Have a code?'),
+                        ),
                       ),
-                    ),
-                    if (Premium.viaPlay && !subscribed)
+                    if (Premium.viaStore && !subscribed)
                       Center(
                         child: TextButton.icon(
                           onPressed:
-                              _busy ? null : () => _run(PlayBilling.restore),
+                              _busy ? null : () => _run(StoreBilling.restore),
                           icon: const Icon(Icons.restore_rounded),
                           label: const Text('Restore purchases'),
                         ),
                       ),
                   ],
-                  ValueListenableBuilder<PlayNote?>(
-                    valueListenable: PlayBilling.note,
+                  ValueListenableBuilder<StoreNote?>(
+                    valueListenable: StoreBilling.note,
                     builder: (context, note, _) => note == null
                         ? const SizedBox.shrink()
                         : Padding(
@@ -788,6 +828,37 @@ class _RedeemDialogState extends State<_RedeemDialog> {
         ),
         FilledButton(onPressed: _submit, child: const Text('Redeem')),
       ],
+    );
+  }
+}
+
+/// Terms of use and privacy policy links under the plans in the iPhone
+/// app (Apple asks for both on every subscription screen).
+class _AppleTermsLinks extends StatelessWidget {
+  const _AppleTermsLinks();
+
+  static Future<void> _open(String path) => launchUrl(
+        Uri.https('thecaloriecard.com', path),
+        mode: LaunchMode.externalApplication,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        children: [
+          TextButton(
+            onPressed: () => _open('/terms.html'),
+            child: const Text('Terms of use'),
+          ),
+          TextButton(
+            onPressed: () => _open('/privacy.html'),
+            child: const Text('Privacy policy'),
+          ),
+        ],
+      ),
     );
   }
 }
