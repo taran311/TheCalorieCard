@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Get The Calorie Card</title>
+  <meta name="description" content="Treat calories like money. A fresh balance every day: say what you ate and watch it spend. Free on Android.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <meta property="og:title" content="The Calorie Card">
+  <meta property="og:description" content="Treat calories like money. Free on Android.">
+  <!-- The page ads link to ("Get the app"). No tracking: the only thing
+       passed on is the ad's utm tags, into the Play Store link, so Play
+       Console can count installs per campaign. -->
+  <style>
+    :root { --ink: #111827; --muted: #4B5563; --bg: #F8FAFC; --card: #FFFFFF; --accent: #4F46E5; --line: #E5E7EB; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #F3F4F6; --muted: #C7CAD1; --bg: #0B1020; --card: #141A2E; --accent: #A5B4FC; --line: #273049; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink);
+      font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+    .hero { background: linear-gradient(135deg, #6366F1, #8B5CF6); color: #fff; padding: 28px 16px 40px; text-align: center; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+    .brand img { width: 32px; height: 32px; border-radius: 8px; }
+    h1 { margin: 26px auto 0; font-size: 38px; line-height: 1.08; letter-spacing: -1px; max-width: 420px; }
+    .sub { margin: 12px auto 0; max-width: 380px; opacity: .93; font-size: 17px; }
+    .card { width: min(320px, 86vw); aspect-ratio: 1.6; margin: 30px auto 0; border-radius: 20px;
+      background: linear-gradient(135deg, #2E2A78, #15133D); box-shadow: 0 24px 48px rgba(15,12,60,.45);
+      transform: rotate(-4deg); position: relative; text-align: left; padding: 18px 20px; color: #fff; }
+    .card .n { font-weight: 700; font-size: 14px; }
+    .card .chip { position: absolute; left: 20px; top: 52px; width: 42px; height: 32px; border-radius: 7px;
+      background: linear-gradient(135deg, #FDE68A, #FBBF24 55%, #D97706); }
+    .card .amt { position: absolute; right: 20px; top: 46px; font-size: 34px; font-weight: 700; letter-spacing: -.5px; }
+    .card .amt small { font-size: 14px; margin-left: 4px; }
+    .card .m { position: absolute; left: 20px; right: 20px; bottom: 44px; display: flex; gap: 22px; font-size: 10px; font-weight: 700; letter-spacing: .8px; opacity: .9; }
+    .card .m b { display: block; font-size: 17px; letter-spacing: 0; margin-top: 2px; }
+    .card .who { position: absolute; left: 20px; bottom: 16px; font-size: 12px; font-weight: 700; letter-spacing: 2px; }
+    main { max-width: 440px; margin: 0 auto; padding: 28px 16px 48px; text-align: center; }
+    .play { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: 60px;
+      background: #111827; color: #fff; border-radius: 14px; text-decoration: none; font-weight: 700; font-size: 18px; }
+    @media (prefers-color-scheme: dark) { .play { background: #fff; color: #111827; } }
+    .play svg { width: 26px; height: 26px; flex: none; }
+    .free { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
+    ul { list-style: none; padding: 0; margin: 28px 0 0; text-align: left; }
+    li { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; color: var(--muted); }
+    li strong { color: var(--ink); }
+    .web { display: none; margin-top: 22px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--muted); font-size: 15px; }
+    .web a { color: var(--accent); font-weight: 700; }
+    footer { text-align: center; color: var(--muted); font-size: 13px; padding: 0 16px 32px; }
+    footer a { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="brand"><img src="icons/Icon-192.png" alt=""> The Calorie Card</div>
+    <h1>Treat calories like money</h1>
+    <p class="sub">Your card gets a fresh balance every day. Say what you ate and watch it spend.</p>
+    <div class="card" aria-hidden="true">
+      <div class="n">TheCalorieCard</div>
+      <div class="chip"></div>
+      <div class="amt">1,840<small>kcal</small></div>
+      <div class="m"><span>PROTEIN<b>112g</b></span><span>CARBS<b>180g</b></span><span>FAT<b>54g</b></span></div>
+      <div class="who">YOUR NAME</div>
+    </div>
+  </div>
+  <main>
+    <a class="play" id="play" href="https://play.google.com/store/apps/details?id=com.thecaloriecard.app">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#34A853" d="M3.6 2.2 13.4 12l-9.8 9.8c-.3-.2-.6-.6-.6-1.1V3.3c0-.5.3-.9.6-1.1z"/><path fill="#FBBC04" d="M17 8.4 13.4 12 17 15.6l4.1-2.3c.9-.5.9-1.9 0-2.5L17 8.4z"/><path fill="#EA4335" d="M3.6 21.8 13.4 12 17 15.6 5.1 22.3c-.5.3-1.1.1-1.5-.5z"/><path fill="#4285F4" d="M3.6 2.2c.4-.5 1-.8 1.5-.5L17 8.4 13.4 12 3.6 2.2z"/></svg>
+      Get it on Google Play
+    </a>
+    <p class="free">Free to download. Premium is optional.</p>
+    <div class="web" id="web">On an iPhone? The app isn't on the App Store yet, but it works in your browser.
+      <a href="/">Open The Calorie Card</a>, then add it to your home screen.</div>
+    <ul>
+      <li><strong>Log food in seconds.</strong> Type it, say it or scan the barcode. We work out the calories and macros.</li>
+      <li><strong>Always know what's left.</strong> Everything you eat and drink is spent from your card.</li>
+      <li><strong>Better with friends.</strong> Cheer each other on, keep your streaks and play calorie games.</li>
+    </ul>
+  </main>
+  <footer>Hayer Software Limited · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></footer>
+  <script>
+    // Pass the ad's utm tags on to Play, so installs can be counted per
+    // campaign in Play Console (default: a visit straight to this page).
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var keys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'];
+      var ref = [];
+      keys.forEach(function (k) {
+        var v = q.get(k);
+        if (v && /^[A-Za-z0-9_.-]{1,40}$/.test(v)) ref.push(k + '=' + v);
+      });
+      if (!ref.length) ref.push('utm_source=website', 'utm_medium=get_page');
+      var play = document.getElementById('play');
+      play.href = 'https://play.google.com/store/apps/details?id=com.thecaloriecard.app&referrer=' +
+        encodeURIComponent(ref.join('&'));
+      // iPhones and iPads can't install it yet: offer the web app too.
+      if (/iPhone|iPad|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+        document.getElementById('web').style.display = 'block';
+      }
+    })();
+  </script>
+</body>
+</html>
