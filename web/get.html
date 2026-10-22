@@ -40,12 +40,16 @@
       background: #111827; color: #fff; border-radius: 14px; text-decoration: none; font-weight: 700; font-size: 18px; }
     @media (prefers-color-scheme: dark) { .play { background: #fff; color: #111827; } }
     .play svg { width: 26px; height: 26px; flex: none; }
+    .webbtn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 60px;
+      background: linear-gradient(135deg, #6366F1, #8B5CF6); color: #fff; border-radius: 14px; text-decoration: none; font-weight: 700; font-size: 18px; }
+    .webbtn svg { width: 24px; height: 24px; flex: none; }
+    .alt { margin: 16px 0 0; color: var(--muted); font-size: 15px; }
+    .alt a { color: var(--accent); font-weight: 700; }
+    .hide { display: none !important; }
     .free { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
     ul { list-style: none; padding: 0; margin: 28px 0 0; text-align: left; }
     li { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; color: var(--muted); }
     li strong { color: var(--ink); }
-    .web { display: none; margin-top: 22px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--muted); font-size: 15px; }
-    .web a { color: var(--accent); font-weight: 700; }
     footer { text-align: center; color: var(--muted); font-size: 13px; padding: 0 16px 32px; }
     footer a { color: var(--muted); }
   </style>
@@ -64,13 +68,24 @@
     </div>
   </div>
   <main>
+    <!-- Android: Google Play first. iPhone and computers: the website first
+         (the app isn't on the App Store yet). The other option sits below. -->
+    <div id="android">
     <a class="play" id="play" href="https://play.google.com/store/apps/details?id=com.thecaloriecard.app">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#34A853" d="M3.6 2.2 13.4 12l-9.8 9.8c-.3-.2-.6-.6-.6-1.1V3.3c0-.5.3-.9.6-1.1z"/><path fill="#FBBC04" d="M17 8.4 13.4 12 17 15.6l4.1-2.3c.9-.5.9-1.9 0-2.5L17 8.4z"/><path fill="#EA4335" d="M3.6 21.8 13.4 12 17 15.6 5.1 22.3c-.5.3-1.1.1-1.5-.5z"/><path fill="#4285F4" d="M3.6 2.2c.4-.5 1-.8 1.5-.5L17 8.4 13.4 12 3.6 2.2z"/></svg>
       Get it on Google Play
     </a>
     <p class="free">Free to download. Premium is optional.</p>
-    <div class="web" id="web">On an iPhone? The app isn't on the App Store yet, but it works in your browser.
-      <a href="/">Open The Calorie Card</a>, then add it to your home screen.</div>
+    <p class="alt">Or use it in your browser at <a href="/">thecaloriecard.com</a></p>
+    </div>
+    <div id="web" class="hide">
+      <a class="webbtn" href="/">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+        Open thecaloriecard.com
+      </a>
+      <p class="free" id="webnote">Works in your browser on iPhone and computers. Free, Premium is optional.</p>
+      <p class="alt">On Android? <a id="play2" href="https://play.google.com/store/apps/details?id=com.thecaloriecard.app">Get the app on Google Play</a></p>
+    </div>
     <ul>
       <li><strong>Log food in seconds.</strong> Type it, say it or scan the barcode. We work out the calories and macros.</li>
       <li><strong>Always know what's left.</strong> Everything you eat and drink is spent from your card.</li>
@@ -90,13 +105,22 @@
         if (v && /^[A-Za-z0-9_.-]{1,40}$/.test(v)) ref.push(k + '=' + v);
       });
       if (!ref.length) ref.push('utm_source=website', 'utm_medium=get_page');
-      var play = document.getElementById('play');
-      play.href = 'https://play.google.com/store/apps/details?id=com.thecaloriecard.app&referrer=' +
+      var playUrl = 'https://play.google.com/store/apps/details?id=com.thecaloriecard.app&referrer=' +
         encodeURIComponent(ref.join('&'));
-      // iPhones and iPads can't install it yet: offer the web app too.
-      if (/iPhone|iPad|iPod/.test(navigator.userAgent) ||
-          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
-        document.getElementById('web').style.display = 'block';
+      document.getElementById('play').href = playUrl;
+      document.getElementById('play2').href = playUrl;
+      // Not an Android phone (iPhone, iPad, computer): the website comes
+      // first, as the app can't be installed there yet.
+      var ua = navigator.userAgent;
+      var iOS = /iPhone|iPad|iPod/.test(ua) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (!/Android/i.test(ua)) {
+        document.getElementById('android').classList.add('hide');
+        document.getElementById('web').classList.remove('hide');
+        if (iOS) {
+          document.getElementById('webnote').textContent =
+            "The iPhone app is coming soon. Until then it works in Safari: open it, then Share → Add to Home Screen.";
+        }
       }
     })();
   </script>
