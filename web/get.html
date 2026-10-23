@@ -30,7 +30,7 @@
     .card .n { font-weight: 700; font-size: 14px; }
     .card .chip { position: absolute; left: 20px; top: 52px; width: 42px; height: 32px; border-radius: 7px;
       background: linear-gradient(135deg, #FDE68A, #FBBF24 55%, #D97706); }
-    .card .amt { position: absolute; right: 20px; top: 46px; font-size: 34px; font-weight: 700; letter-spacing: -.5px; }
+    .card .amt { position: absolute; right: 20px; top: 14px; font-size: 34px; font-weight: 700; letter-spacing: -.5px; line-height: 1; }
     .card .amt small { font-size: 14px; margin-left: 4px; }
     .card .m { position: absolute; left: 20px; right: 20px; bottom: 44px; display: flex; gap: 22px; font-size: 10px; font-weight: 700; letter-spacing: .8px; opacity: .9; }
     .card .m b { display: block; font-size: 17px; letter-spacing: 0; margin-top: 2px; }
@@ -52,8 +52,8 @@
     li strong { color: var(--ink); }
     footer { text-align: center; color: var(--muted); font-size: 13px; padding: 0 16px 32px; }
     footer a { color: var(--muted); }
-    .sym { height: 30px; width: auto; margin-right: 3px; vertical-align: -0.1em; }
-  .amt { display: flex; align-items: center; }
+    .sym { height: 26px; width: auto; margin: 1px 2px 0 0; }
+  .amt { display: flex; align-items: flex-start; }
 </style>
 </head>
 <body>
@@ -64,7 +64,7 @@
     <div class="card" aria-hidden="true">
       <div class="n">TheCalorieCard</div>
       <div class="chip"></div>
-      <div class="amt" aria-label="1,840 calories"><svg class="sym" viewBox="16 0 64 100" aria-hidden="true"><path d="M74 22 H44 a22 22 0 0 0 -22 22 v12 a22 22 0 0 0 22 22 H74" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><line x1="48" y1="6" x2="48" y2="16" stroke="currentColor" stroke-width="8" stroke-linecap="round"/><line x1="48" y1="84" x2="48" y2="94" stroke="currentColor" stroke-width="8" stroke-linecap="round"/></svg>1,840</div>
+      <div class="amt" aria-label="1,840 calories"><svg class="sym" viewBox="12 0 70 100" aria-hidden="true"><path d="M74 20 H44 a22 22 0 0 0 -22 22 v16 a22 22 0 0 0 22 22 H74" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/><line x1="48" y1="7" x2="48" y2="14" stroke="currentColor" stroke-width="10" stroke-linecap="round"/><line x1="48" y1="86" x2="48" y2="93" stroke="currentColor" stroke-width="10" stroke-linecap="round"/></svg>1,840</div>
       <div class="m"><span>PROTEIN<b>112g</b></span><span>CARBS<b>180g</b></span><span>FAT<b>54g</b></span></div>
       <div class="who">YOUR NAME</div>
     </div>

@@ -230,22 +230,16 @@ class CalorieCardFront extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Like a bank card: brand top-left, contactless top-right, the
-            // chip under the brand with the balance alongside it.
+            // Like a banking app's card (Monzo's): brand top-left, the
+            // balance top-right, the chip on its own underneath. No
+            // contactless mark: it means nothing here.
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _Wordmark()),
-                Icon(
-                  Icons.contactless_outlined,
-                  color: Colors.white.withValues(alpha: 0.75),
-                  size: 20,
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: _Wordmark(),
                 ),
-              ],
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                _CardChip(color: design.chip),
                 const SizedBox(width: 16),
                 // The balance is the hero; the caption says what it means.
                 Expanded(
@@ -277,6 +271,8 @@ class CalorieCardFront extends StatelessWidget {
                 ),
               ],
             ),
+            const Spacer(),
+            _CardChip(color: design.chip),
             // Flexible gaps: roomy on big cards, still fits on small ones.
             const Spacer(flex: 2),
             // Macros where a card number would be, each with a small caption
@@ -466,32 +462,35 @@ class _BalanceTickerState extends State<BalanceTicker>
   Widget _number(double value) {
     final over = value < 0;
     final color = over ? CalorieCardColors.overBudget : Colors.white;
+    final style = TextStyle(
+      color: color,
+      fontSize: 34,
+      height: 1.0,
+      fontWeight: FontWeight.w800,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    // Like a banking app's balance: the symbol smaller than the number and
+    // level with its top, "−⊂412" when over (like "−£412").
     return FittedBox(
       fit: BoxFit.scaleDown,
       alignment: Alignment.centerRight,
-      child: Text.rich(
-        TextSpan(children: [
-          // "−⊂412" when over, like "−£412".
-          if (over) const TextSpan(text: '−'),
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 3),
-              child: CalorieSymbol(size: 31, color: color),
-            ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (over) ExcludeSemantics(child: Text('−', style: style)),
+          Padding(
+            padding: const EdgeInsets.only(top: 1, right: 2),
+            child: CalorieSymbol(size: 27, color: color),
           ),
-          TextSpan(text: formatCardKcal(value)),
-        ]),
-        key: widget.textKey,
-        semanticsLabel:
-            '${over ? 'minus ' : ''}${formatCardKcal(value)} calories',
-        style: TextStyle(
-          color: over ? CalorieCardColors.overBudget : Colors.white,
-          fontSize: 34,
-          height: 1.0,
-          fontWeight: FontWeight.w800,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
+          Text(
+            formatCardKcal(value),
+            key: widget.textKey,
+            semanticsLabel:
+                '${over ? 'minus ' : ''}${formatCardKcal(value)} calories',
+            style: style,
+          ),
+        ],
       ),
     );
   }
@@ -549,7 +548,7 @@ class _BalanceTickerState extends State<BalanceTicker>
                               alignment: PlaceholderAlignment.middle,
                               child: Padding(
                                 padding: const EdgeInsets.only(right: 1),
-                                child: CalorieSymbol(size: 12, color: color),
+                                child: CalorieSymbol(size: 14, color: color),
                               ),
                             ),
                             TextSpan(text: formatCardKcal(_change)),
