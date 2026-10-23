@@ -8,6 +8,7 @@ import 'package:namer_app/services/goal_maths.dart';
 import 'package:namer_app/services/units.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// A big tappable option: title, optional line under it, tick when chosen.
 class ProfileChoice extends StatelessWidget {
@@ -253,7 +254,7 @@ class PaceChoices extends StatelessWidget {
               goalKg: goalKg,
             );
             final parts = [
-              '${formatCardKcal(o.calories)} kcal a day'
+              '$calSym${formatCardKcal(o.calories)} a day'
                   '${o.floored ? ' (the safe minimum)' : ''}',
               if (o.date != null) 'goal by ${formatGoalDate(o.date!)}',
             ];
@@ -397,9 +398,9 @@ class _MacroEditorState extends State<MacroEditor> {
         const SizedBox(height: 6),
         Text(
           off
-              ? 'These add up to ${formatCardKcal(total)} kcal; your goal is '
-                  '${formatCardKcal(widget.calories)} kcal.'
-              : 'Adds up to ${formatCardKcal(total)} kcal.',
+              ? 'These add up to $calSym${formatCardKcal(total)}; your goal is '
+                  '$calSym${formatCardKcal(widget.calories)}.'
+              : 'Adds up to $calSym${formatCardKcal(total)}.',
           style: TextStyle(
             fontSize: 12,
             color: off ? AppText.amber700 : AppColors.muted,

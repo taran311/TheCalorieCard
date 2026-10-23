@@ -269,8 +269,8 @@ class _LoggingPicture extends StatelessWidget {
               ],
             ),
           ),
-          row('2 crumpets', '228 kcal'),
-          row('150g baked beans', '122 kcal'),
+          row('2 crumpets', '228'),
+          row('150g baked beans', '122'),
         ],
       ),
     );

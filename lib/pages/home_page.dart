@@ -43,6 +43,7 @@ import 'package:namer_app/ui/home_widgets.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/spotlight_tour.dart';
 import 'package:namer_app/ui/tutorials/tutorial_button.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 class HomePage extends StatefulWidget {
   final bool readOnly;
@@ -183,8 +184,8 @@ class _RecipePickerPageState extends State<_RecipePickerPage> {
       ),
       subtitle: Text(
         sharedBy == null
-            ? '${calories.toStringAsFixed(0)} kcal ($servingSize)'
-            : '${calories.toStringAsFixed(0)} kcal ($servingSize)\n'
+            ? '$calSym${calories.toStringAsFixed(0)} ($servingSize)'
+            : '$calSym${calories.toStringAsFixed(0)} ($servingSize)\n'
                 'Shared by $sharedBy',
         style: TextStyle(color: AppColors.muted),
       ),
@@ -1120,7 +1121,7 @@ class _HomePageState extends State<HomePage>
           overBy: overBy, goal: _goalsForSelectedDay.calories);
       if (plan != null) {
         _snack('Done. Your next ${plan.days} '
-            'day${plan.days == 1 ? '' : 's'} start ${plan.perDay} kcal lower. '
+            'day${plan.days == 1 ? '' : 's'} start $calSym${plan.perDay} lower. '
             'Stop any time.');
       }
     } catch (_) {
@@ -1137,7 +1138,7 @@ class _HomePageState extends State<HomePage>
       final back = await EvenOut.stop(_activeUserId);
       if (back > 0 && mounted) await _refreshAfterChange();
       _snack(back > 0
-          ? "Stopped. Today's $back kcal is back on your card."
+          ? "Stopped. Today's $calSym$back is back on your card."
           : 'Stopped evening out.');
     } catch (_) {
       _snack("Couldn't stop it. Please try again.");
@@ -1161,7 +1162,7 @@ class _HomePageState extends State<HomePage>
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Spreading it: ${plan.perDay} kcal less a day for '
+                  'Spreading it: $calSym${plan.perDay} less a day for '
                   '${plan.days} day${plan.days == 1 ? '' : 's'}, from '
                   'tomorrow.',
                   style: TextStyle(fontSize: 12.5, color: AppColors.gray700),
@@ -1215,7 +1216,7 @@ class _HomePageState extends State<HomePage>
               const SizedBox(width: 4),
               Flexible(
                 child: Text(
-                  'Evening out: −${plan.perDay} kcal today'
+                  'Evening out: −$calSym${plan.perDay} today'
                   '${more > 0 ? ' · $more more day${more == 1 ? '' : 's'}' : ' · last day'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1638,7 +1639,7 @@ class _HomePageState extends State<HomePage>
     final controller = messenger.showSnackBar(
       SnackBar(
         content: Text(message ??
-            'Added ${formatCardKcal(logged.calories)} kcal to ${logged.meal}'),
+            'Spent $calSym${formatCardKcal(logged.calories)} on ${logged.meal}'),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
           label: 'Undo',
@@ -1856,7 +1857,7 @@ class _HomePageState extends State<HomePage>
       if (mounted) {
         _showLoggedUndo(logged,
             message: "Added yesterday's $meal "
-                '(${formatCardKcal(logged.calories)} kcal)');
+                '($calSym${formatCardKcal(logged.calories)})');
       }
     } catch (_) {
       if (mounted) {
@@ -2368,7 +2369,7 @@ class _HomePageState extends State<HomePage>
       TextSpan(
         children: [
           TextSpan(
-            text: '${formatCardKcal(spent)} kcal spent'
+            text: '$calSym${formatCardKcal(spent)} spent'
                 '${today ? ' today' : ''}',
           ),
           if (left != null) ...[
@@ -2404,7 +2405,7 @@ class _HomePageState extends State<HomePage>
               _copyingYesterday ? null : () => _copyYesterday(meal, entries),
           style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
           icon: const Icon(Icons.history, size: 18),
-          label: Text('Same as yesterday · ${formatCardKcal(kcal)} kcal'),
+          label: Text('Same as yesterday · $calSym${formatCardKcal(kcal)}'),
         ),
       ),
     );
@@ -2775,7 +2776,7 @@ class _HomePageState extends State<HomePage>
                     ),
                   ),
                   tooltip: 'Log ${usual.name} '
-                      '(${usual.calories.round()} kcal) to $_addMeal',
+                      '($calSym${usual.calories.round()}) to $_addMeal',
                   onPressed: _loggingUsual ? null : () => _logUsual(usual),
                 ),
               );

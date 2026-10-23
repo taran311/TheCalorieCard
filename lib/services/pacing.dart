@@ -1,3 +1,5 @@
+import 'package:namer_app/ui/calorie_symbol.dart';
+
 /// "Safe to spend" pacing for the Card screen: how much of what's left
 /// each meal still to come can have, so the day doesn't run out at dinner.
 ///
@@ -31,8 +33,8 @@ class PacingPlan {
     }
     final amount = Pacing.formatKcal(perMeal);
     return meals.length == 1
-        ? 'About $amount kcal for $list'
-        : '≈ $amount kcal each for $list';
+        ? 'About $calSym$amount for $list'
+        : '≈ $calSym$amount each for $list';
   }
 }
 

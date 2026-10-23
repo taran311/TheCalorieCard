@@ -1,4 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/calorie_card.dart' show formatCardKcal;
+
+/// The calorie symbol as a character, for use in ordinary text: "⊂420
+/// spent today". It's U+E000, drawn by the CalorieSymbol font (see
+/// assets/fonts and the theme's font fallback), so it works in any Text.
+/// Use it for anything from the card's budget; food facts copied from a
+/// label stay in kcal.
+const calSym = '\uE000';
+
+/// "⊂1,840", or "−⊂412" when negative.
+String cals(num value) =>
+    '${value < 0 ? '−' : ''}$calSym${formatCardKcal(value)}';
+
+/// Turns "640 kcal" into "⊂640" in text written elsewhere (Coach's
+/// replies, its suggested questions), only for showing it: what's sent to
+/// Coach keeps "kcal".
+String calText(String text) => text.replaceAllMapped(
+    RegExp(r'(\d[\d,]*)\s?kcal\b'), (m) => '$calSym${m[1]}');
 
 /// The calorie currency symbol: a C drawn like the rounded edge of a card,
 /// with a short stroke above and below, the way $ has. Calories are the

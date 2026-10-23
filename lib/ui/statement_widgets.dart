@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 const _weekdayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const _monthShort = [
@@ -165,7 +166,8 @@ class _LiveBalanceSummaryState extends State<LiveBalanceSummary> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  formatKcal(remaining.abs()),
+                  '$calSym${formatKcal(remaining.abs())}',
+                  semanticsLabel: '${formatKcal(remaining.abs())} calories',
                   style: TextStyle(
                     fontSize: 34,
                     height: 1,
@@ -173,12 +175,6 @@ class _LiveBalanceSummaryState extends State<LiveBalanceSummary> {
                     color: over ? AppText.red : AppColors.ink,
                     letterSpacing: -0.5,
                   ),
-                ),
-                const SizedBox(width: 6),
-                Padding(
-                  padding: EdgeInsets.only(bottom: 3),
-                  child: Text('kcal',
-                      style: TextStyle(color: AppColors.muted, fontSize: 14)),
                 ),
               ],
             ),
@@ -189,7 +185,7 @@ class _LiveBalanceSummaryState extends State<LiveBalanceSummary> {
             ),
             const SizedBox(height: 6),
             Text(
-              '${formatKcal(spent)} of ${formatKcal(goal)} kcal spent',
+              '$calSym${formatKcal(spent)} of $calSym${formatKcal(goal)} spent',
               style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 16),
@@ -322,7 +318,7 @@ class WeeklySpendChart extends StatelessWidget {
                       Expanded(
                         child: Tooltip(
                           message:
-                              '${formatDayHeading(d.day)}: ${formatKcal(d.calories)} kcal'
+                              '${formatDayHeading(d.day)}: $calSym${formatKcal(d.calories)}'
                               '${d.onBudget(statement.dailyBudget) == false ? ' · over budget' : d.justOver(statement.dailyBudget) ? ' · just over, still on budget' : ''}',
                           child: Padding(
                             padding: EdgeInsets.symmetric(horizontal: gap),
@@ -473,7 +469,7 @@ class DayTotalChip extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          '${formatKcal(spent)} kcal',
+          '$calSym${formatKcal(spent)}',
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
         if (left != null && onBudget != null) ...[

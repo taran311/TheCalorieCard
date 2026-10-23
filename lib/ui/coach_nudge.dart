@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/services/coach_service.dart';
 import 'package:namer_app/ui/coach_glyph.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// The gentle note under the card when today has gone over:
 /// "You're 320 kcal over today. That's okay…" with a plan to even it out.
@@ -35,7 +36,7 @@ class CoachNudgeCard extends StatelessWidget {
     );
     return Semantics(
       button: true,
-      label: 'Over by $overBy kcal. Ask Coach for a plan.',
+      label: 'Over by $overBy calories. Ask Coach for a plan.',
       child: Material(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppDecor.radius),
@@ -69,7 +70,7 @@ class CoachNudgeCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "You're $overBy kcal over today. That's okay.",
+                        "You're $calSym$overBy over today. That's okay.",
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: AppColors.ink,
@@ -77,7 +78,7 @@ class CoachNudgeCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        plan.summary,
+                        calText(plan.summary),
                         style: TextStyle(
                           fontSize: 12.5,
                           color: AppColors.muted,

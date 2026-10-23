@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Your direct debits: foods queued every morning for a one-tap confirm.
 class DirectDebitsPage extends StatefulWidget {
@@ -201,7 +202,7 @@ class _DirectDebitsPageState extends State<DirectDebitsPage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${d.macros.calories.round()} kcal · ${d.meal} · '
+                      '$calSym${d.macros.calories.round()} · ${d.meal} · '
                       '${d.scheduleLabel} · $status',
                       style: TextStyle(fontSize: 13, color: AppColors.muted),
                     ),
@@ -419,7 +420,7 @@ class _NewDebitSheetState extends State<_NewDebitSheet> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: Text(
-                  '${(num.tryParse('${f['food_calories']}') ?? 0).round()} kcal'
+                  '$calSym${(num.tryParse('${f['food_calories']}') ?? 0).round()}'
                   ' · ${FoodLog.mealOf(f['foodCategory'])}',
                 ),
                 trailing: const Icon(Icons.chevron_right),
@@ -440,7 +441,7 @@ class _NewDebitSheetState extends State<_NewDebitSheet> {
           decoration: AppDecor.inset,
           child: Text(
             '${food['food_description'] ?? 'Food'} · '
-            '${(num.tryParse('${food['food_calories']}') ?? 0).round()} kcal',
+            '$calSym${(num.tryParse('${food['food_calories']}') ?? 0).round()}',
             style: TextStyle(
                 fontWeight: FontWeight.w700, color: AppColors.ink),
           ),

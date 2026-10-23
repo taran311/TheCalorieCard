@@ -17,6 +17,7 @@ import 'package:namer_app/pages/premium_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:namer_app/services/split_service.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// The Card screen's inbox, like a banking app's notification strip
 /// (unread chats aren't here: the Friends tab's badge has those):
@@ -396,7 +397,7 @@ class _HomeInboxState extends State<HomeInbox> {
         color: AppColors.indigo700,
         title: 'Close today?',
         subtitle: leftToday != null && leftToday >= 0
-            ? '${leftToday.round()} kcal left. Closed days count towards '
+            ? '$calSym${leftToday.round()} left. Closed days count towards '
                 'your streak.'
             : 'Closed days count towards your streak and challenges.',
         actions: [
@@ -413,7 +414,7 @@ class _HomeInboxState extends State<HomeInbox> {
         icon: Icons.receipt_long,
         color: AppColors.violet600,
         title: '${split.fromName} split ${split.title}',
-        subtitle: 'Your share: ${split.calories.round()} kcal · ${split.meal}',
+        subtitle: 'Your share: $calSym${split.calories.round()} · ${split.meal}',
         busy: _busy.contains(key),
         actions: [
           _InboxAction('Decline', () => _run(key,
@@ -432,7 +433,7 @@ class _HomeInboxState extends State<HomeInbox> {
         icon: Icons.autorenew,
         color: AppColors.sky,
         title: 'Direct debit: ${debit.name}',
-        subtitle: '${debit.macros.calories.round()} kcal · ${debit.meal}',
+        subtitle: '$calSym${debit.macros.calories.round()} · ${debit.meal}',
         busy: _busy.contains(key),
         actions: [
           _InboxAction('Skip today',
@@ -464,7 +465,7 @@ class _HomeInboxState extends State<HomeInbox> {
         items.add(_InboxCard(
           icon: Icons.battery_alert,
           color: AppColors.amber700,
-          title: 'Low balance: ${left.round()} kcal left',
+          title: 'Low balance: $calSym${left.round()} left',
           subtitle: 'Nearly at your limit for today.',
         ));
       }
@@ -475,7 +476,7 @@ class _HomeInboxState extends State<HomeInbox> {
         items.add(_InboxCard(
           icon: Icons.savings_outlined,
           color: AppColors.emerald600,
-          title: 'Pot: ${pot.round()} kcal saved this week',
+          title: 'Pot: $calSym${pot.round()} saved this week',
           subtitle: 'Move it onto today\'s card for a treat.',
           busy: _busy.contains('pot'),
           actions: [

@@ -41,3 +41,15 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # The calorie currency symbol (U+E000) as a one-character font, so it
+  # works in any text. Made by brand/build_calorie_symbol_font.py.
+  fonts:
+    - family: CalorieSymbol
+      fonts:
+        - asset: assets/fonts/CalorieSymbol-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/CalorieSymbol-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/CalorieSymbol-Bold.ttf
+          weight: 800

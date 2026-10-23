@@ -5,6 +5,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/meal_time.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Bottom sheet: pick a meal and servings, then add a recipe to the card.
 ///
@@ -313,7 +314,7 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
                       )
                     : const Icon(Icons.credit_card),
                 label: Text(
-                  'Add ${kcal.round()} kcal to $_meal',
+                  'Spend $calSym${kcal.round()} on $_meal',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(

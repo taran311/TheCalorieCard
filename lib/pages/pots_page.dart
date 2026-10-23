@@ -6,6 +6,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/pot_service.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Pots: save a little of what you don't spend each day for a treat later
 /// in the week. Capped on purpose so it can't become "skip meals now,
@@ -68,7 +69,7 @@ class _PotsPageState extends State<PotsPage> {
       if (moved > 0) {
         messenger.showTimedSnackBar(
           SnackBar(
-            content: Text('${moved.round()} kcal moved onto your card'),
+            content: Text('$calSym${moved.round()} moved onto your card'),
             duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: 'Undo',
@@ -144,7 +145,7 @@ class _PotsPageState extends State<PotsPage> {
                     title: const Text('Save into a pot'),
                     subtitle: Text(
                       'On days you log food, up to '
-                      '${BalanceService.potDailyCap.round()} kcal you didn\'t '
+                      '$calSym${BalanceService.potDailyCap.round()} you didn\'t '
                       'spend goes into this week\'s pot.',
                     ),
                   ),
@@ -180,7 +181,7 @@ class _PotsPageState extends State<PotsPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${v.round()} kcal',
+                              '$calSym${v.round()}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 34,
@@ -206,7 +207,7 @@ class _PotsPageState extends State<PotsPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Up to ${BalanceService.potWeeklyCap.round()} kcal · '
+                      'Up to $calSym${BalanceService.potWeeklyCap.round()} · '
                       'empties every Monday',
                       style: const TextStyle(color: Colors.white),
                     ),
@@ -300,14 +301,14 @@ class _MoveSheetState extends State<_MoveSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Your pot has ${pot.round()} kcal. Whatever you leave stays '
+              'Your pot has $calSym${pot.round()}. Whatever you leave stays '
               'in it until Monday.',
               style: TextStyle(color: AppColors.muted),
             ),
             const SizedBox(height: 20),
             Center(
               child: Text(
-                '${amount.round()} kcal',
+                '$calSym${amount.round()}',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
@@ -321,7 +322,7 @@ class _MoveSheetState extends State<_MoveSheet> {
                 min: _minChoice,
                 max: pot,
                 divisions: _divisions(pot),
-                label: '${amount.round()} kcal',
+                label: '$calSym${amount.round()}',
                 semanticFormatterCallback: (v) => '${v.round()} kcal',
                 onChanged: (v) => setState(() => _amount = v),
               ),
@@ -342,7 +343,7 @@ class _MoveSheetState extends State<_MoveSheet> {
               onPressed:
                   amount <= 0 ? null : () => Navigator.pop(context, _chosen(amount)),
               icon: const Icon(Icons.add_card),
-              label: Text('Move ${amount.round()} kcal'),
+              label: Text('Move $calSym${amount.round()}'),
             ),
             const SizedBox(height: 4),
             TextButton(

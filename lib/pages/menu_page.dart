@@ -27,6 +27,7 @@ import 'package:namer_app/services/avatar_service.dart';
 import 'package:namer_app/ui/avatar_picker.dart';
 import 'package:namer_app/ui/user_avatar.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// The Profile tab: your card's extras, progress and account.
 class MenuPage extends StatefulWidget {
@@ -316,7 +317,7 @@ class _MenuPageState extends State<MenuPage> {
             ? null
             : BalanceService.goalsFrom(docs.first.data());
         if (goals == null) return const SizedBox.shrink();
-        final kcal = '${formatCardKcal(goals.calories)} kcal a day';
+        final kcal = '$calSym${formatCardKcal(goals.calories)} a day';
         final macros = '${goals.protein.round()}g protein · '
             '${goals.carbs.round()}g carbs · ${goals.fat.round()}g fat';
         return Padding(

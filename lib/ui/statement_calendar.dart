@@ -3,6 +3,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// How a calendar day is marked. Worked out from [DaySummary.onBudget], the
 /// same rule as the statement and High scores.
@@ -266,7 +267,7 @@ class _StatementCalendarState extends State<StatementCalendar> {
           AppColors.red.withValues(alpha: 0.12),
           '+${formatKcal(info.over)}',
           AppText.red600,
-          'over budget by ${formatKcal(info.over)} kcal',
+          'over budget by ${formatKcal(info.over)} calories',
         ),
       CalendarMark.rest => (
           AppColors.sky.withValues(alpha: 0.10),
@@ -281,7 +282,7 @@ class _StatementCalendarState extends State<StatementCalendar> {
           future
               ? 'not yet'
               : logged
-                  ? '${formatKcal(summary.calories)} kcal so far'
+                  ? '$calSym${formatKcal(summary.calories)} so far'
                   : 'nothing logged',
         ),
     };
@@ -389,7 +390,7 @@ class _CalendarLegend extends StatelessWidget {
                 fill: AppColors.red.withValues(alpha: 0.12),
                 text: '+N',
                 color: AppText.red600),
-            'kcal over'),
+            'Over budget'),
         item(box(fill: AppColors.sky.withValues(alpha: 0.10), text: '🏖️'),
             'Rest day'),
         item(box(border: Border.all(color: AppColors.primary, width: 2)),

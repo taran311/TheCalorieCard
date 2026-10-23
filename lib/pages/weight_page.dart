@@ -14,6 +14,7 @@ import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Your weight log: today's weigh-in, the trend, and (after a few weeks) a
 /// gentle check-in on whether the daily goal is doing what you want.
@@ -221,7 +222,7 @@ class _WeightPageState extends State<WeightPage> {
         title: const Text('New suggested goal'),
         content: Text(
           'With your new weight, your suggested goal is '
-          '${formatCardKcal(suggested)} kcal a day '
+          '$calSym${formatCardKcal(suggested)} a day '
           '(was ${formatCardKcal(current.calories)}).\n\n'
           'Your macros would be ${next.protein.round()}g protein, '
           '${next.carbs.round()}g carbs and ${next.fat.round()}g fat, '
@@ -260,7 +261,7 @@ class _WeightPageState extends State<WeightPage> {
       FoodLog.notifyChanged();
       await _snoozeCheckIn();
       messenger.showSnackBar(SnackBar(
-          content: Text('Daily goal is now ${formatCardKcal(kcal)} kcal. '
+          content: Text('Daily goal is now $calSym${formatCardKcal(kcal)}. '
               'Your card is up to date.')));
       await _loadProfile();
     } catch (_) {
@@ -524,7 +525,7 @@ class _WeightPageState extends State<WeightPage> {
     final rate = Units.formatRate(c.kgPerWeek, _units);
     final losing = c.kgPerWeek < 0;
     final change = c.suggestedChange;
-    final amount = '${change.abs()} kcal';
+    final amount = '$calSym${change.abs()}';
 
     String title;
     String body;

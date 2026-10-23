@@ -49,11 +49,11 @@ void main() {
       const cat = Budget(BudgetKind.category, 'takeaway', 1500);
       expect(meal.weekly, isFalse);
       expect(meal.name, 'Snacks');
-      expect(meal.limitLabel, '300 kcal a day');
+      expect(meal.limitLabel, '\uE000300 a day');
       expect(cat.weekly, isTrue);
       expect(cat.category, SpendCategory.takeaway);
       expect(cat.name, 'Takeaway & eating out');
-      expect(cat.limitLabel, '1,500 kcal a week');
+      expect(cat.limitLabel, '\uE0001,500 a week');
     });
 
     test('set and remove', () {
@@ -91,17 +91,17 @@ void main() {
       final snacksToday = p.firstWhere((x) => x.budget.kind == BudgetKind.meal);
       expect(snacksToday.used, 240 + 50 + 300);
       expect(snacksToday.periodKey, '2026-10-09');
-      expect(snacksToday.summary, 'Snacks today: 590 of 300 kcal');
+      expect(snacksToday.summary, 'Snacks today: \uE000590 of \uE000300');
       expect(snacksToday.over, isTrue);
-      expect(snacksToday.leftLabel, '290 kcal over');
+      expect(snacksToday.leftLabel, '\uE000290 over');
 
       final sweetsWeek =
           p.firstWhere((x) => x.budget.kind == BudgetKind.category);
       expect(sweetsWeek.used, 240 + 180 + 400); // not the apple or recipe
       expect(sweetsWeek.periodKey, '2026-10-05');
       expect(sweetsWeek.summary,
-          'Snacks & sweets this week: 820 of 1,000 kcal');
-      expect(sweetsWeek.leftLabel, '180 kcal left');
+          'Snacks & sweets this week: \uE000820 of \uE0001,000');
+      expect(sweetsWeek.leftLabel, '\uE000180 left');
     });
 
     test('old "Brekkie" entries count as Breakfast', () {

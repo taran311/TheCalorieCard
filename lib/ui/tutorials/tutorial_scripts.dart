@@ -4,6 +4,7 @@
 import 'package:namer_app/services/coach_service.dart';
 import 'package:namer_app/ui/tutorials/tutorial_mock.dart';
 import 'package:namer_app/ui/tutorials/tutorial_player.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 const _wrap = MockFood('Falafel wrap', '1 wrap', 'Lunch', 380,
     protein: 14, carbs: 50, fat: 14);
@@ -133,7 +134,7 @@ final List<Tutorial> tutorials = [
       ),
       const TStep(
         title: 'Your card updates',
-        body: 'The 482 kcal came straight off your balance, just like '
+        body: 'The ${calSym}482 came straight off your balance, just like '
             'spending on a bank card. Your macros went down too.',
         target: 'card',
       ),
@@ -613,7 +614,7 @@ final List<Tutorial> tutorials = [
         body: "Once Jess says yes, she's in your friends.",
         apply: (s) {
           s.requestsSent.clear();
-          s.friends.insert(0, const MockFriend('Jess', '1,240 kcal left · on budget'));
+          s.friends.insert(0, const MockFriend('Jess', '${calSym}1,240 left · on budget'));
           s.toast = "You're now friends with Jess";
         },
         then: (s) => s.toast = null,
@@ -799,12 +800,12 @@ final List<Tutorial> tutorials = [
     steps: [
       const TStep(
         title: 'A big day',
-        body: "You've got 198 kcal left, and dessert is calling.",
+        body: "You've got ${calSym}198 left, and dessert is calling.",
         target: 'card',
       ),
       TStep(
         title: 'Dessert happens',
-        body: "Now you're 320 kcal over. Your card turns red, and that's "
+        body: "Now you're ${calSym}320 over. Your card turns red, and that's "
             'completely fine.',
         target: 'add_Dinner',
         act: TAct.tap,
@@ -839,7 +840,7 @@ final List<Tutorial> tutorials = [
           s.coach.add(MockMessage(
             false,
             "That's okay, one day never undoes your progress. 💜 "
-            'Try about ${plan.perDay} kcal less a day ${plan.when}: an '
+            'Try about $calSym${plan.perDay} less a day ${plan.when}: an '
             'Americano instead of an oat latte, or fruit instead of biscuits. '
             'Or simply get back to normal tomorrow.',
           ));
@@ -868,7 +869,7 @@ final List<Tutorial> tutorials = [
     steps: [
       const TStep(
         title: 'End of the day',
-        body: "You've got 178 kcal left. Nicely done.",
+        body: "You've got ${calSym}178 left. Nicely done.",
         target: 'card',
       ),
       TStep(
@@ -882,7 +883,7 @@ final List<Tutorial> tutorials = [
       ),
       TStep(
         title: 'Close the day',
-        body: 'It counts towards your streak. With Pots on, up to 150 kcal '
+        body: 'It counts towards your streak. With Pots on, up to ${calSym}150 '
             "of what's left is saved for a treat later in the week.",
         target: 'closeDay',
         act: TAct.tap,

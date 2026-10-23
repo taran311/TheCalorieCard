@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:namer_app/services/budget_service.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// One budget's progress: "Snacks today · 240 of 300 kcal", a bar and what's
 /// left. Amber from 80% (and when over) rather than red: a budget is a
@@ -56,8 +57,8 @@ class BudgetProgressRow extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '${BudgetService.kcal(p.used)} of '
-                        '${BudgetService.kcal(b.limit)} kcal',
+                        '$calSym${BudgetService.kcal(p.used)} of '
+                        '$calSym${BudgetService.kcal(b.limit)}',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,

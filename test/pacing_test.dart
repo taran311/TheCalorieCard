@@ -15,7 +15,7 @@ void main() {
     expect(plan.meals, ['Dinner']);
     expect(plan.snackReserve, 70);
     expect(plan.perMeal, 650);
-    expect(plan.message, 'About 650 kcal for dinner');
+    expect(plan.message, 'About \uE000650 for dinner');
   });
 
   test('late morning, lunch and dinner to come: split evenly', () {
@@ -27,7 +27,7 @@ void main() {
     expect(plan.meals, ['Lunch', 'Dinner']);
     expect(plan.snackReserve, 100);
     expect(plan.perMeal, 450);
-    expect(plan.message, '≈ 450 kcal each for lunch and dinner');
+    expect(plan.message, '≈ \uE000450 each for lunch and dinner');
   });
 
   test('snacks already logged: nothing kept back', () {
@@ -46,7 +46,7 @@ void main() {
     expect(plan.meals, ['Breakfast', 'Lunch', 'Dinner']);
     expect(plan.snackReserve, 200);
     expect(plan.perMeal, 600);
-    expect(plan.message, '≈ 600 kcal each for breakfast, lunch and dinner');
+    expect(plan.message, '≈ \uE000600 each for breakfast, lunch and dinner');
   });
 
   test('a missed meal that is already behind us is not counted', () {
@@ -91,6 +91,6 @@ void main() {
   test('big numbers get a thousands separator', () {
     final plan = Pacing.plan(
         left: 2500, now: at(18), mealsWithFood: {'Breakfast', 'Lunch'})!;
-    expect(plan.message, 'About 2,250 kcal for dinner');
+    expect(plan.message, 'About \uE0002,250 for dinner');
   });
 }

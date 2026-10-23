@@ -17,6 +17,7 @@ import 'package:namer_app/ui/body_inputs.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/card_reveal.dart';
 import 'package:namer_app/ui/profile_editors.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Setting up a new card, one question per screen: about you, your goal
 /// (with a goal weight and pace), then your plan and "Print my card".
@@ -484,7 +485,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
           child: Column(
             children: [
               Text(
-                '${formatCardKcal(kcal)} kcal',
+                '$calSym${formatCardKcal(kcal)}',
                 style: const TextStyle(
                   fontSize: 40,
                   fontWeight: FontWeight.w900,

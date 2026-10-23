@@ -10,6 +10,7 @@ import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/coach_glyph.dart';
 import 'package:namer_app/ui/coach_nudge.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 class MockFood {
   final String name;
@@ -530,7 +531,7 @@ class MockApp extends StatelessWidget {
                       Expanded(
                         child: Text(
                           s.pot > 0
-                              ? "Today's closed. ${s.pot} kcal went in your Pot."
+                              ? "Today's closed. $calSym${s.pot} went in your Pot."
                               : "Today's closed. Nice work.",
                           style: TextStyle(
                               fontWeight: FontWeight.w600,
@@ -575,8 +576,8 @@ class MockApp extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
                 s.left < 0
-                    ? 'Eaten today: ${s.eaten} kcal · ${-s.left} kcal over'
-                    : 'Eaten today: ${s.eaten} kcal · ${s.left} kcal left',
+                    ? 'Eaten today: $calSym${s.eaten} · $calSym${-s.left} over'
+                    : 'Eaten today: $calSym${s.eaten} · $calSym${s.left} left',
                 style: TextStyle(fontSize: 12.5, color: AppColors.muted),
               ),
             ),
@@ -611,7 +612,7 @@ class MockApp extends StatelessWidget {
                           fontWeight: FontWeight.w800, color: AppColors.ink)),
                   const Spacer(),
                   if (items.isNotEmpty)
-                    Text('${s.kcalIn(meal)} kcal',
+                    Text('${s.kcalIn(meal)}',
                         style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: AppColors.ink)),
@@ -818,7 +819,7 @@ class MockApp extends StatelessWidget {
                       ? 'Look up $toLookUp items'
                       : s.found.isEmpty
                           ? 'Add to ${s.meal}'
-                          : 'Add $total kcal to ${s.meal}',
+                          : 'Add $calSym$total to ${s.meal}',
                   filled: true,
                   wide: true,
                 ),
@@ -867,7 +868,7 @@ class MockApp extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
-            s.left < 0 ? '${-s.left} kcal over' : '${s.left} kcal left',
+            s.left < 0 ? '$calSym${-s.left} over' : '$calSym${s.left} left',
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.w800),
           ),
@@ -877,7 +878,7 @@ class MockApp extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             children: [
               _bubble(false,
-                  "Hi! You've got ${s.left < 0 ? 0 : s.left} kcal left today. How can I help?"),
+                  "Hi! You've got $calSym${s.left < 0 ? 0 : s.left} left today. How can I help?"),
               for (final m in s.coach) _bubble(m.mine, m.text),
               if (s.coachThinking)
                 Align(
@@ -951,11 +952,11 @@ class MockApp extends StatelessWidget {
           for (final f in s.proposal)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text('• ${f.name} · ${f.portion} · ${f.kcal} kcal',
+              child: Text('• ${f.name} · ${f.portion} · $calSym${f.kcal}',
                   style: const TextStyle(fontSize: 13)),
             ),
           const Divider(height: 14),
-          Text('+$total kcal',
+          Text('+$calSym$total',
               style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           if (done)
@@ -1036,7 +1037,7 @@ class MockApp extends StatelessWidget {
                                           fontWeight: FontWeight.w700,
                                           color: AppColors.ink)),
                                   Text(
-                                      'Makes ${r.servings} · ${(r.kcal / r.servings).round()} kcal each',
+                                      'Makes ${r.servings} · $calSym${(r.kcal / r.servings).round()} each',
                                       style: TextStyle(
                                           fontSize: 12,
                                           color: AppColors.muted)),
@@ -1489,7 +1490,7 @@ class MockApp extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                            '${r.name}\n1 serving · ${(r.kcal / r.servings).round()} kcal',
+                            '${r.name}\n1 serving · $calSym${(r.kcal / r.servings).round()}',
                             style: const TextStyle(fontSize: 13)),
                       ),
                       if (r == s.recipes.last)
@@ -2103,7 +2104,7 @@ class MockApp extends StatelessWidget {
           color: AppColors.indigo50,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Text('$kcal kcal',
+        child: Text('$kcal',
             style: TextStyle(
                 color: AppText.primaryDark,
                 fontWeight: FontWeight.w700,

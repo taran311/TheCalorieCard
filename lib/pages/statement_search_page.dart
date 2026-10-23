@@ -3,6 +3,7 @@ import 'package:namer_app/pages/day_statement_page.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Search every food logged in the last year, like a bank's transaction
 /// search. Results are grouped by day; tap one to open that day.
@@ -98,7 +99,7 @@ class _StatementSearchPageState extends State<StatementSearchPage> {
       children: [
         Text(
           '${total == 1 ? '1 food' : '$total foods'} · '
-          '${formatKcal(totalKcal)} kcal in the last 12 months',
+          '$calSym${formatKcal(totalKcal)} in the last 12 months',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -216,7 +217,7 @@ class _ResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final details = [
-      '${formatKcal(tx.calories)} kcal',
+      formatKcal(tx.calories),
       if (tx.category.isNotEmpty) tx.category,
       formatDayShort(tx.time),
     ].join(' · ');

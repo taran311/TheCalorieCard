@@ -11,6 +11,7 @@ import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:namer_app/pages/add_recipe_page.dart';
 import 'package:namer_app/ui/log_recipe_sheet.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// A recipe a friend shared with you, ready to show.
 class _SharedRecipe {
@@ -472,18 +473,17 @@ class _RecipesPageState extends State<RecipesPage> {
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
+                          // What a serving costs, like a price tag.
                           Text(
-                            kcal.toStringAsFixed(0),
+                            cals(kcal),
+                            semanticsLabel:
+                                '${kcal.toStringAsFixed(0)} calories',
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
                               color: AppText.primaryDark,
                             ),
                           ),
-                          const SizedBox(width: 4),
-                          Text('kcal',
-                              style: TextStyle(
-                                  fontSize: 13, color: AppColors.muted)),
                           const SizedBox(width: 14),
                           Expanded(
                             child: Text.rich(
@@ -739,8 +739,8 @@ class _RecipesPageState extends State<RecipesPage> {
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'newest', child: Text('Newest first')),
               PopupMenuItem(value: 'name', child: Text('Name (A–Z)')),
-              PopupMenuItem(value: 'kcal_low', child: Text('Lowest kcal')),
-              PopupMenuItem(value: 'kcal_high', child: Text('Highest kcal')),
+              PopupMenuItem(value: 'kcal_low', child: Text('Lowest calories')),
+              PopupMenuItem(value: 'kcal_high', child: Text('Highest calories')),
             ],
             child: Container(
               height: 48,

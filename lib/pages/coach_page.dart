@@ -13,6 +13,7 @@ import 'package:namer_app/ui/coach_glyph.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/tutorials/tutorial_button.dart';
 import 'package:namer_app/ui/voice_button.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Calorie Coach: a friendly chat about your day, with ready-made
 /// questions that change with how the day's going. Coach can also propose
@@ -618,7 +619,7 @@ class _TodayStrip extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            over ? '${-left} kcal over' : '$left kcal left',
+            over ? '$calSym${-left} over' : '$calSym$left left',
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
           ),
@@ -649,7 +650,7 @@ class _GoingOutCards extends StatelessWidget {
         ? 'What to have'
         : left < 0
             ? 'Lighter picks'
-            : 'Ideas for your ${formatCardKcal(left)} kcal';
+            : 'Ideas for your $calSym${formatCardKcal(left)}';
 
     Widget card(CoachOuting outing, String emoji, String title) => Expanded(
           child: Material(
@@ -834,10 +835,10 @@ class _OutingSheetState extends State<_OutingSheet> {
                 const SizedBox(height: 4),
                 Text(
                   left < 0
-                      ? "You're ${formatCardKcal(-left)} kcal over today, so "
+                      ? "You're $calSym${formatCardKcal(-left)} over today, so "
                           "Coach will lean towards lighter picks."
                       : 'Coach will plan around your '
-                          '${formatCardKcal(left)} kcal left today.',
+                          '$calSym${formatCardKcal(left)} left today.',
                   style: TextStyle(fontSize: 13, color: AppColors.gray600),
                 ),
               ],
@@ -944,7 +945,7 @@ class _PromptChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return ActionChip(
       avatar: Text(prompt.emoji),
-      label: Text(prompt.label),
+      label: Text(calText(prompt.label)),
       onPressed: onTap,
       backgroundColor: AppColors.surface,
       side: BorderSide(color: AppColors.indigo100),
@@ -968,7 +969,7 @@ class _ProposalCard extends StatelessWidget {
   });
 
   static String _signedKcal(double v) =>
-      v < 0 ? '${(-v).round()} kcal back' : '+${v.round()} kcal';
+      v < 0 ? '$calSym${(-v).round()} back' : '+$calSym${v.round()}';
 
   @override
   Widget build(BuildContext context) {
@@ -1282,7 +1283,8 @@ class _Bubble extends StatelessWidget {
           ),
           border: fromUser ? null : Border.all(color: AppColors.border),
         ),
-        child: _FormattedText(text: text, colour: colour),
+        // Shown with ⊂ ("640 kcal" → "⊂640"); what's sent keeps kcal.
+        child: _FormattedText(text: calText(text), colour: colour),
       ),
     );
   }

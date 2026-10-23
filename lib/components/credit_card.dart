@@ -370,7 +370,7 @@ class _CreditCardWidgetState extends State<CreditCard>
         return Semantics(
           button: true,
           label: '${widget.restDay ? 'Rest day. ' : widget.closed ? 'Day closed. ' : ''}'
-              'Calorie card. $label: ${formatCardKcal(calories)} kcal. '
+              'Calorie card. $label: ${formatCardKcal(calories)} calories. '
               'Tap to see macros.',
           child: GestureDetector(
             onTap: _toggle,

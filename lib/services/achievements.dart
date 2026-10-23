@@ -4,6 +4,7 @@ import 'package:namer_app/services/budget_rule.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/streak.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Achievement tiers: harder ones are worth more points.
 enum AchievementTier {
@@ -215,7 +216,7 @@ class Achievements {
     Achievement(
       id: 'bullseye',
       title: 'Bullseye',
-      description: 'Finish a day with 0–50 kcal left on the card.',
+      description: 'Finish a day with ${calSym}0–50 left on the card.',
       emoji: '🎯',
       category: AchievementCategory.onBudget,
       tier: AchievementTier.silver,
@@ -446,12 +447,11 @@ class Achievements {
     Achievement(
       id: 'pot_saver',
       title: 'Saver',
-      description: 'Fill your pot to the 750 kcal weekly cap.',
+      description: 'Fill your pot to the ${calSym}750 weekly cap.',
       emoji: '🐷',
       category: AchievementCategory.banking,
       tier: AchievementTier.gold,
       target: 750,
-      unit: 'kcal',
     ),
     Achievement(
       id: 'pot_treat',

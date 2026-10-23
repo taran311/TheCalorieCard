@@ -4,6 +4,7 @@ import 'package:namer_app/services/goal_maths.dart';
 import 'package:namer_app/services/profile_limits.dart';
 import 'package:namer_app/services/units.dart';
 import 'package:namer_app/ui/responsive.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Metric, stones or pounds. Used on Get started, Goals and profile and
 /// the weight log.
@@ -419,7 +420,7 @@ class LowCalorieNote extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                "That's a very low daily budget. Under 1,200 kcal it's hard "
+                "That's a very low daily budget. Under ${calSym}1,200 it's hard "
                 'to get everything your body needs, so it\'s best done with '
                 'advice from your GP. You can still save it.',
                 style: TextStyle(

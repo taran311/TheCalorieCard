@@ -10,6 +10,7 @@ import 'package:namer_app/services/wrapped_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
 import 'package:namer_app/services/achievement_service.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Monthly statement / "Wrapped": your month in review, shareable to chat.
 class WrappedPage extends StatefulWidget {
@@ -288,7 +289,7 @@ class _WrapCard extends StatelessWidget {
           const SizedBox(height: 16),
           Row(
             children: [
-              stat('🍽️', formatKcal(wrap.averageCalories), 'avg kcal/day'),
+              stat('🍽️', '$calSym${formatKcal(wrap.averageCalories)}', 'avg a day'),
               stat('💪', '${formatKcal(wrap.totalProtein)}g', 'protein'),
               stat(
                   '🎯',

@@ -10,6 +10,7 @@ import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/pages/calorie_game_page.dart';
 import 'package:namer_app/ui/user_avatar.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// The navigator chat screens open on.
 ///
@@ -1645,7 +1646,7 @@ class _SharedCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${left.abs()} kcal',
+            '$calSym${left.abs()}',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 24,

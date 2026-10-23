@@ -5,6 +5,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/spotlight_tour.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// The end of sign-up: the card "prints" while your goals are saved, then
 /// your name and date appear, the balance counts up, and a two-step tour
@@ -276,8 +277,9 @@ class _CardRevealPageState extends State<CardRevealPage>
                           failed
                               ? 'Check your connection and try again.'
                               : ready
-                                  ? 'Topped up with ${formatCardKcal(widget.calories)} '
-                                      'kcal every morning.'
+                                  ? 'Topped up with $calSym'
+                                      '${formatCardKcal(widget.calories)} '
+                                      'every morning.'
                                   : _lines[_line],
                           key: ValueKey('$_stage$_line'),
                           textAlign: TextAlign.center,

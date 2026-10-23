@@ -20,6 +20,7 @@ import 'package:namer_app/ui/share_to_chat_sheet.dart';
 import 'package:namer_app/ui/statement_calendar.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
 import 'package:namer_app/ui/today_panel.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// A bank-style statement of everything spent from the calorie card.
 class StatementPage extends StatefulWidget {
@@ -358,7 +359,7 @@ class _SummaryRow extends StatelessWidget {
     final logged = statement.days.where((d) => d.transactions.isNotEmpty);
     final average = _Stat(
       label: 'Daily average',
-      value: '${formatKcal(statement.averageCalories)} kcal',
+      value: '$calSym${formatKcal(statement.averageCalories)}',
     );
     final onBudget = _Stat(
       label: 'On budget',
@@ -470,7 +471,7 @@ class _BudgetsPanel extends StatelessWidget {
         ),
         child: Text(
           'Set an optional limit for a meal or a type of food, like '
-          'Snacks 300 kcal a day or Takeaway 1,500 kcal a week.',
+          'Snacks ${calSym}300 a day or Takeaway ${calSym}1,500 a week.',
           style: TextStyle(fontSize: 13, color: AppColors.muted),
         ),
       );
@@ -536,7 +537,7 @@ class _WhereItWent extends StatelessWidget {
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w700)),
                           ),
-                          Text('${formatKcal(r.calories)} kcal',
+                          Text('$calSym${formatKcal(r.calories)}',
                               style: const TextStyle(
                                   fontWeight: FontWeight.w700)),
                         ],
@@ -629,7 +630,7 @@ class _WeekDigestCard extends StatelessWidget {
                 ),
                 _DigestRow(
                   label: 'Average a day',
-                  value: '${formatKcal(t.averageCalories)} kcal',
+                  value: '$calSym${formatKcal(t.averageCalories)}',
                   now: t.averageCalories,
                   before: l.averageCalories,
                 ),
@@ -776,13 +777,13 @@ class _ThisWeekCard extends StatelessWidget {
         child: Column(
           children: [
             if (pot > 0)
-              line('🌱', 'Pot: $pot kcal saved for a treat',
+              line('🌱', 'Pot: $calSym$pot saved for a treat',
                   trailing: TextButton(
                       onPressed: onOpenPots, child: const Text('Open'))),
             if (spreading)
               line(
                 '⚖️',
-                'Spreading a big day: ${plan.perDay} kcal less a day, '
+                'Spreading a big day: $calSym${plan.perDay} less a day, '
                     '$left day${left == 1 ? '' : 's'} to go',
               ),
           ],

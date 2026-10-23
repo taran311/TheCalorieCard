@@ -3,6 +3,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/statement_service.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// What a budget limits: one meal (per day) or one spending category
 /// (per week), like the category budgets in a banking app.
@@ -39,7 +40,7 @@ class Budget {
 
   /// "300 kcal a day" or "1,000 kcal a week".
   String get limitLabel =>
-      '${BudgetService.kcal(limit)} kcal a ${weekly ? 'week' : 'day'}';
+      '$calSym${BudgetService.kcal(limit)} a ${weekly ? 'week' : 'day'}';
 }
 
 /// The budgets saved on the user's `user_data` doc as
@@ -148,12 +149,12 @@ class BudgetProgress {
 
   /// "Snacks today: 240 of 300 kcal".
   String get summary => '${budget.name} ${budget.period}: '
-      '${BudgetService.kcal(used)} of ${BudgetService.kcal(budget.limit)} kcal';
+      '$calSym${BudgetService.kcal(used)} of $calSym${BudgetService.kcal(budget.limit)}';
 
   /// "60 kcal left" or "20 kcal over".
   String get leftLabel => over
-      ? '${BudgetService.kcal(-left)} kcal over'
-      : '${BudgetService.kcal(left)} kcal left';
+      ? '$calSym${BudgetService.kcal(-left)} over'
+      : '$calSym${BudgetService.kcal(left)} left';
 
   /// Identifies one alert (budget, period and level) for "don't show this
   /// again": `meal|Snacks|2026-10-09|80`.

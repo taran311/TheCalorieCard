@@ -93,6 +93,8 @@ ThemeData buildAppTheme() {
       RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
   return ThemeData(
     useMaterial3: true,
+    // Draws the calorie symbol (calSym, U+E000) wherever it appears.
+    fontFamilyFallback: const ['CalorieSymbol'],
     colorScheme: ColorScheme.fromSeed(
       seedColor: AppColors.primary,
       primary: dark ? AppText.primary : AppColors.primary,

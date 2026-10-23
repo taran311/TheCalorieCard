@@ -10,6 +10,7 @@ import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Optional limits for a meal (per day) or a type of food (per week), like
 /// a banking app's category budgets. They never change the card: they're a
@@ -130,7 +131,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
         title: '$meal budget',
         explanation: 'Everything you log to $meal counts. It starts again '
             'each day.',
-        unit: 'kcal a day',
+        unit: 'a day',
         current: current,
         max: 10000,
         usual: _history.then((days) => BudgetService.usualFor(
@@ -144,7 +145,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
       _settings.withMeal(meal, limit),
       limit == null
           ? '$meal budget removed'
-          : '$meal budget set to ${BudgetService.kcal(limit)} kcal a day',
+          : '$meal budget set to $calSym${BudgetService.kcal(limit)} a day',
     );
   }
 
@@ -156,7 +157,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
         title: '${c.label} budget',
         explanation: '${_examples[c] ?? c.label}. Weeks run Monday to '
             'Sunday.',
-        unit: 'kcal a week',
+        unit: 'a week',
         current: current,
         max: 50000,
         usual: _history.then((days) => BudgetService.usualFor(
@@ -174,7 +175,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
       _settings.withCategory(c, limit),
       limit == null
           ? '${c.label} budget removed'
-          : '${c.label} budget set to ${BudgetService.kcal(limit)} kcal a week',
+          : '${c.label} budget set to $calSym${BudgetService.kcal(limit)} a week',
     );
   }
 
@@ -192,10 +193,10 @@ class _BudgetsPageState extends State<BudgetsPage> {
     if (limit == null) {
       subtitle = explanation;
     } else if (progress == null) {
-      subtitle = '${BudgetService.kcal(limit)} $unit';
+      subtitle = '$calSym${BudgetService.kcal(limit)} $unit';
     } else {
-      subtitle = '${BudgetService.kcal(limit)} $unit · '
-          '${BudgetService.kcal(progress.used)} used ${progress.budget.period} '
+      subtitle = '$calSym${BudgetService.kcal(limit)} $unit · '
+          '$calSym${BudgetService.kcal(progress.used)} used ${progress.budget.period} '
           '· ${progress.leftLabel}';
     }
     return Semantics(
@@ -338,7 +339,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
                           explanation: 'No budget',
                           limit: _settings.mealLimit(m),
                           progress: _progress['${BudgetKind.meal.name}|$m'],
-                          unit: 'kcal a day',
+                          unit: 'a day',
                           onTap: () => _editMeal(m),
                         ),
                     ],
@@ -370,7 +371,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
                           limit: _settings.categoryLimit(c),
                           progress:
                               _progress['${BudgetKind.category.name}|${c.name}'],
-                          unit: 'kcal a week',
+                          unit: 'a week',
                           onTap: () => _editCategory(c),
                         ),
                     ],
@@ -473,12 +474,12 @@ class _LimitDialogState extends State<_LimitDialog> {
   void _submit() {
     final v = double.tryParse(_text.text.trim().replaceAll(',', ''));
     if (v == null || v < 10) {
-      setState(() => _error = 'Enter at least 10 kcal');
+      setState(() => _error = 'Enter at least ${calSym}10');
       return;
     }
     if (v > widget.max) {
       setState(() => _error =
-          'That looks too high (most is ${BudgetService.kcal(widget.max)})');
+          'That looks too high (most is $calSym${BudgetService.kcal(widget.max)})');
       return;
     }
     Navigator.of(context).pop(_LimitResult(v.roundToDouble()));
@@ -504,6 +505,7 @@ class _LimitDialogState extends State<_LimitDialog> {
             onSubmitted: (_) => _submit(),
             decoration: InputDecoration(
               labelText: 'Limit',
+              prefixText: calSym,
               suffixText: widget.unit,
               errorText: _error,
               border: const OutlineInputBorder(),
@@ -531,8 +533,8 @@ class _LimitDialogState extends State<_LimitDialog> {
                   children: [
                     if (usual != null && suggested != null)
                       Text(
-                        'Lately you have about ${BudgetService.kcal(usual)} '
-                        'kcal ${widget.period}.',
+                        'Lately you have about '
+                        '$calSym${BudgetService.kcal(usual)} ${widget.period}.',
                         style:
                             TextStyle(fontSize: 13, color: AppColors.gray700),
                       ),
@@ -544,7 +546,7 @@ class _LimitDialogState extends State<_LimitDialog> {
                         if (suggested != null)
                           ActionChip(
                             avatar: const Icon(Icons.auto_awesome, size: 16),
-                            label: Text('Try ${BudgetService.kcal(suggested)} '
+                            label: Text('Try $calSym${BudgetService.kcal(suggested)} '
                                 '(a little less)'),
                             onPressed: () => use(suggested),
                           ),
@@ -553,7 +555,7 @@ class _LimitDialogState extends State<_LimitDialog> {
                             avatar: const Icon(Icons.pie_chart_outline,
                                 size: 16),
                             label: Text('${widget.forGoalLabel}: '
-                                '${BudgetService.kcal(forGoal)}'),
+                                '$calSym${BudgetService.kcal(forGoal)}'),
                             onPressed: () => use(forGoal),
                           ),
                       ],

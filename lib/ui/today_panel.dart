@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/statement_widgets.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// Keeps a weekly [Statement] fresh: reloads whenever the card balance
 /// changes (i.e. food was added or removed anywhere in the app).
@@ -153,7 +154,7 @@ class TodayPanel extends StatelessWidget {
                 PanelCard(
                   title: 'This week',
                   trailing: Text(
-                    'avg ${formatKcal(statement.averageCalories)} kcal',
+                    'avg $calSym${formatKcal(statement.averageCalories)}',
                     style:
                         TextStyle(fontSize: 12, color: AppColors.muted),
                   ),

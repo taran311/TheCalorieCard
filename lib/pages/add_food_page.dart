@@ -1546,7 +1546,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       final label = [
         tx.description,
         if (portion != null) portion,
-        '${tx.calories.round()} kcal',
+        '$calSym${tx.calories.round()}',
       ].join(' · ');
       return ActionChip(
         avatar: const Icon(Icons.add, size: 16),
@@ -1896,7 +1896,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                         border: Border.all(color: AppColors.border),
                       ),
                       child: Text(
-                        'Total: ${_totalCalories.round()} kcal\n'
+                        'Total: $calSym${_totalCalories.round()}\n'
                         '${_totalProtein.round()}g protein · '
                         '${_totalCarbs.round()}g carbs · '
                         '${_totalFat.round()}g fat',
@@ -2082,7 +2082,7 @@ class _SplitSheetState extends State<_SplitSheet> {
               Text(
                 _chosen.isEmpty
                     ? 'Who did you share it with?'
-                    : 'Split $people ways: everyone gets $share kcal',
+                    : 'Split $people ways: everyone gets $calSym$share',
                 style: TextStyle(color: AppColors.muted),
               ),
               const SizedBox(height: 8),
@@ -2116,7 +2116,7 @@ class _SplitSheetState extends State<_SplitSheet> {
                   icon: const Icon(Icons.call_split),
                   label: Text(_chosen.isEmpty
                       ? 'Pick friends'
-                      : 'Add my $share kcal & send requests'),
+                      : 'Add my $calSym$share & send requests'),
                 ),
               ),
             ],

@@ -20,6 +20,7 @@ import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/profile_editors.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 // The calorie sums used to live here; other screens still import them
 // from this file.
@@ -653,7 +654,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     "You've set your own calories, so they stay at "
-                    '${formatCardKcal(_goal)} kcal. Switch back in Daily '
+                    '$calSym${formatCardKcal(_goal)}. Switch back in Daily '
                     'calories to use your goal.',
                     style: TextStyle(fontSize: 12.5, color: AppColors.muted),
                   ),
@@ -674,7 +675,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
             title: 'Work it out from my goal',
             subtitle: calculated == null
                 ? 'Add your age, height and weight first'
-                : '${formatCardKcal(calculated)} kcal a day',
+                : '$calSym${formatCardKcal(calculated)} a day',
             selected: !_ownCalories,
             onTap: calculated == null
                 ? () {}
@@ -989,7 +990,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                           _row('Goal', _goalValue, _editGoal, note: _goalNote),
                           _row(
                             'Daily calories',
-                            '${formatCardKcal(_goal)} kcal',
+                            '$calSym${formatCardKcal(_goal)}',
                             _editCalories,
                             note: _ownCalories
                                 ? (_fromCoach ? 'From Coach' : 'Your own number')
