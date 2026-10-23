@@ -48,9 +48,12 @@ def build(name, weight, sw, tw, out):
     pen = TTGlyphPen(None)
     def poly(pts, reverse=False):
         p = [tf(x, y, x0) for x, y in pts]
-        # y-down design → y-up font flips winding; keep outer contours
-        # clockwise in font space (TrueType convention).
-        if reverse: p = p[::-1]
+        # Every shape goes the same way round (clockwise in font space, the
+        # TrueType convention), so where the strokes cross the C they add
+        # up instead of cutting a hole.
+        area = sum(p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p)][0] * p[i][1]
+                   for i in range(len(p)))
+        if area > 0: p = p[::-1]  # anticlockwise: turn it round
         pen.moveTo(p[0])
         for q in p[1:]: pen.lineTo(q)
         pen.closePath()
