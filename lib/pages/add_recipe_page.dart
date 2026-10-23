@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/snack.dart';
+import 'package:namer_app/ui/amount_field.dart';
+import 'package:namer_app/services/portion_amount.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/tutorials/tutorial_button.dart';
@@ -41,6 +43,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
   String _servingUnit = 'Serving';
   int? _editingIngredientIndex;
   late TextEditingController _ingredientPortionController;
+
+  /// The amount box while an ingredient whose portion gives its weight
+  /// ("1 serving (100g)", "1 portion (49g)") is being edited: it can be
+  /// typed in portions, grams or ounces. Null otherwise.
+  AmountInput? _ingredientAmount;
 
   // Free text mode
   final TextEditingController _freeTextController = TextEditingController();
@@ -168,6 +175,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
   @override
   void dispose() {
     _ingredientPortionController.dispose();
+    _ingredientAmount?.dispose();
     _freeTextController.dispose();
     _nameController.dispose();
     _servingSizeController.dispose();
@@ -792,7 +800,12 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
   /// Change an ingredient's amount, or remove it.
   Widget _buildIngredientEditor(int idx, _IngredientEntry ing) {
-    final unit = _extractPortionUnit(ing.portion);
+    final amount = _ingredientAmount;
+    final unit = amount != null
+        ? (amount.unit == AmountUnit.portions
+            ? _extractPortionUnit(ing.portion)
+            : PortionAmount.label(amount.unit))
+        : _extractPortionUnit(ing.portion);
     // Short units fit beside the number; longer ones go underneath.
     final shortUnit = unit.isNotEmpty && unit.length <= 6;
     return Container(
@@ -806,9 +819,21 @@ class _AddRecipePageState extends State<AddRecipePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (amount != null && amount.units.length > 1) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: AmountUnitPicker(
+                units: amount.units,
+                selected: amount.unit,
+                onChanged: (u) => setState(() => amount.setUnit(u)),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           TextField(
-            controller: _ingredientPortionController,
+            controller: amount?.controller ?? _ingredientPortionController,
             autofocus: true,
+            inputFormatters: AmountInput.inputFormatters,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textInputAction: TextInputAction.done,
             decoration: InputDecoration(
@@ -825,6 +850,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
             ),
             onSubmitted: (_) => _saveIngredientAmount(idx),
           ),
+          if (amount != null && amount.unit != AmountUnit.portions)
+            amountHint('1 portion: 1 ${_extractPortionUnit(ing.portion)}'),
           const SizedBox(height: 4),
           OverflowBar(
             alignment: MainAxisAlignment.end,
@@ -857,8 +884,15 @@ class _AddRecipePageState extends State<AddRecipePage> {
   void _saveIngredientAmount(int idx) {
     if (idx >= _ingredients.length) return;
     final ing = _ingredients[idx];
-    final newPortion = double.tryParse(
-        _ingredientPortionController.text.trim().replaceAll(',', '.'));
+    final input = _ingredientAmount;
+    if (input != null && input.unit != AmountUnit.portions) {
+      _saveIngredientWeight(idx, ing, input);
+      return;
+    }
+    final newPortion = input != null
+        ? input.multiplier
+        : double.tryParse(
+            _ingredientPortionController.text.trim().replaceAll(',', '.'));
     if (newPortion == null || !newPortion.isFinite || newPortion <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter an amount more than 0.')),
@@ -875,7 +909,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
 
     setState(() {
       _ingredients[idx] = _IngredientEntry(
-        name: _renameForAmount(ing.name, ing.portion, amount),
+        name: _nameForCount(ing, amount, newPortion),
         calories: adjustedMacros['calories']!,
         protein: adjustedMacros['protein']!,
         carbs: adjustedMacros['carbs']!,
@@ -884,6 +918,18 @@ class _AddRecipePageState extends State<AddRecipePage> {
       );
       _editingIngredientIndex = null;
     });
+  }
+
+  /// The name after changing the count: its leading amount follows the
+  /// count ("200g tofu" at 300 is "300g tofu"); otherwise a single weight
+  /// in it is scaled ("100g mushrooms" at 2 servings of 100 g is "200g
+  /// mushrooms").
+  String _nameForCount(_IngredientEntry ing, String amount, double count) {
+    final renamed = _renameForAmount(ing.name, ing.portion, amount);
+    if (renamed != ing.name) return renamed;
+    if (_ingredientAmount == null) return ing.name;
+    final ratio = count / _extractPortionNumber(ing.portion);
+    return PortionAmount.rescaleName(ing.name, ratio) ?? ing.name;
   }
 
   /// "200g firm tofu" changed to 300 g reads "300g firm tofu",
@@ -897,7 +943,52 @@ class _AddRecipePageState extends State<AddRecipePage> {
     return '${m.group(1)}$newAmount${name.substring(m.end)}';
   }
 
+  /// Saves an amount typed in grams, ounces, ml or fl oz. The ingredient
+  /// then reads as a plain weight ("150g"), scaled from what it was.
+  void _saveIngredientWeight(
+      int idx, _IngredientEntry ing, AmountInput input) {
+    final portions = input.multiplier; // how many of one portion
+    if (portions == null || !portions.isFinite || portions <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter an amount more than 0.')),
+      );
+      return;
+    }
+    final size = input.size!;
+    final ratio = portions / _extractPortionNumber(ing.portion);
+    final metric = size.volume ? AmountUnit.ml : AmountUnit.g;
+    final total = portions * size.amount;
+    final newPortion =
+        '${PortionAmount.format(total, metric)}${PortionAmount.label(metric)}';
+    setState(() {
+      _ingredients[idx] = _IngredientEntry(
+        name: PortionAmount.rescaleName(ing.name, ratio) ?? ing.name,
+        calories: ing.calories * ratio,
+        protein: ing.protein * ratio,
+        carbs: ing.carbs * ratio,
+        fat: ing.fat * ratio,
+        portion: newPortion,
+      );
+      _editingIngredientIndex = null;
+    });
+  }
+
   void _startEditingIngredient(int idx, String currentPortion) {
+    // "1 serving (100g)": the count is 1, and one serving is 100 g, so it
+    // can be changed in grams too. Opens on grams, which is how people
+    // weigh things.
+    final count = _extractPortionNumber(currentPortion);
+    final one = _extractPortionUnit(currentPortion);
+    final size = PortionAmount.sizeOf(one);
+    _ingredientAmount?.dispose();
+    _ingredientAmount = null;
+    if (size != null) {
+      _ingredientAmount = AmountInput(
+        basePortion: one,
+        multiplier: count,
+        startUnit: size.volume ? AmountUnit.ml : AmountUnit.g,
+      );
+    }
     setState(() {
       _editingIngredientIndex = idx;
       _ingredientPortionController.text =
