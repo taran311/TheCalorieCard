@@ -52,7 +52,9 @@
     li strong { color: var(--ink); }
     footer { text-align: center; color: var(--muted); font-size: 13px; padding: 0 16px 32px; }
     footer a { color: var(--muted); }
-  </style>
+    .sym { height: 30px; width: auto; margin-right: 3px; vertical-align: -0.1em; }
+  .amt { display: flex; align-items: center; }
+</style>
 </head>
 <body>
   <div class="hero">
@@ -62,7 +64,7 @@
     <div class="card" aria-hidden="true">
       <div class="n">TheCalorieCard</div>
       <div class="chip"></div>
-      <div class="amt">1,840<small>kcal</small></div>
+      <div class="amt" aria-label="1,840 calories"><svg class="sym" viewBox="16 0 64 100" aria-hidden="true"><path d="M74 22 H44 a22 22 0 0 0 -22 22 v12 a22 22 0 0 0 22 22 H74" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><line x1="48" y1="6" x2="48" y2="16" stroke="currentColor" stroke-width="8" stroke-linecap="round"/><line x1="48" y1="84" x2="48" y2="94" stroke="currentColor" stroke-width="8" stroke-linecap="round"/></svg>1,840</div>
       <div class="m"><span>PROTEIN<b>112g</b></span><span>CARBS<b>180g</b></span><span>FAT<b>54g</b></span></div>
       <div class="who">YOUR NAME</div>
     </div>

@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:namer_app/ui/calorie_symbol.dart';
 
 /// The calorie card's look, shared by the sign-in preview and the live card
 /// on the Card screen so they always match.
@@ -168,7 +169,7 @@ class CalorieCardShell extends StatelessWidget {
 ///
 ///   TheCalorieCard                      )))
 ///                                 LEFT TODAY
-///   [chip]                       1,840 kcal
+///   [chip]                       ⊂1,840 (the calorie symbol)
 ///
 ///   ● PROTEIN   ● CARBS   ● FAT
 ///   112g        180g      54g
@@ -375,10 +376,11 @@ class CalorieCardFront extends StatelessWidget {
 }
 
 /// "TheCalorieCard" in the corner, like a bank's name on its card.
-/// The card's balance. When it changes (food added, something removed) the
-/// number rolls from the old balance to the new one, and a small "−412
-/// kcal" floats up off the card, like a payment going through. Still with
-/// reduce motion.
+/// The card's balance, written like money with the calorie symbol
+/// ([CalorieSymbol]) in front. When it changes (food added, something
+/// removed) the number rolls from the old balance to the new one, and a
+/// small "−412" floats up off the card, like a payment going through.
+/// Still with reduce motion.
 class BalanceTicker extends StatefulWidget {
   final num amount;
   final Key? textKey;
@@ -463,23 +465,26 @@ class _BalanceTickerState extends State<BalanceTicker>
 
   Widget _number(double value) {
     final over = value < 0;
+    final color = over ? CalorieCardColors.overBudget : Colors.white;
     return FittedBox(
       fit: BoxFit.scaleDown,
       alignment: Alignment.centerRight,
       child: Text.rich(
         TextSpan(children: [
-          TextSpan(text: '${over ? '−' : ''}${formatCardKcal(value)}'),
-          TextSpan(
-            text: ' kcal',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: (over ? CalorieCardColors.overBudget : Colors.white)
-                  .withValues(alpha: 0.8),
+          // "−⊂412" when over, like "−£412".
+          if (over) const TextSpan(text: '−'),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 3),
+              child: CalorieSymbol(size: 31, color: color),
             ),
           ),
+          TextSpan(text: formatCardKcal(value)),
         ]),
         key: widget.textKey,
+        semanticsLabel:
+            '${over ? 'minus ' : ''}${formatCardKcal(value)} calories',
         style: TextStyle(
           color: over ? CalorieCardColors.overBudget : Colors.white,
           fontSize: 34,
@@ -534,16 +539,31 @@ class _BalanceTickerState extends State<BalanceTicker>
                         color: Colors.black.withValues(alpha: 0.35),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text(
-                        '${spent ? '−' : '+'}${formatCardKcal(_change)} kcal',
-                        style: TextStyle(
-                          color: spent
-                              ? Colors.white
-                              : const Color(0xFF6EE7B7),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                      child: Builder(builder: (context) {
+                        final color =
+                            spent ? Colors.white : const Color(0xFF6EE7B7);
+                        return Text.rich(
+                          TextSpan(children: [
+                            TextSpan(text: spent ? '−' : '+'),
+                            WidgetSpan(
+                              alignment: PlaceholderAlignment.middle,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 1),
+                                child: CalorieSymbol(size: 12, color: color),
+                              ),
+                            ),
+                            TextSpan(text: formatCardKcal(_change)),
+                          ]),
+                          semanticsLabel:
+                              '${spent ? 'minus' : 'plus'} '
+                              '${formatCardKcal(_change)} calories',
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        );
+                      }),
                     ),
                   ),
                 );
