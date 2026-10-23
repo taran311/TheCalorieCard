@@ -2269,8 +2269,11 @@ class _HomePageState extends State<HomePage>
               const SizedBox(width: 8),
               Flexible(
                 fit: FlexFit.tight,
+                // Plain numbers, like a banking app's list: the card's
+                // ⊂ already says what they are.
                 child: Text(
-                  docs.isEmpty ? '' : '$kcal kcal',
+                  docs.isEmpty ? '' : formatCardKcal(kcal),
+                  semanticsLabel: docs.isEmpty ? '' : '$kcal calories',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.end,
@@ -2548,22 +2551,17 @@ class _HomePageState extends State<HomePage>
                     ),
                   ],
                   const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.indigo50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${_roundMacro(data['food_calories'])} kcal',
-                      style: TextStyle(
-                        color: AppText.primaryDark,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
+                  // What it cost, as a plain number like a bank's list
+                  // (5.49, not £5.49).
+                  Text(
+                    '${_roundMacro(data['food_calories'])}',
+                    semanticsLabel:
+                        '${_roundMacro(data['food_calories'])} calories',
+                    style: TextStyle(
+                      color: AppColors.ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
                 ],

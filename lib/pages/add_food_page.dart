@@ -24,6 +24,8 @@ import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/portion_amount.dart';
 import 'package:namer_app/ui/amount_field.dart';
+import 'package:namer_app/ui/calorie_card.dart' show formatCardKcal;
+import 'package:namer_app/ui/calorie_symbol.dart';
 import 'package:namer_app/services/achievement_service.dart';
 
 /// A food being looked up: shown as a "pending transaction" until it
@@ -560,15 +562,14 @@ class _AddFoodPageState extends State<AddFoodPage> {
                 children: [
                   Text(
                     '${(item['calories'] as num).round()}',
+                    semanticsLabel:
+                        '${(item['calories'] as num).round()} calories',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                       color: AppColors.ink,
                     ),
                   ),
-                  Text('kcal',
-                      style:
-                          TextStyle(fontSize: 12, color: AppColors.gray600)),
                 ],
               ),
               IconButton(
@@ -1201,7 +1202,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('${r.calories.round()} kcal',
+                Text('${r.calories.round()}',
+                    semanticsLabel: '${r.calories.round()} calories',
                     style: TextStyle(
                         fontWeight: FontWeight.w800, color: AppColors.ink)),
                 if (score != null)
@@ -1218,7 +1220,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('~${p.estimate!.calories.round()} kcal',
+                Text('~${p.estimate!.calories.round()}',
+                    semanticsLabel:
+                        'about ${p.estimate!.calories.round()} calories',
                     style: TextStyle(
                         fontWeight: FontWeight.w800, color: AppColors.ink)),
                 if (guess != null)
@@ -1340,6 +1344,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
     final VoidCallback? onPressed;
     final Widget icon;
     final String label;
+    // Set when the button adds food: drawn as "Spend ⊂368 on Lunch".
+    ({bool approx, int kcal})? spend;
     if (_added) {
       return AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -1380,6 +1386,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       onPressed = _saveItems;
       icon = const Icon(Icons.check_circle_outline, size: 20);
       label = 'Add ~${_totalCalories.round()} kcal to $meal';
+      spend = (approx: true, kcal: _totalCalories.round());
     } else if (_calculating) {
       onPressed = null;
       icon = spinner;
@@ -1395,6 +1402,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
       onPressed = _saveItems;
       icon = const Icon(Icons.check_circle_outline, size: 20);
       label = 'Add ${_totalCalories.round()} kcal to $meal';
+      spend = (approx: false, kcal: _totalCalories.round());
     } else {
       onPressed = null;
       icon = const Icon(Icons.add, size: 20);
@@ -1408,7 +1416,25 @@ class _AddFoodPageState extends State<AddFoodPage> {
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
       icon: icon,
-      label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      label: spend == null
+          ? Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)
+          // "Spend ⊂368 on Breakfast": paying for food from the card.
+          : Text.rich(
+              TextSpan(children: [
+                TextSpan(text: spend.approx ? 'Spend ~' : 'Spend '),
+                const WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Padding(
+                    padding: EdgeInsets.only(right: 1),
+                    child: CalorieSymbol(size: 15, color: Colors.white),
+                  ),
+                ),
+                TextSpan(text: '${formatCardKcal(spend.kcal)} on $meal'),
+              ]),
+              semanticsLabel: label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
     );
   }
 
@@ -1478,7 +1504,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '${tx.calories.round()} kcal',
+                            '${tx.calories.round()}',
+                            semanticsLabel: '${tx.calories.round()} calories',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: AppColors.ink,
