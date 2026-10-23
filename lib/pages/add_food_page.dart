@@ -27,6 +27,7 @@ import 'package:namer_app/ui/amount_field.dart';
 import 'package:namer_app/ui/calorie_card.dart' show formatCardKcal;
 import 'package:namer_app/ui/calorie_symbol.dart';
 import 'package:namer_app/services/achievement_service.dart';
+import 'package:namer_app/ui/theme_controller.dart' show symbolFont;
 
 /// A food being looked up: shown as a "pending transaction" until it
 /// settles, and open for a calorie guess while it's pending.
@@ -1413,7 +1414,10 @@ class _AddFoodPageState extends State<AddFoodPage> {
       onPressed: onPressed,
       style: FilledButton.styleFrom(
         minimumSize: const Size(0, 52),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            fontFamilyFallback: symbolFont),
       ),
       icon: icon,
       label: spend == null

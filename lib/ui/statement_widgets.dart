@@ -482,10 +482,10 @@ class DayTotalChip extends StatelessWidget {
             ),
             child: Text(
               justOver
-                  ? '${formatKcal(left.abs())} over · close enough'
+                  ? '$calSym${formatKcal(left.abs())} over · close enough'
                   : left >= 0
-                      ? '${formatKcal(left)} left'
-                      : '${formatKcal(left.abs())} over',
+                      ? '$calSym${formatKcal(left)} left'
+                      : '$calSym${formatKcal(left.abs())} over',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,

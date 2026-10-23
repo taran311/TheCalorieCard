@@ -86,6 +86,11 @@ class ThemeController extends ChangeNotifier with WidgetsBindingObserver {
   }
 }
 
+/// Draws the calorie symbol (calSym, U+E000) in any text. The theme sets
+/// it for all text; styles that replace the text style outright (buttons,
+/// titles) need it too, or the symbol shows as an empty box.
+const symbolFont = ['CalorieSymbol'];
+
 /// The app theme for the current [AppColors.dark] setting.
 ThemeData buildAppTheme() {
   final dark = AppColors.dark;
@@ -94,7 +99,7 @@ ThemeData buildAppTheme() {
   return ThemeData(
     useMaterial3: true,
     // Draws the calorie symbol (calSym, U+E000) wherever it appears.
-    fontFamilyFallback: const ['CalorieSymbol'],
+    fontFamilyFallback: symbolFont,
     colorScheme: ColorScheme.fromSeed(
       seedColor: AppColors.primary,
       primary: dark ? AppText.primary : AppColors.primary,
@@ -112,6 +117,7 @@ ThemeData buildAppTheme() {
         color: dark ? AppColors.ink : Colors.white,
         fontSize: 18,
         fontWeight: FontWeight.w700,
+        fontFamilyFallback: symbolFont,
       ),
     ),
     // One button style app-wide: brand filled buttons, quiet outlines.
@@ -121,7 +127,8 @@ ThemeData buildAppTheme() {
         foregroundColor: Colors.white,
         minimumSize: const Size(48, 44),
         shape: buttonShape,
-        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        textStyle: const TextStyle(
+            fontWeight: FontWeight.w700, fontFamilyFallback: symbolFont),
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
@@ -131,7 +138,8 @@ ThemeData buildAppTheme() {
         elevation: 0,
         minimumSize: const Size(48, 44),
         shape: buttonShape,
-        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        textStyle: const TextStyle(
+            fontWeight: FontWeight.w700, fontFamilyFallback: symbolFont),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -140,13 +148,15 @@ ThemeData buildAppTheme() {
         minimumSize: const Size(48, 44),
         side: BorderSide(color: AppColors.gray300),
         shape: buttonShape,
-        textStyle: const TextStyle(fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+            fontWeight: FontWeight.w600, fontFamilyFallback: symbolFont),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: AppText.primaryDark,
-        textStyle: const TextStyle(fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+            fontWeight: FontWeight.w600, fontFamilyFallback: symbolFont),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -174,6 +184,7 @@ ThemeData buildAppTheme() {
         color: AppColors.ink,
         fontSize: 19,
         fontWeight: FontWeight.w800,
+        fontFamilyFallback: symbolFont,
       ),
     ),
     popupMenuTheme: PopupMenuThemeData(

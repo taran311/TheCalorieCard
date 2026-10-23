@@ -2376,8 +2376,8 @@ class _HomePageState extends State<HomePage>
             const TextSpan(text: ' · '),
             TextSpan(
               text: left < 0
-                  ? '${formatCardKcal(-left)} over'
-                  : '${formatCardKcal(left)} left',
+                  ? '$calSym${formatCardKcal(-left)} over'
+                  : '$calSym${formatCardKcal(left)} left',
               style: TextStyle(color: leftColor, fontWeight: FontWeight.w700),
             ),
           ],
