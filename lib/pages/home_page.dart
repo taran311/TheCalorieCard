@@ -2458,17 +2458,14 @@ class _HomePageState extends State<HomePage>
   Widget _buildFoodRow(
       QueryDocumentSnapshot<Map<String, dynamic>> doc, bool canEdit) {
     final data = doc.data();
-    final name = (data['food_description'] ?? 'Food').toString();
-    final rawPortion = (data['food_portion'] ?? '').toString();
-    // "200ml Alpro soya milk" over "200 ml" says it twice: the amount
-    // underneath only shows when the name doesn't already say it.
-    final nameSize = PortionAmount.amountsIn(name) == 1
-        ? PortionAmount.sizeOf(name)
-        : null;
-    final portion = nameSize != null &&
-            nameSize == PortionAmount.sizeOf(rawPortion)
-        ? ''
-        : rawPortion;
+    // Tidied for reading ("2 sausages · 90 g", not "2 × 1 sausage
+    // (45g)"), and the amount left out when the name already says it.
+    // Old entries read the same way; nothing saved changes.
+    final shown = PortionAmount.tidy(
+        (data['food_description'] ?? 'Food').toString(),
+        (data['food_portion'] ?? '').toString());
+    final name = shown.name;
+    final portion = shown.portion;
     final reactions = _foodReactions[doc.id];
     final estimate = data['food_estimate'] == true;
     // Only you see that there's a note (tap the food to read it).

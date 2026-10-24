@@ -6,6 +6,7 @@ import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/calorie_sense.dart';
 import 'package:namer_app/services/chat_service.dart';
 import 'package:namer_app/services/food_log.dart';
+import 'package:namer_app/services/portion_amount.dart';
 import 'package:namer_app/services/game_foods_tables.dart';
 import 'package:namer_app/services/games_service.dart';
 import 'package:namer_app/services/proxy_client.dart';
@@ -1031,10 +1032,13 @@ class CalorieGameService {
       final recipe = raw.startsWith(recipePrefix);
       final name = (recipe ? raw.substring(recipePrefix.length) : raw).trim();
       if (name.isEmpty) continue;
-      final portion = tx.portion.trim();
-      if (!seen.add('${name.toLowerCase()}|${portion.toLowerCase()}')) continue;
-      out.add(GameFood(
-          recipe ? '📖' : mealEmoji(tx.category), name, portion, kcal));
+      final shown = PortionAmount.tidy(name, tx.portion);
+      final portion = shown.portion;
+      if (!seen.add('${shown.name.toLowerCase()}|${portion.toLowerCase()}')) {
+        continue;
+      }
+      out.add(GameFood(recipe ? '📖' : mealEmoji(tx.category), shown.name,
+          portion, kcal));
     }
     return out;
   }

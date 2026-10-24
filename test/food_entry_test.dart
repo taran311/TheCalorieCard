@@ -96,7 +96,7 @@ void main() {
           meal: 'Breakfast', at: day.subtract(const Duration(days: 4))),
       // Most recent of all, but had for lunch.
       tx('Sandwich', meal: 'Lunch', at: day.add(const Duration(hours: 4))),
-      // Same name, different portion: offered separately.
+      // Same food, another amount, at lunch: still one chip.
       tx('Porridge',
           portion: '2 bowls',
           meal: 'Lunch',
@@ -107,10 +107,10 @@ void main() {
     test('ranks by how often each was had for the meal, then recency', () {
       final ranked = FoodHistory.rankForMeal(foods, 'Breakfast');
       expect(ranked.map((t) => '${t.description}|${t.portion}'), [
+        // The amount had at breakfast, not the later lunch one.
         'Porridge|1 bowl',
         'Toast|',
         'Sandwich|',
-        'Porridge|2 bowls',
       ]);
       // Uses the numbers from the latest time it was logged.
       expect(ranked.first.time, day);
@@ -119,8 +119,7 @@ void main() {
       expect(lunch.last.portion, '2 bowls');
     });
 
-    test('the same food at another amount of the same portion is one chip',
-        () {
+    test('the same food at any amount is one chip', () {
       final pistachios = [
         CardTransaction(
           id: 'a',
@@ -152,12 +151,29 @@ void main() {
       // The latest amount is the one offered.
       expect(ranked.single.calories, 290);
       expect(FoodHistory.search(pistachios, 'pistach'), hasLength(1));
+
+      // Grams typed over the serving: still the same pistachios.
+      final withGrams = [
+        ...pistachios,
+        tx('Amazon Pistachios',
+            portion: '50 g', meal: 'Snacks', at: day.add(const Duration(hours: 1))),
+      ];
+      expect(FoodHistory.search(withGrams, 'pistach').single.portion, '50 g');
+      expect(FoodHistory.rankForMeal(withGrams, 'Snacks'), hasLength(1));
+
+      // "4 sausages" and "2 sausages" are the same sausages.
+      final sausages = [
+        tx('4 linda mccartney sausages', at: day),
+        tx('2 linda mccartney sausages', at: day.subtract(const Duration(days: 1))),
+      ];
+      expect(FoodHistory.search(sausages, 'linda'), hasLength(1));
     });
 
     test('search matches part of the name, ignoring case, each food once',
         () {
       final hits = FoodHistory.search(foods, 'PORR');
-      expect(hits.map((t) => t.portion), ['2 bowls', '1 bowl']);
+      expect(hits.map((t) => t.portion), ['2 bowls'],
+          reason: 'each food once, at the latest amount');
       expect(FoodHistory.search(foods, 'o', limit: 5), isEmpty,
           reason: 'needs two letters');
       expect(FoodHistory.search(foods, 'oa'), hasLength(1));

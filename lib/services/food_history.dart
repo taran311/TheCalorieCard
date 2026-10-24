@@ -31,16 +31,20 @@ class FoodHistory {
     ]);
   }
 
-  /// Same food, same kind of portion: one suggestion. Compared by one
-  /// portion ("30g serving"), so "1.67 × 30g serving" and "30g serving" of
-  /// the same food are one chip (the latest amount is the one offered).
-  static String keyOf(CardTransaction tx) =>
-      '${tx.description.trim().toLowerCase()}|'
-      '${tx.basePortion.trim().toLowerCase()}';
+  /// One suggestion per food, whatever amount it was had in: "Amazon
+  /// Pistachios" at 50 g and at 1.67 × 30g serving, or "4 sausages" and "2
+  /// sausages", are one chip, offered at the latest amount. Recipes are
+  /// kept apart from foods of the same name.
+  static String keyOf(CardTransaction tx) {
+    final food = foodKey(tx.description);
+    final name = food.isEmpty ? _norm(tx.description) : food;
+    return '${tx.isRecipe ? 'recipe' : 'food'}|$name';
+  }
 
   /// Up to [limit] foods to offer again for [meal]: the ones logged most
   /// often for that meal first, then the most recent. Each food appears
-  /// once, with the numbers from the last time it was logged.
+  /// once, with the numbers from the last time it was logged (at this
+  /// meal, if it has been).
   static List<CardTransaction> rankForMeal(
     List<CardTransaction> foods,
     String meal, {
@@ -51,6 +55,9 @@ class FoodHistory {
     final order = <String, int>{}; // position of the latest (0 = newest)
     final counts = <String, int>{};
     final sorted = [...foods]..sort((a, b) => b.time.compareTo(a.time));
+    // The amount offered is the latest one had at this meal, if it's been
+    // had at this meal (porridge is 1 bowl at breakfast, 2 at lunch).
+    final latestHere = <String, CardTransaction>{};
     for (final tx in sorted) {
       final key = keyOf(tx);
       if (!latest.containsKey(key)) {
@@ -59,8 +66,10 @@ class FoodHistory {
       }
       if (tx.category.trim().toLowerCase() == wanted) {
         counts[key] = (counts[key] ?? 0) + 1;
+        latestHere.putIfAbsent(key, () => tx);
       }
     }
+    latest.addAll(latestHere);
     final keys = latest.keys.toList()
       ..sort((a, b) {
         final byCount = (counts[b] ?? 0).compareTo(counts[a] ?? 0);

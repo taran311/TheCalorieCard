@@ -234,7 +234,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
       'fat': tx.fat / m,
     };
     return {
-      'name': tx.description,
+      // "4 linda mccartney sausages" saved at 2 comes back as "2 linda
+      // mccartney sausages", so the name and the amount agree.
+      'name': onePortion
+          ? tx.description
+          : PortionAmount.tidy(tx.description,
+                  '${PortionAmount.format(take, AmountUnit.portions)} × ${tx.basePortion}')
+              .name,
       for (final e in one.entries) e.key: e.value * take,
       'portion': onePortion ? tx.basePortion : tx.portion,
       'base_portion': tx.basePortion,
@@ -328,7 +334,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
     // sausages": the count in the name follows the amount.
     final old = (item['multiplier'] as num?)?.toDouble() ?? 1.0;
     final recounted = renamed == null && old > 0
-        ? _recount('${item['name'] ?? ''}', multiplier / old)
+        ? PortionAmount.recount('${item['name'] ?? ''}', multiplier / old)
         : null;
     setState(() {
       _calculatedItems[idx] = recounted != null
@@ -361,31 +367,6 @@ class _AddFoodPageState extends State<AddFoodPage> {
             };
     });
   }
-
-  /// A count at the start of a name ("4 linda mccartney sausages"), not a
-  /// weight ("40g surreal", "250 ml oat milk").
-  static final _leadingCount = RegExp(
-    r'^(\s*)(\d+(?:[.,]\d+)?)(\s+)(?!(?:g|kg|ml|l|cl|oz|lbs?|grams?|ounces?)\b)(?=\S)',
-    caseSensitive: false,
-  );
-
-  /// [name] with its leading count multiplied [by] ("4 sausages" by 0.5 is
-  /// "2 sausages"). Null when the name doesn't start with a count.
-  static String? _recount(String name, double by) {
-    if (!by.isFinite || by <= 0 || (by - 1).abs() < 1e-9) return null;
-    final m = _leadingCount.firstMatch(name);
-    if (m == null) return null;
-    final n = double.tryParse(m.group(2)!.replaceAll(',', '.'));
-    if (n == null || n <= 0) return null;
-    final count = PortionAmount.format(n * by, AmountUnit.portions);
-    if (count == '0') return null;
-    return '${m.group(1)}$count${m.group(3)}${name.substring(m.end)}';
-  }
-
-  /// The name says how many already ("2 linda mccartney sausages"), so the
-  /// card leaves out "2 × 1 sausage (45g)". It's still in the amount sheet,
-  /// where grams can be picked instead.
-  static bool _countInName(String name) => _leadingCount.hasMatch(name);
 
   /// True for portions given per 100 g / 100 ml (common for scanned
   /// packs), where amounts in grams make more sense than "2×".
@@ -484,6 +465,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
     final review = item['needs_review'] == true;
     final multiplier = (item['multiplier'] as num?)?.toDouble() ?? 1.0;
     final portion = (item['portion'] ?? '').toString();
+    // How it reads: "3 hash browns · 135 g", not "3 × 1 Hash brown (45 g)".
+    final shown = PortionAmount.tidy(item['name'].toString(), portion);
     String g(String k) => ((item[k] as num?) ?? 0).round().toString();
 
     // [color] is a text colour (AppText / *Text getters), so badges stay
@@ -537,9 +520,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                       // already say so ("1.67 × 30g serving").
                       (multiplier - 1).abs() < 1e-9 ||
                               portion.contains('×') ||
-                              _countInName(item['name'].toString())
-                          ? item['name'].toString()
-                          : '${item['name']}  ×${FoodLog.formatAmount(multiplier)}',
+                              PortionAmount.leadingCount.hasMatch(shown.name)
+                          ? shown.name
+                          : '${shown.name}  ×${FoodLog.formatAmount(multiplier)}',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
@@ -563,9 +546,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     const SizedBox(height: 3),
                     Text(
                       [
-                        if (portion.isNotEmpty &&
-                            !_countInName(item['name'].toString()))
-                          portion,
+                        if (shown.portion.isNotEmpty) shown.portion,
                         '${g('protein')}g protein · ${g('carbs')}g carbs · ${g('fat')}g fat',
                       ].join('  ·  '),
                       style:
@@ -1537,7 +1518,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  tx.description,
+                                  _nameToShow(tx),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -1583,10 +1564,14 @@ class _AddFoodPageState extends State<AddFoodPage> {
   /// A past food's portion, only when its name doesn't already say how
   /// much: "Banana · 1 medium", but not "2 toast · 2 slices of toast".
   static String? _portionToShow(CardTransaction tx) {
-    final portion = tx.portion.trim();
-    if (portion.isEmpty || VoiceText.hasAmount(tx.description)) return null;
-    return portion;
+    final shown = PortionAmount.tidy(tx.description, tx.portion);
+    if (shown.portion.isEmpty || VoiceText.hasAmount(shown.name)) return null;
+    return shown.portion;
   }
+
+  /// A past food's name as it reads now ("2 linda mccartney sausages").
+  static String _nameToShow(CardTransaction tx) =>
+      PortionAmount.tidy(tx.description, tx.portion).name;
 
   /// "Or add again": the foods most often had for [meal]. A scrolling row
   /// on phones; on wider screens they wrap so all of them show.
@@ -1608,7 +1593,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
     Widget chip(CardTransaction tx) {
       final portion = _portionToShow(tx);
       final label = [
-        tx.description,
+        _nameToShow(tx),
         if (portion != null) portion,
         '$calSym${tx.calories.round()}',
       ].join(' · ');

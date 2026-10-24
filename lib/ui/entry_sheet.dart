@@ -221,6 +221,11 @@ class _EntrySheetState extends State<_EntrySheet> {
   String get _name =>
       (widget.entry['food_description'] ?? 'Food').toString();
 
+  /// The name and amount as the diary shows them ("2 sausages · 90 g").
+  ({String name, String portion}) get _shown => PortionAmount.tidy(
+      (widget.entry['food_description'] ?? 'Food').toString(),
+      (widget.entry['food_portion'] ?? '').toString());
+
   bool get _isEstimate => widget.entry['food_estimate'] == true;
 
   bool get _noteDirty =>
@@ -736,7 +741,7 @@ class _EntrySheetState extends State<_EntrySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final portion = (widget.entry['food_portion'] ?? '').toString();
+    final portion = _shown.portion;
     final preview = _preview;
     final canEdit = widget.canEdit;
     final logMeal = widget.logAgainMeal ?? _meal;
@@ -817,7 +822,7 @@ class _EntrySheetState extends State<_EntrySheet> {
             ),
             const SizedBox(height: 10),
             Text(
-              _name,
+              _shown.name,
               textAlign: TextAlign.center,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,

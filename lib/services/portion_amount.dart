@@ -192,6 +192,178 @@ class PortionAmount {
     return basePortion.isEmpty ? '$m×' : '$m × $basePortion';
   }
 
+  /// A count at the start of a name ("4 linda mccartney sausages"), not a
+  /// weight ("40g surreal", "250 ml oat milk").
+  static final leadingCount = RegExp(
+    r'^(\s*)(\d+(?:[.,]\d+)?)(\s+)(?!(?:g|kg|ml|l|cl|oz|lbs?|grams?|ounces?)\b)(?=\S)',
+    caseSensitive: false,
+  );
+
+  /// [name] with its leading count multiplied [by] ("4 sausages" by 0.5 is
+  /// "2 sausages"). Null when the name doesn't start with a count.
+  static String? recount(String name, double by) {
+    if (!by.isFinite || by <= 0 || (by - 1).abs() < 1e-9) return null;
+    final m = leadingCount.firstMatch(name);
+    if (m == null) return null;
+    final n = double.tryParse(m.group(2)!.replaceAll(',', '.'));
+    if (n == null || n <= 0) return null;
+    return withCount(name, n * by);
+  }
+
+  /// [name] with its leading count set to [count]. Null without one.
+  static String? withCount(String name, double count) {
+    final m = leadingCount.firstMatch(name);
+    if (m == null || !count.isFinite || count <= 0) return null;
+    final shown = format(count, AmountUnit.portions);
+    if (shown == '0') return null;
+    return '${m.group(1)}$shown${m.group(3)}${name.substring(m.end)}';
+  }
+
+  /// How a food reads in a list, tidied from what was saved, so old
+  /// entries read well too:
+  ///  * "2 × 1 sausage (45g)" is "2 sausages · 90 g"
+  ///  * "1.67 × 30g serving (shelled pistachios)" is "50 g"
+  ///  * "Per 0.5 Servings" is "0.5 servings"
+  ///  * a name that counts ("4 linda mccartney sausages") follows the
+  ///    amount ("2 linda mccartney sausages") and is all that's shown;
+  ///    "1 yubi protein bar" over "1 bar (35g)" is just the name
+  ///  * the amount is left out when the name already says it ("200ml
+  ///    Alpro soya milk" over "200 ml")
+  static ({String name, String portion}) tidy(String name, String portion) {
+    var p = portion.trim();
+    var n = name;
+
+    String? totalOf(double m, PortionSize? size) => size == null
+        ? null
+        : '${format(m * size.amount, size.volume ? AmountUnit.ml : AmountUnit.g)} '
+            '${size.volume ? 'ml' : 'g'}';
+
+    final per = _perServings.firstMatch(p);
+    if (per != null) {
+      final v = double.parse(per.group(1)!);
+      p = '${format(v, AmountUnit.portions)} serving${v == 1 ? '' : 's'}';
+    }
+
+    final mult = _multiple.firstMatch(p);
+    if (mult != null) {
+      final m = double.parse(mult.group(1)!);
+      final base = mult.group(2)!;
+      final total = totalOf(m, sizeOf(base));
+      final unit = _oneOf.firstMatch(base)?.group(1)?.trim();
+      final weighed = amountsIn(n) == 1 &&
+          sizeOf(base) != null &&
+          sizeOf(n) == sizeOf(base);
+      if (weighed) {
+        // "40g surreal" at 1.5 × 40g is "60g surreal".
+        n = rescaleName(n, m) ?? n;
+        p = '';
+      } else if (unit != null && unit.isNotEmpty && _names(n, unit)) {
+        // The name counts the same thing, so it says how many, and that's
+        // the amount shown (the weight is still there to switch to when
+        // changing it).
+        n = _numberName(withCount(n, m) ?? n, unit, m);
+        p = '';
+      } else if (unit != null && unit.isNotEmpty) {
+        final u = m > 1 ? _plural(_lowerUnit(unit)) : _lowerUnit(unit);
+        p = ['${format(m, AmountUnit.portions)} $u', if (total != null) total]
+            .join(' · ');
+      } else if (total != null) {
+        p = total;
+      }
+    } else {
+      // "1 yubi protein bar" over "1 bar (35g)": the name says it.
+      final unit = _oneOf.firstMatch(p)?.group(1)?.trim();
+      if (unit != null && _names(n, unit)) p = '';
+    }
+
+    // "200ml Alpro soya milk" over "200 ml" says it twice.
+    final nameSize = amountsIn(n) == 1 ? sizeOf(n) : null;
+    if (nameSize != null && nameSize == sizeOf(p)) p = '';
+    return (name: n, portion: p);
+  }
+
+  static final _multiple =
+      RegExp(r'^\s*(\d+(?:\.\d+)?)\s*×\s*(.*?)\s*$');
+  static final _oneOf = RegExp(r'^\s*1\s+([^()]+?)\s*(\(.*\))?\s*$');
+  static final _perServings = RegExp(
+      r'^\s*Per\s+(\d+(?:\.\d+)?)\s+Servings?\s*$',
+      caseSensitive: false);
+
+  /// Whether [name] starts with a count of [unit]s: "4 linda mccartney
+  /// sausages" counts "sausage"; "2 crumpets" doesn't count "serving".
+  static bool _names(String name, String unit) {
+    if (!leadingCount.hasMatch(name)) return false;
+    final last = unit.toLowerCase().split(RegExp(r'\s+')).last;
+    final stem = last.length > 3 && last.endsWith('s')
+        ? last.substring(0, last.length - 1)
+        : last;
+    return stem.length >= 3 && name.toLowerCase().contains(stem);
+  }
+
+  /// "1 yubi protein bar" at 2 is "2 yubi protein bars"; "4 sausages" at
+  /// 1 is "1 sausage". Only when the name ends with the thing counted.
+  static String _numberName(String name, String unit, double count) {
+    final words = name.trimRight().split(' ');
+    final last = words.last;
+    final stem = _singular(unit.toLowerCase().split(RegExp(r'\s+')).last);
+    if (_singular(last).toLowerCase() != stem) return name;
+    words[words.length - 1] =
+        count > 1 ? _pluralWord(_singular(last)) : _singular(last);
+    return words.join(' ');
+  }
+
+  /// "Hash brown" reads "hash brown" mid-label; "MCCAIN" stays.
+  static String _lowerUnit(String unit) =>
+      RegExp(r'[A-Z]{2}').hasMatch(unit) || unit.isEmpty
+          ? unit
+          : '${unit[0].toLowerCase()}${unit.substring(1)}';
+
+  static const _unitWords = {'g', 'kg', 'ml', 'l', 'oz', 'lb', 'tbsp', 'tsp', 'cl'};
+  static const _sizeWords = {
+    'medium', 'large', 'small', 'whole', 'half', 'regular', 'big', 'mini',
+    'extra', 'jumbo',
+  };
+
+  /// "sausage" → "sausages", "glass" → "glasses", "slice of toast" →
+  /// "slices of toast"; "tbsp" and "medium" stay.
+  static String _plural(String unit) {
+    final words = unit.split(' ');
+    final low = [for (final w in words) w.toLowerCase()];
+    final of = low.indexOf('of', 1);
+    final i = of > 0 ? of - 1 : words.length - 1;
+    words[i] = _pluralWord(words[i]);
+    return words.join(' ');
+  }
+
+  static String _pluralWord(String w) {
+    final low = w.toLowerCase();
+    if (_unitWords.contains(low) ||
+        _sizeWords.contains(low) ||
+        !RegExp(r'^[a-z]+$').hasMatch(low)) {
+      return w;
+    }
+    if (low.endsWith('s') && !low.endsWith('ss')) return w;
+    if (RegExp(r'(x|z|ch|sh|ss)$').hasMatch(low)) return '${w}es';
+    if (RegExp(r'[^aeiou]y$').hasMatch(low)) {
+      return '${w.substring(0, w.length - 1)}ies';
+    }
+    return '${w}s';
+  }
+
+  static String _singular(String w) {
+    final low = w.toLowerCase();
+    if (low.length > 4 && low.endsWith('ies')) {
+      return '${w.substring(0, w.length - 3)}y';
+    }
+    if (RegExp(r'(xes|zes|ches|shes|sses)$').hasMatch(low)) {
+      return w.substring(0, w.length - 2);
+    }
+    if (low.length > 3 && low.endsWith('s') && !low.endsWith('ss')) {
+      return w.substring(0, w.length - 1);
+    }
+    return w;
+  }
+
   static String _formatMultiple(double value) {
     if (value == value.roundToDouble()) return value.toStringAsFixed(0);
     final s = value.toStringAsFixed(2);

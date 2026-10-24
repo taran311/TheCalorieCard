@@ -119,4 +119,55 @@ void main() {
       input.dispose();
     });
   });
+  group('PortionAmount.tidy', () {
+    String show(String name, String portion) {
+      final t = PortionAmount.tidy(name, portion);
+      return t.portion.isEmpty ? t.name : '${t.name} | ${t.portion}';
+    }
+
+    test('a counted name follows the amount and says it all', () {
+      expect(show('4 linda mccartney sausages', '2 × 1 sausage (45g)'),
+          '2 linda mccartney sausages');
+      expect(show('4 linda mccartney sausages', '1 × 1 sausage (45g)'),
+          '1 linda mccartney sausage');
+      expect(show('1 yubi protein bar', '2 × 1 bar (35g)'),
+          '2 yubi protein bars');
+      expect(show('1 yubi protein bar', '1 bar (35g)'), '1 yubi protein bar');
+    });
+
+    test('"N × 1 thing (weight)" reads as a count and the total', () {
+      expect(show('McCain Crispy Hash Browns', '3 × 1 Hash brown (45 g)'),
+          'McCain Crispy Hash Browns | 3 hash browns · 135 g');
+      expect(show('oat milk', '2 × 1 glass (250ml)'),
+          'oat milk | 2 glasses · 500 ml');
+      expect(show('toast', '2 × 1 slice of toast'), 'toast | 2 slices of toast');
+      expect(show('banana', '2 × 1 medium'), 'banana | 2 medium');
+      expect(show('peanut butter', '1.5 × 1 tbsp (16g)'),
+          'peanut butter | 1.5 tbsp · 24 g');
+      expect(show('crisps', '0.5 × 1 bag (25g)'), 'crisps | 0.5 bag · 12 g');
+    });
+
+    test('a multiple of a weighed serving is just the weight', () {
+      expect(
+          show('Amazon Pistachios', '1.67 × 30g serving (shelled pistachios)'),
+          'Amazon Pistachios | 50 g');
+    });
+
+    test('recipe servings and amounts the name already gives', () {
+      expect(show('Recipe: tofu scramble', 'Per 0.5 Servings'),
+          'Recipe: tofu scramble | 0.5 servings');
+      expect(show('Recipe: tofu scramble', 'Per 1 Serving'),
+          'Recipe: tofu scramble | 1 serving');
+      expect(show('heinz baked beans 300g', '300 g'), 'heinz baked beans 300g');
+      expect(show('200ml Alpro Soya Milk', '200 ml'), '200ml Alpro Soya Milk');
+      expect(show('Recipe: chilli', '450 g'), 'Recipe: chilli | 450 g');
+    });
+
+    test("a count of something else isn't changed", () {
+      // One serving is 2 crumpets: the name can't follow servings.
+      expect(show('2 crumpets', '3 × 1 serving (2 crumpets)'),
+          '2 crumpets | 3 servings');
+      expect(show('40g surreal', '1.5 × 40g'), '60g surreal');
+    });
+  });
 }
