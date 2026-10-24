@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:namer_app/ui/snack.dart';
-import 'package:flutter/services.dart';
+import 'package:namer_app/services/portion_amount.dart';
+import 'package:namer_app/ui/amount_field.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/meal_time.dart';
@@ -63,17 +64,20 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
   // The Card screen shows every meal now, so there's no "current" meal:
   // default from the time of day (they can change it with the chips).
   String _meal = MealTime.forHour(BalanceService.now().hour);
-  double _servings = 1;
   bool _saving = false;
   String? _error;
 
-  /// Gram recipes: grams actually eaten, typed in (overrides the stepper).
-  final TextEditingController _gramsController = TextEditingController();
-  double? _gramsEaten;
+  /// How much: one tap on a quick amount, or any exact number typed in
+  /// (0.6 of it, say). Gram recipes count whole recipes and can be typed
+  /// in grams or ounces too; others count servings.
+  late final AmountInput _input = AmountInput(
+    basePortion: _grams ? '${FoodLog.formatAmount(_base)}g' : '',
+    multiplier: 1,
+  );
 
   @override
   void dispose() {
-    _gramsController.dispose();
+    _input.dispose();
     super.dispose();
   }
 
@@ -89,38 +93,40 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
 
   bool get _grams => FoodLog.isGrams(_serving);
 
-  /// Share of the whole recipe being logged. For gram recipes the stepper
-  /// counts whole recipes ("portions") unless grams eaten are typed in;
-  /// otherwise it counts servings.
+  /// What the amount box says: whole recipes (gram recipes) or servings.
+  /// Null while it's empty or not a number.
+  double? get _amount => _input.multiplier;
+
+  /// Share of the whole recipe being logged (0 while the box is empty).
   double get _multiplier {
-    final g = _gramsEaten;
-    if (_grams && g != null) return g / _base;
-    return _grams ? _servings : _servings / _base;
+    final a = _amount ?? 0;
+    return _grams ? a : (_base > 0 ? a / _base : a);
   }
 
-  double get _step => _grams ? 0.25 : 0.5;
+  /// One tap: quarters of the recipe for gram recipes, servings otherwise.
+  List<double> get _quick => _grams
+      ? const [0.25, 0.5, 0.75, 1.0, 2.0]
+      : const [0.5, 1.0, 1.5, 2.0, 3.0];
 
-  double get _maxServings => _grams ? 10.0 : (_base > 10 ? _base : 10.0);
-
-  void _setServings(double value) {
+  void _pick(double amount) {
     setState(() {
-      _servings = value;
-      // Using the stepper again replaces any grams typed in.
-      _gramsEaten = null;
-      _gramsController.clear();
-    });
-  }
-
-  void _onGramsChanged(String text) {
-    final v = double.tryParse(text.trim().replaceAll(',', '.'));
-    setState(() {
-      _gramsEaten = v != null && v.isFinite && v > 0 ? v : null;
+      _input.show(amount);
+      _error = null;
     });
   }
 
   Future<void> _log() async {
     // Set before the first await, so a double tap can't log it twice.
     if (_saving) return;
+    final amount = _amount;
+    if (amount == null || amount <= 0) {
+      setState(() => _error = 'Enter how much you had, e.g. 0.6');
+      return;
+    }
+    if (_multiplier > 100) {
+      setState(() => _error = "That's a lot. Check the amount?");
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -141,6 +147,16 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
         });
       }
     }
+  }
+
+  /// Under the amount box: what it is the other way round ("= 480 g", or
+  /// "0.6 × 800g recipe"), or what 1 means.
+  String _amountHelper(bool grams) {
+    final a = _amount;
+    if (!grams) return a == null ? '1 = one serving' : 'Any amount, e.g. 0.6';
+    if (a == null) return '1 = the whole recipe';
+    final other = _input.equivalent(a, '${FoodLog.formatAmount(_base)}g recipe');
+    return other == null ? '1 = the whole recipe' : '= $other';
   }
 
   @override
@@ -197,73 +213,52 @@ class _LogRecipeSheetState extends State<_LogRecipeSheet> {
               ],
             ),
             const SizedBox(height: 20),
-            Row(
+            Text(grams ? 'How much of the recipe?' : 'How many servings?',
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(grams ? 'Portions' : 'Servings',
-                          style: const TextStyle(fontWeight: FontWeight.w700)),
-                      if (grams)
-                        Text(
-                          '1 = whole recipe',
-                          style:
-                              TextStyle(fontSize: 12, color: AppColors.muted),
-                        ),
-                    ],
+                for (final q in _quick)
+                  ChoiceChip(
+                    label: Text('${FoodLog.formatAmount(q)}×'),
+                    selected: _amount != null && (_amount! - q).abs() < 1e-9,
+                    onSelected: (_) => _pick(q),
                   ),
-                ),
-                IconButton.outlined(
-                  tooltip: 'Less',
-                  onPressed: _servings > _step
-                      ? () => _setServings(_servings - _step)
-                      : null,
-                  icon: const Icon(Icons.remove),
-                ),
-                SizedBox(
-                  width: 56,
-                  child: Text(
-                    // With grams typed in, show the share of the recipe.
-                    FoodLog.formatAmount(
-                        _gramsEaten != null && grams ? multiplier : _servings),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                IconButton.outlined(
-                  tooltip: 'More',
-                  onPressed: _servings < _maxServings
-                      ? () => _setServings(_servings + _step)
-                      : null,
-                  icon: const Icon(Icons.add),
-                ),
               ],
             ),
-            if (grams) ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _gramsController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                ],
-                textInputAction: TextInputAction.done,
-                decoration: InputDecoration(
-                  labelText: 'Or grams eaten',
-                  hintText: 'e.g. 300',
-                  suffixText: 'g',
-                  helperText: 'Weighed your plate? Type it in.',
-                  isDense: true,
-                  border: const OutlineInputBorder(),
-                ),
-                onChanged: _onGramsChanged,
+            const SizedBox(height: 14),
+            if (_input.units.length > 1) ...[
+              AmountUnitPicker(
+                units: _input.units,
+                selected: _input.unit,
+                onChanged: (u) => setState(() => _input.setUnit(u)),
               ),
+              const SizedBox(height: 10),
             ],
+            TextField(
+              controller: _input.controller,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: AmountInput.inputFormatters,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                labelText: _input.unit != AmountUnit.portions
+                    ? 'Exact amount'
+                    : grams
+                        ? 'How many recipes'
+                        : 'How many servings',
+                suffixText: _input.unit == AmountUnit.portions
+                    ? '×'
+                    : PortionAmount.label(_input.unit),
+                helperText: _amountHelper(grams),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() => _error = null),
+              onSubmitted: (_) => _log(),
+            ),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(14),

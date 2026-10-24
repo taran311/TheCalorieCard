@@ -204,8 +204,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
       };
 
   void _addRecent(CardTransaction tx) {
-    setState(() => _calculatedItems.add(_itemFromHistory(tx)));
+    setState(() => _calculatedItems
+        .add({..._itemFromHistory(tx), 'recent_key': _recentKey(tx)}));
   }
+
+  /// Which "Or add again" food an item came from.
+  static String _recentKey(CardTransaction tx) =>
+      '${tx.description.trim().toLowerCase()}|${tx.portion.trim()}';
 
   /// A past food as an item, with exactly the numbers it was logged with.
   /// [source] 'yours' when it's the person's own numbers for a food they
@@ -319,8 +324,24 @@ class _AddFoodPageState extends State<AddFoodPage> {
     final renamed = (multiplier - 1).abs() < 1e-9 || portion.contains('×')
         ? null
         : PortionAmount.rescaleName('${item['name'] ?? ''}', multiplier);
+    // "4 linda mccartney sausages" changed to 2 says "2 linda mccartney
+    // sausages": the count in the name follows the amount.
+    final old = (item['multiplier'] as num?)?.toDouble() ?? 1.0;
+    final recounted = renamed == null && old > 0
+        ? _recount('${item['name'] ?? ''}', multiplier / old)
+        : null;
     setState(() {
-      _calculatedItems[idx] = renamed != null
+      _calculatedItems[idx] = recounted != null
+          ? {
+              ...item,
+              'name': recounted,
+              'base': base,
+              'base_portion': basePortion,
+              'portion': portion,
+              'multiplier': multiplier,
+              ...values,
+            }
+          : renamed != null
           ? {
               ...item,
               'name': renamed,
@@ -340,6 +361,31 @@ class _AddFoodPageState extends State<AddFoodPage> {
             };
     });
   }
+
+  /// A count at the start of a name ("4 linda mccartney sausages"), not a
+  /// weight ("40g surreal", "250 ml oat milk").
+  static final _leadingCount = RegExp(
+    r'^(\s*)(\d+(?:[.,]\d+)?)(\s+)(?!(?:g|kg|ml|l|cl|oz|lbs?|grams?|ounces?)\b)(?=\S)',
+    caseSensitive: false,
+  );
+
+  /// [name] with its leading count multiplied [by] ("4 sausages" by 0.5 is
+  /// "2 sausages"). Null when the name doesn't start with a count.
+  static String? _recount(String name, double by) {
+    if (!by.isFinite || by <= 0 || (by - 1).abs() < 1e-9) return null;
+    final m = _leadingCount.firstMatch(name);
+    if (m == null) return null;
+    final n = double.tryParse(m.group(2)!.replaceAll(',', '.'));
+    if (n == null || n <= 0) return null;
+    final count = PortionAmount.format(n * by, AmountUnit.portions);
+    if (count == '0') return null;
+    return '${m.group(1)}$count${m.group(3)}${name.substring(m.end)}';
+  }
+
+  /// The name says how many already ("2 linda mccartney sausages"), so the
+  /// card leaves out "2 × 1 sausage (45g)". It's still in the amount sheet,
+  /// where grams can be picked instead.
+  static bool _countInName(String name) => _leadingCount.hasMatch(name);
 
   /// True for portions given per 100 g / 100 ml (common for scanned
   /// packs), where amounts in grams make more sense than "2×".
@@ -489,7 +535,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     Text(
                       // "×1.67" only when the amount under it doesn't
                       // already say so ("1.67 × 30g serving").
-                      (multiplier - 1).abs() < 1e-9 || portion.contains('×')
+                      (multiplier - 1).abs() < 1e-9 ||
+                              portion.contains('×') ||
+                              _countInName(item['name'].toString())
                           ? item['name'].toString()
                           : '${item['name']}  ×${FoodLog.formatAmount(multiplier)}',
                       style: TextStyle(
@@ -515,7 +563,9 @@ class _AddFoodPageState extends State<AddFoodPage> {
                     const SizedBox(height: 3),
                     Text(
                       [
-                        if (portion.isNotEmpty) portion,
+                        if (portion.isNotEmpty &&
+                            !_countInName(item['name'].toString()))
+                          portion,
                         '${g('protein')}g protein · ${g('carbs')}g carbs · ${g('fat')}g fat',
                       ].join('  ·  '),
                       style:
@@ -1542,7 +1592,17 @@ class _AddFoodPageState extends State<AddFoodPage> {
   /// on phones; on wider screens they wrap so all of them show.
   List<Widget> _buildRecents(String meal) {
     if (_tutorialMode) return const [];
-    final recent = _recentFor(meal);
+    // A food tapped in drops out of the row, so the next one moves up.
+    // It comes back if it's taken off the list again, and the row starts
+    // full each time Add food opens.
+    final added = {
+      for (final i in _calculatedItems)
+        if (i['recent_key'] != null) i['recent_key'],
+    };
+    final recent = [
+      for (final tx in _recentFor(meal))
+        if (!added.contains(_recentKey(tx))) tx,
+    ];
     if (recent.isEmpty) return const [];
 
     Widget chip(CardTransaction tx) {
@@ -1578,7 +1638,8 @@ class _AddFoodPageState extends State<AddFoodPage> {
             scrollDirection: Axis.horizontal,
             itemCount: recent.length,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (context, i) => Center(child: chip(recent[i])),
+            itemBuilder: (context, i) => Center(
+                key: ValueKey(_recentKey(recent[i])), child: chip(recent[i])),
           ),
         )
       else
