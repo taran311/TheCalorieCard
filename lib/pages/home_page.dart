@@ -2651,7 +2651,7 @@ class _HomePageState extends State<HomePage>
                   // What it cost, as a plain number like a bank's list
                   // (5.49, not £5.49).
                   Text(
-                    '${_roundMacro(data['food_calories'])}',
+                    _roundMacro(data['food_calories']),
                     semanticsLabel:
                         '${_roundMacro(data['food_calories'])} calories',
                     style: TextStyle(
