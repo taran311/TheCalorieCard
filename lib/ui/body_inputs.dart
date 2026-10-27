@@ -6,21 +6,65 @@ import 'package:namer_app/services/units.dart';
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/calorie_symbol.dart';
 
-/// Metric, stones or pounds. Used on Get started, Goals and profile and
-/// the weight log.
-class UnitsPicker extends StatelessWidget {
+/// kg, stones and pounds, or pounds. Changes only the weight unit; height
+/// keeps its own. Used on Get started, Goals, profile and the weight log.
+class WeightUnitPicker extends StatelessWidget {
   final UnitPrefs value;
   final ValueChanged<UnitPrefs> onChanged;
 
-  const UnitsPicker({super.key, required this.value, required this.onChanged});
+  const WeightUnitPicker(
+      {super.key, required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => _UnitSegments<WeightUnit>(
+        semantics: 'Weight units',
+        choices: UnitPrefs.weightChoices,
+        label: UnitPrefs.weightLabel,
+        selected: value.weight,
+        onChanged: (w) => onChanged(value.withWeight(w)),
+      );
+}
+
+/// cm, or feet and inches. Changes only the height unit.
+class HeightUnitPicker extends StatelessWidget {
+  final UnitPrefs value;
+  final ValueChanged<UnitPrefs> onChanged;
+
+  const HeightUnitPicker(
+      {super.key, required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => _UnitSegments<HeightUnit>(
+        semantics: 'Height units',
+        choices: UnitPrefs.heightChoices,
+        label: UnitPrefs.heightLabel,
+        selected: value.height,
+        onChanged: (h) => onChanged(value.withHeight(h)),
+      );
+}
+
+class _UnitSegments<T> extends StatelessWidget {
+  final String semantics;
+  final List<T> choices;
+  final String Function(T) label;
+  final T selected;
+  final ValueChanged<T> onChanged;
+
+  const _UnitSegments({
+    required this.semantics,
+    required this.choices,
+    required this.label,
+    required this.selected,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Units',
+      label: semantics,
       child: SizedBox(
         width: double.infinity,
-        child: SegmentedButton<UnitPrefs>(
+        child: SegmentedButton<T>(
           showSelectedIcon: false,
           style: SegmentedButton.styleFrom(
             visualDensity: VisualDensity.compact,
@@ -28,16 +72,16 @@ class UnitsPicker extends StatelessWidget {
             selectedForegroundColor: AppText.primary,
           ),
           segments: [
-            for (final u in UnitPrefs.choices)
-              ButtonSegment<UnitPrefs>(
-                value: u,
+            for (final c in choices)
+              ButtonSegment<T>(
+                value: c,
                 label: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text(u.label, maxLines: 1),
+                  child: Text(label(c), maxLines: 1),
                 ),
               ),
           ],
-          selected: {value},
+          selected: {selected},
           onSelectionChanged: (picked) => onChanged(picked.first),
         ),
       ),

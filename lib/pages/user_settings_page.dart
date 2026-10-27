@@ -161,8 +161,8 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
         _heightCm,
         _weightKg,
         _activity,
-        _units.unitsField,
         _units.weightField,
+        _units.heightField,
         _mode,
         _goalKg,
         _pace.kgPerWeek,
@@ -530,7 +530,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   void _editHeight() => _edit(
         'Height',
         (update) => HeightInput(
-          key: ValueKey('h${_units.unitsField}'),
+          key: ValueKey('h${_units.heightField}'),
           units: _units,
           valueCm: _heightCm,
           onChanged: (cm) => update(() {
@@ -584,9 +584,23 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
 
   void _editUnits() => _edit(
         'Units',
-        (update) => UnitsPicker(
-          value: _units,
-          onChanged: (u) => update(() => _units = u),
+        (update) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Weight', style: TextStyle(color: AppColors.muted)),
+            const SizedBox(height: 6),
+            WeightUnitPicker(
+              value: _units,
+              onChanged: (u) => update(() => _units = u),
+            ),
+            const SizedBox(height: 16),
+            Text('Height', style: TextStyle(color: AppColors.muted)),
+            const SizedBox(height: 6),
+            HeightUnitPicker(
+              value: _units,
+              onChanged: (u) => update(() => _units = u),
+            ),
+          ],
         ),
       );
 
@@ -1025,11 +1039,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                               _editActivity),
                           _row(
                             'Units',
-                            _units.isMetric
-                                ? 'Kilograms and centimetres'
-                                : _units.weight == WeightUnit.stLb
-                                    ? 'Stones and feet'
-                                    : 'Pounds and feet',
+                            _units.description,
                             _editUnits,
                           ),
                         ]),

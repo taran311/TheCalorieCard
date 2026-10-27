@@ -6,12 +6,14 @@ enum WeightUnit { kg, stLb, lb }
 /// How someone likes to see their height.
 enum HeightUnit { cm, ftIn }
 
-/// Units for weight and height. Everything is stored in kg and cm, so the
-/// calorie maths never changes; this only affects what people type and see.
+/// Units for weight and height, picked separately (plenty of people weigh
+/// in kg but give their height in feet). Everything is stored in kg and
+/// cm, so the calorie maths never changes; this only affects what people
+/// type and see.
 ///
-/// Saved on the `user_data` profile as `units` ('metric' | 'imperial') plus
-/// `weight_unit` ('kg' | 'st' | 'lb'), because imperial in the UK usually
-/// means stones and pounds while in the US it means pounds.
+/// Saved on the `user_data` profile as `weight_unit` ('kg' | 'st' | 'lb')
+/// and `height_unit` ('cm' | 'ft'), plus the older `units` ('metric' |
+/// 'imperial', following the weight) that earlier app versions read.
 class UnitPrefs {
   final WeightUnit weight;
   final HeightUnit height;
@@ -22,12 +24,19 @@ class UnitPrefs {
   static const imperialStones = UnitPrefs(WeightUnit.stLb, HeightUnit.ftIn);
   static const imperialPounds = UnitPrefs(WeightUnit.lb, HeightUnit.ftIn);
 
-  /// The three options offered in the app, in the order shown.
-  static const choices = [metric, imperialStones, imperialPounds];
+  /// Weight units offered, in the order shown.
+  static const weightChoices = [WeightUnit.kg, WeightUnit.stLb, WeightUnit.lb];
 
+  /// Height units offered, in the order shown.
+  static const heightChoices = [HeightUnit.cm, HeightUnit.ftIn];
+
+  /// Weight in kg (decides things like "0.5 kg a week").
   bool get isMetric => weight == WeightUnit.kg;
 
-  /// The `units` field.
+  UnitPrefs withWeight(WeightUnit w) => UnitPrefs(w, height);
+  UnitPrefs withHeight(HeightUnit h) => UnitPrefs(weight, h);
+
+  /// The older `units` field: follows the weight.
   String get unitsField => isMetric ? 'metric' : 'imperial';
 
   /// The `weight_unit` field.
@@ -37,39 +46,70 @@ class UnitPrefs {
         WeightUnit.lb => 'lb',
       };
 
+  /// The `height_unit` field.
+  String get heightField => height == HeightUnit.cm ? 'cm' : 'ft';
+
   Map<String, dynamic> toFields() => {
         'units': unitsField,
         'weight_unit': weightField,
+        'height_unit': heightField,
       };
 
-  /// Short label for a picker: "kg, cm", "st, lb, ft" or "lb, ft".
-  String get label => switch (weight) {
-        WeightUnit.kg => 'kg · cm',
-        WeightUnit.stLb => 'st · ft',
-        WeightUnit.lb => 'lb · ft',
+  /// Picker labels.
+  static String weightLabel(WeightUnit w) => switch (w) {
+        WeightUnit.kg => 'kg',
+        WeightUnit.stLb => 'st & lb',
+        WeightUnit.lb => 'lb',
       };
+  static String heightLabel(HeightUnit h) =>
+      h == HeightUnit.cm ? 'cm' : 'ft & in';
 
-  /// Reads the saved fields. With nothing saved, falls back to the
-  /// default for [countryCode].
-  static UnitPrefs fromFields(Object? units, Object? weightUnit,
-      {String? countryCode}) {
-    if (units == 'metric') return metric;
-    if (units == 'imperial') {
-      if (weightUnit == 'lb') return imperialPounds;
-      if (weightUnit == 'st') return imperialStones;
-      // Imperial without a saved weight unit: the local habit.
-      return forCountry(countryCode).isMetric
-          ? imperialStones
-          : forCountry(countryCode);
-    }
-    return forCountry(countryCode);
+  /// "Kilograms, feet and inches" for the profile.
+  String get description {
+    final w = switch (weight) {
+      WeightUnit.kg => 'Kilograms',
+      WeightUnit.stLb => 'Stones and pounds',
+      WeightUnit.lb => 'Pounds',
+    };
+    return '$w, ${height == HeightUnit.cm ? 'centimetres' : 'feet and inches'}';
   }
 
-  /// Reads `units` / `weight_unit` from a `user_data` document.
+  /// Reads the saved fields. Anything missing falls back to the older
+  /// `units` field, then to the default for [countryCode].
+  static UnitPrefs fromFields(Object? units, Object? weightUnit,
+      {Object? heightUnit, String? countryCode}) {
+    final local = forCountry(countryCode);
+    final WeightUnit weight = switch (weightUnit) {
+      'kg' => WeightUnit.kg,
+      'st' => WeightUnit.stLb,
+      'lb' => WeightUnit.lb,
+      _ => units == 'metric'
+          ? WeightUnit.kg
+          : units == 'imperial'
+              // Imperial without a weight unit: the local habit (stones
+              // outside the US).
+              ? (local.isMetric ? WeightUnit.stLb : local.weight)
+              : local.weight,
+    };
+    // Before height had its own field, `units` covered both.
+    final HeightUnit height = switch (heightUnit) {
+      'cm' => HeightUnit.cm,
+      'ft' => HeightUnit.ftIn,
+      _ => units == 'metric'
+          ? HeightUnit.cm
+          : units == 'imperial'
+              ? HeightUnit.ftIn
+              : local.height,
+    };
+    return UnitPrefs(weight, height);
+  }
+
+  /// Reads `units` / `weight_unit` / `height_unit` from a `user_data`
+  /// document.
   static UnitPrefs fromProfile(Map<String, dynamic>? data,
           {String? countryCode}) =>
       fromFields(data?['units'], data?['weight_unit'],
-          countryCode: countryCode);
+          heightUnit: data?['height_unit'], countryCode: countryCode);
 
   /// The default for a country (ISO code such as 'GB' or 'US').
   ///

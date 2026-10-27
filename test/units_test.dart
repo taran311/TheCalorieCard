@@ -15,14 +15,42 @@ void main() {
     });
 
     test('reads and writes the profile fields', () {
-      for (final u in UnitPrefs.choices) {
-        final f = u.toFields();
-        expect(UnitPrefs.fromFields(f['units'], f['weight_unit']), u);
+      for (final w in UnitPrefs.weightChoices) {
+        for (final h in UnitPrefs.heightChoices) {
+          final u = UnitPrefs(w, h);
+          final f = u.toFields();
+          expect(
+              UnitPrefs.fromFields(f['units'], f['weight_unit'],
+                  heightUnit: f['height_unit']),
+              u);
+        }
       }
       expect(UnitPrefs.metric.toFields(),
-          {'units': 'metric', 'weight_unit': 'kg'});
+          {'units': 'metric', 'weight_unit': 'kg', 'height_unit': 'cm'});
       expect(UnitPrefs.imperialStones.toFields(),
-          {'units': 'imperial', 'weight_unit': 'st'});
+          {'units': 'imperial', 'weight_unit': 'st', 'height_unit': 'ft'});
+    });
+
+    test('weight and height are picked separately', () {
+      final kgFeet = UnitPrefs.metric.withHeight(HeightUnit.ftIn);
+      expect(kgFeet.weight, WeightUnit.kg);
+      expect(kgFeet.height, HeightUnit.ftIn);
+      expect(kgFeet.toFields(),
+          {'units': 'metric', 'weight_unit': 'kg', 'height_unit': 'ft'});
+      expect(UnitPrefs.fromProfile(kgFeet.toFields()), kgFeet);
+      expect(kgFeet.description, 'Kilograms, feet and inches');
+      final stonesCm = UnitPrefs.imperialStones.withHeight(HeightUnit.cm);
+      expect(UnitPrefs.fromProfile(stonesCm.toFields()), stonesCm);
+      expect(stonesCm.description, 'Stones and pounds, centimetres');
+    });
+
+    test('profiles saved before height had its own unit', () {
+      expect(UnitPrefs.fromProfile({'units': 'metric', 'weight_unit': 'kg'}),
+          UnitPrefs.metric);
+      expect(UnitPrefs.fromProfile({'units': 'imperial', 'weight_unit': 'st'}),
+          UnitPrefs.imperialStones);
+      expect(UnitPrefs.fromProfile({'units': 'imperial', 'weight_unit': 'lb'}),
+          UnitPrefs.imperialPounds);
     });
 
     test('nothing saved falls back to the country', () {

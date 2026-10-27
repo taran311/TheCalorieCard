@@ -362,25 +362,25 @@ class _GetStartedPageState extends State<GetStartedPage> {
         _Step.height => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              UnitsPicker(
+              HeightUnitPicker(
                 value: _units,
                 onChanged: (u) => setState(() => _units = u),
               ),
               const SizedBox(height: 8),
               HeightInput(
-                key: ValueKey('h${_units.unitsField}'),
+                key: ValueKey('h${_units.heightField}'),
                 units: _units,
                 valueCm: _heightCm,
                 onChanged: (cm) => setState(() => _heightCm = cm),
               ),
             ],
           ),
-        // Units here too, not only on the height step: plenty of people
-        // weigh in kg but measure height in feet, or skipped past it.
+        // Weight has its own units, separate from height: plenty of
+        // people weigh in kg but give their height in feet.
         _Step.weight => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              UnitsPicker(
+              WeightUnitPicker(
                 value: _units,
                 onChanged: (u) => setState(() => _units = u),
               ),
@@ -415,7 +415,7 @@ class _GetStartedPageState extends State<GetStartedPage> {
         _Step.target => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              UnitsPicker(
+              WeightUnitPicker(
                 value: _units,
                 onChanged: (u) => setState(() => _units = u),
               ),
