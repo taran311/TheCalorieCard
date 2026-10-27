@@ -23,6 +23,8 @@ import 'package:namer_app/services/even_out.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/portion_amount.dart';
+import 'package:namer_app/services/split_service.dart';
+import 'package:namer_app/ui/split_sheet.dart';
 import 'package:namer_app/services/late_close.dart';
 import 'package:namer_app/services/friends_service.dart';
 import 'package:namer_app/services/chat_service.dart';
@@ -73,8 +75,6 @@ class _RecipePickerPage extends StatefulWidget {
 }
 
 class _RecipePickerPageState extends State<_RecipePickerPage> {
-  int _selectedTabIndex = 0; // 0 = My recipes, 1 = Shared with me
-
   // Created once, so rebuilding the page doesn't re-subscribe.
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _myRecipes =
       BalanceService.db
@@ -113,35 +113,6 @@ class _RecipePickerPageState extends State<_RecipePickerPage> {
       recipe: recipe,
     ).then<Object?>((Object? r) => r);
     if (logged is LoggedFoods && mounted) Navigator.pop(context, logged);
-  }
-
-  Widget _tab(int index, String label) {
-    final selected = _selectedTabIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () => setState(() => _selectedTabIndex = index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 13),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: selected ? AppColors.primary : AppColors.border,
-                width: 3,
-              ),
-            ),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: selected ? AppText.primaryDark : AppColors.gray600,
-              fontSize: 14,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _message(String text, {IconData icon = Icons.menu_book_outlined}) {
@@ -199,95 +170,54 @@ class _RecipePickerPageState extends State<_RecipePickerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.canvas,
-      appBar: AppBar(
-        title: const Text('Add a recipe'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Material(
-            color: AppColors.surface,
-            child: Row(
-              children: [
-                _tab(0, 'My recipes'),
-                _tab(1, 'Shared with me'),
-              ],
-            ),
-          ),
-        ),
-      ),
-      body: _selectedTabIndex == 0
-          ? _buildMyRecipesTab()
-          : _buildSharedRecipesTab(),
+      appBar: AppBar(title: const Text('Add a recipe')),
+      body: _buildRecipes(),
     );
   }
 
-  Widget _buildMyRecipesTab() {
+  /// Yours and friends' in one list; shared ones say who shared them.
+  Widget _buildRecipes() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _myRecipes,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) return _errorMessage();
-        if (snapshot.connectionState == ConnectionState.waiting) {
+      builder: (context, mine) {
+        if (mine.hasError) return _errorMessage();
+        if (!mine.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return _message(
-              "No recipes yet. Save one on the Recipes tab and it'll show here.");
-        }
-
-        final recipes = snapshot.data!.docs.toList()
-          // Newest first. data()[...] rather than doc[...]: older recipes
-          // may be missing fields, and doc[...] throws for those.
-          ..sort((a, b) {
-            final timeA = a.data()['created_at'];
-            final timeB = b.data()['created_at'];
-            if (timeA is! Timestamp || timeB is! Timestamp) return 0;
-            return timeB.compareTo(timeA);
-          });
-
-        return ListView.builder(
-          padding: const EdgeInsets.only(top: 8, bottom: 48),
-          itemCount: recipes.length,
-          itemBuilder: (context, index) =>
-              _recipeTile(recipes[index].id, recipes[index].data()),
-        );
-      },
-    );
-  }
-
-  Widget _buildSharedRecipesTab() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _sharedRecipes,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) return _errorMessage();
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return _message('Nothing shared with you yet.',
-              icon: Icons.people_outline);
-        }
-
-        return FutureBuilder<List<Map<String, dynamic>>>(
-          future: _sharedDetailsFor(snapshot.data!.docs),
-          builder: (context, detailSnapshot) {
-            if (detailSnapshot.hasError) return _errorMessage();
-            if (detailSnapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (!detailSnapshot.hasData || detailSnapshot.data!.isEmpty) {
-              return _message("Those recipes aren't available any more.",
-                  icon: Icons.people_outline);
-            }
-
-            final recipes = detailSnapshot.data!;
-            return ListView.builder(
-              padding: const EdgeInsets.only(top: 8, bottom: 48),
-              itemCount: recipes.length,
-              itemBuilder: (context, index) {
-                final item = recipes[index];
-                return _recipeTile(
-                  item['recipe_id'] as String,
-                  item['recipe'] as Map<String, dynamic>,
-                  sharedBy: item['sharedBy'] as String,
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _sharedRecipes,
+          builder: (context, shared) {
+            final docs = shared.data?.docs;
+            return FutureBuilder<List<Map<String, dynamic>>>(
+              future: docs == null || docs.isEmpty
+                  ? null
+                  : _sharedDetailsFor(docs),
+              builder: (context, details) {
+                final own = mine.data!.docs.toList()
+                  // Newest first. data()[...] rather than doc[...]: older
+                  // recipes may be missing fields.
+                  ..sort((a, b) {
+                    final timeA = a.data()['created_at'];
+                    final timeB = b.data()['created_at'];
+                    if (timeA is! Timestamp || timeB is! Timestamp) return 0;
+                    return timeB.compareTo(timeA);
+                  });
+                final friends = details.data ?? const [];
+                if (own.isEmpty && friends.isEmpty) {
+                  return _message("No recipes yet. Save one on the Recipes "
+                      "tab and it'll show here.");
+                }
+                return ListView(
+                  padding: const EdgeInsets.only(top: 8, bottom: 48),
+                  children: [
+                    for (final d in own) _recipeTile(d.id, d.data()),
+                    for (final item in friends)
+                      _recipeTile(
+                        item['recipe_id'] as String,
+                        item['recipe'] as Map<String, dynamic>,
+                        sharedBy: item['sharedBy'] as String,
+                      ),
+                  ],
                 );
               },
             );
@@ -871,6 +801,11 @@ class _HomePageState extends State<HomePage>
   /// worked out from the food actually logged that day.
   Macros get _selectedDayBalance => _goalsForSelectedDay - _dayTotals;
 
+  /// What a past day put in the savings pot (0 for today, or none).
+  double get _potSavedOnSelectedDay => _isSelectedDateToday
+      ? 0
+      : BalanceService.potSavedFrom(_selectedDailyLog);
+
   String _dateKey(DateTime date) {
     final y = date.year.toString();
     final m = date.month.toString().padLeft(2, '0');
@@ -1109,6 +1044,94 @@ class _HomePageState extends State<HomePage>
     if (mounted && const {7, 30, 100, 365}.contains(streak)) {
       showConfetti(context);
       _snack('🔥 $streak days in a row. Brilliant.');
+      return;
+    }
+    await _potAfterClosing();
+  }
+
+  static const _potOfferKey = 'pot_offer_declined';
+
+  /// Closed with calories left: say they're going into the pot tonight, or
+  /// (pots off) offer to keep them for a treat later in the week. Asks at
+  /// most twice; "Not now" twice and it stops.
+  Future<void> _potAfterClosing() async {
+    try {
+      final left = (_liveBalance ?? 0).toDouble();
+      if (left <= 0 || !mounted) return;
+      final doc = await BalanceService.userDataDoc(_activeUserId);
+      final data = doc?.data();
+      if (data == null || !mounted) return;
+      final on = data['pots_enabled'] == true;
+      final tonight = BalanceService.potForTonight(
+        day: BalanceService.now(),
+        left: left,
+        eaten: _dayTotals.calories,
+        goal: _goalsForSelectedDay.calories,
+        potNow: on ? BalanceService.potFrom(data) : 0,
+      ).round();
+      if (tonight <= 0) return;
+      if (on) {
+        _snack('🐷 $calSym${formatCardKcal(tonight)} goes into your pot '
+            'tonight, for a treat later this week.');
+        return;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      final declined = prefs.getInt(_potOfferKey) ?? 0;
+      if (declined >= 2 || !mounted) return;
+      final yes = await showModalBottomSheet<bool>(
+        context: context,
+        useRootNavigator: true,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '🐷 Save $calSym${formatCardKcal(tonight)} for later this '
+                  'week?',
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ink),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Turn on your savings pot and what you don\'t spend (up to '
+                  '$calSym${formatCardKcal(BalanceService.potDailyCap)} a day) '
+                  'is kept for a treat later in the week. It holds up to '
+                  '$calSym${formatCardKcal(BalanceService.potWeeklyCap)} and '
+                  'starts fresh every Monday.',
+                  style: TextStyle(
+                      fontSize: 15, color: AppColors.gray700, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext, true),
+                  style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48)),
+                  child: const Text('Turn on my pot'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(sheetContext, false),
+                  child: const Text('Not now'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (!mounted) return;
+      if (yes != true) {
+        await prefs.setInt(_potOfferKey, declined + 1);
+        return;
+      }
+      await BalanceService.setPotsEnabled(_activeUserId, true);
+      _snack('🐷 Pot on. $calSym${formatCardKcal(tonight)} goes in tonight.');
+    } catch (_) {
+      // Just a suggestion: the day is closed either way.
     }
   }
 
@@ -1302,7 +1325,7 @@ class _HomePageState extends State<HomePage>
           : 'Rest day on. Your streak is paused, not broken.');
     } on RestDayLimitReached {
       _snack("You've used all ${RestDays.maxPerMonth} rest days this "
-          'month. They come back on the 1st.');
+          'month. They come back ${RestDays.resetLabel(day)}.');
     } on RestDayTooLate {
       _snack("It's too late to change that day now.");
     } catch (_) {
@@ -1349,6 +1372,8 @@ class _HomePageState extends State<HomePage>
   /// today or [yesterday]. Returns true to go ahead.
   Future<bool?> _showRestDaySheet(int left, {bool yesterday = false}) {
     final usedUp = left <= 0;
+    // When this month's rest days come back ("in 6 days, on 1 November").
+    final reset = RestDays.resetLabel(_selectedLogDate);
     return showModalBottomSheet<bool>(
       context: context,
       useRootNavigator: true,
@@ -1377,7 +1402,7 @@ class _HomePageState extends State<HomePage>
               Text(
                 usedUp
                     ? "You've taken all ${RestDays.maxPerMonth} of this "
-                        "month's rest days. They come back on the 1st. Until "
+                        "month's rest days. They come back $reset. Until "
                         'then, track as normal.'
                     : 'Rest days are for holidays, celebrations or a planned '
                         "refeed. ${yesterday ? "Yesterday won't count" : "You won't track today"}"
@@ -1403,6 +1428,15 @@ class _HomePageState extends State<HomePage>
                         '$left of ${RestDays.maxPerMonth} left this month',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
+                          color: AppColors.sky700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Back to ${RestDays.maxPerMonth} $reset',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                           color: AppColors.sky700,
                         ),
                       ),
@@ -1628,6 +1662,57 @@ class _HomePageState extends State<HomePage>
         }
       case EntrySheetAction.directDebit:
         await _offerDirectDebit(entry);
+      case EntrySheetAction.split:
+        await _splitEntry(doc.id, entry);
+    }
+  }
+
+  /// "Shared it? Split with friends" on a food already logged: pick who
+  /// you shared it with; your entry comes down to your share (the card
+  /// gets the rest back) and each friend gets a request for theirs.
+  Future<void> _splitEntry(String entryId, Map<String, dynamic> entry) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    List<Friend> friends;
+    try {
+      friends = await FriendsService.load(user.uid);
+    } catch (_) {
+      friends = const [];
+    }
+    if (!mounted) return;
+    if (friends.isEmpty) {
+      _snack('Add some friends to split with first.');
+      return;
+    }
+    final choice = await showModalBottomSheet<SplitChoice>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => SplitSheet(
+        friends: friends,
+        items: [SplitService.itemFromEntry(entry)],
+        alreadyLogged: true,
+      ),
+    );
+    if (choice == null || choice.friendIds.isEmpty || !mounted) return;
+    final chosen = choice.friendIds;
+    try {
+      await SplitService.splitLogged(
+        uid: user.uid,
+        fromName: await FriendsService.nameFor(user.uid, email: user.email),
+        entryId: entryId,
+        entry: entry,
+        friendIds: chosen,
+        mine: choice.mine,
+      );
+      if (!mounted) return;
+      await (_refreshing ?? _refreshAfterChange());
+      _snack('Split with ${chosen.length} '
+          'friend${chosen.length == 1 ? '' : 's'}. Request'
+          '${chosen.length == 1 ? '' : 's'} sent.');
+    } catch (_) {
+      _snack("Couldn't split that. Please try again.");
     }
   }
 
@@ -2191,7 +2276,10 @@ class _HomePageState extends State<HomePage>
                         key: ValueKey(
                             '$_creditCardRefreshKey-${_selectedLogDate.toIso8601String()}'),
                         skipFetch: true,
-                        caloriesOverride: _selectedDayBalance.calories.round(),
+                        // What was left, less what went into the pot.
+                        caloriesOverride: (_selectedDayBalance.calories -
+                                _potSavedOnSelectedDay)
+                            .round(),
                         proteinOverride: _selectedDayBalance.protein,
                         carbsOverride: _selectedDayBalance.carbs,
                         fatsOverride: _selectedDayBalance.fat,
@@ -2357,8 +2445,10 @@ class _HomePageState extends State<HomePage>
     if (_foodLoadFailed) return null;
     final today = _isSelectedDateToday;
     final spent = _dayTotals.calories.round();
-    final int? left =
-        today ? _liveBalance : _selectedDayBalance.calories.round();
+    final saved = _potSavedOnSelectedDay.round();
+    final int? left = today
+        ? _liveBalance
+        : (_selectedDayBalance.calories - saved).round();
     final goal = _goalsForSelectedDay.calories;
     final Color leftColor = left == null || left < 0
         ? AppText.red600
@@ -2381,10 +2471,19 @@ class _HomePageState extends State<HomePage>
               style: TextStyle(color: leftColor, fontWeight: FontWeight.w700),
             ),
           ],
+          // "⊂0 left · 🐷 ⊂63 to pot": where the rest went.
+          if (saved > 0) ...[
+            const TextSpan(text: ' · '),
+            TextSpan(
+              text: '🐷 $calSym${formatCardKcal(saved)} to pot',
+              style: TextStyle(
+                  color: AppText.primary, fontWeight: FontWeight.w700),
+            ),
+          ],
         ],
       ),
       textAlign: TextAlign.center,
-      maxLines: 1,
+      maxLines: 2,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(fontSize: 13, color: AppColors.muted),
     );

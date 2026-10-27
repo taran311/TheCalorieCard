@@ -168,6 +168,10 @@ void main() {
       expect(show('2 crumpets', '3 × 1 serving (2 crumpets)'),
           '2 crumpets | 3 servings');
       expect(show('40g surreal', '1.5 × 40g'), '60g surreal');
+      // An old entry: amount changed to 15 g, name left at 20g.
+      expect(show('20g sriracha mayo', '15g'), '15g sriracha mayo');
+      expect(show('20g sriracha mayo', '0.75 × 20g'), '15g sriracha mayo');
+      expect(show('200ml oat milk', '150 ml'), '150ml oat milk');
     });
   });
 }

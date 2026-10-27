@@ -72,23 +72,55 @@ class SplitService {
   static List<Map<String, dynamic>> shareOf(
       List<Map<String, dynamic>> items, int people) {
     if (people < 2) throw ArgumentError('A split needs at least 2 people');
+    return shareAt(items, 1 / people);
+  }
+
+  /// [fraction] of [items] (a third is 1/3), as one person's share.
+  static List<Map<String, dynamic>> shareAt(
+      List<Map<String, dynamic>> items, double fraction) {
+    if (!fraction.isFinite || fraction <= 0 || fraction >= 1) {
+      throw ArgumentError('A share is more than none and less than all');
+    }
     double n(dynamic v) => BalanceService.number(v) ?? 0;
     return [
       for (final item in items)
         {
           'name': (item['name'] ?? 'Food').toString(),
-          'calories': (n(item['calories']) / people).roundToDouble(),
-          'protein': n(item['protein']) / people,
-          'carbs': n(item['carbs']) / people,
-          'fat': n(item['fat']) / people,
-          'portion': _sharePortion(item['portion'], people),
+          'calories': (n(item['calories']) * fraction).roundToDouble(),
+          'protein': n(item['protein']) * fraction,
+          'carbs': n(item['carbs']) * fraction,
+          'fat': n(item['fat']) * fraction,
+          'portion': _sharePortion(item['portion'], fraction),
         }
     ];
   }
 
-  static String _sharePortion(dynamic portion, int people) {
+  /// Each friend's share when you have [mine] and the rest is split evenly
+  /// between [friends] of them.
+  static double friendShare(double mine, int friends) =>
+      friends < 1 ? 0 : (1 - mine) / friends;
+
+  static String _sharePortion(dynamic portion, double fraction) {
     final p = (portion ?? '').toString().trim();
-    return p.isEmpty ? '1/$people share' : '1/$people share of $p';
+    final f = fractionLabel(fraction);
+    return p.isEmpty ? '$f share' : '$f share of $p';
+  }
+
+  static const _fractions = [
+    (1, 2), (1, 3), (2, 3), (1, 4), (3, 4), (1, 5), (2, 5), (3, 5), (4, 5),
+    (1, 6), (5, 6), (1, 8), (3, 8), (5, 8), (7, 8), (1, 12),
+  ];
+
+  /// "1/3", "3/4"; anything else as a percentage ("42%").
+  static String fractionLabel(double f) {
+    for (final (a, b) in _fractions) {
+      if ((f - a / b).abs() < 0.004) return '$a/$b';
+    }
+    for (var b = 2; b <= 12; b++) {
+      final a = (f * b).round();
+      if (a > 0 && (f - a / b).abs() < 0.004) return '$a/$b';
+    }
+    return '${(f * 100).round()}%';
   }
 
   /// Splits [items] between you and [friendIds]: logs your share now and
@@ -100,12 +132,16 @@ class SplitService {
     required List<String> friendIds,
     required String meal,
     String? title,
+    double? mine,
   }) async {
     final others = friendIds.where((id) => id != uid).toSet().toList();
     if (others.isEmpty) throw ArgumentError('Pick at least one friend');
     if (items.isEmpty) throw ArgumentError('Nothing to split');
 
-    final share = shareOf(items, others.length + 1);
+    // [mine]: your share (default an even split); the rest is split evenly.
+    final myPart = mine ?? 1 / (others.length + 1);
+    final share = shareAt(items, friendShare(myPart, others.length));
+    final myShare = shareAt(items, myPart);
     final name = (title == null || title.trim().isEmpty)
         ? _titleFor(items)
         : title.trim();
@@ -125,9 +161,78 @@ class SplitService {
     });
 
     try {
-      await FoodLog.logFoods(items: share, meal: meal, userId: uid);
+      await FoodLog.logFoods(items: myShare, meal: meal, userId: uid);
     } catch (_) {
       // Your share didn't log, so withdraw the requests too.
+      try {
+        await ref.delete();
+      } catch (_) {}
+      rethrow;
+    }
+    await AchievementService.bump(uid, 'splits');
+    return ref.id;
+  }
+
+  /// A food already on your card ([entryId], [entry]) as an item to split.
+  static Map<String, dynamic> itemFromEntry(Map<String, dynamic> entry) {
+    final m = Macros.fromEntry(entry);
+    return {
+      'name': (entry['food_description'] ?? 'Food').toString(),
+      'calories': m.calories,
+      'protein': m.protein,
+      'carbs': m.carbs,
+      'fat': m.fat,
+      'portion': (entry['food_portion'] ?? '').toString(),
+    };
+  }
+
+  /// Splits a food you've already logged between you and [friendIds]:
+  /// sends each friend a request for their share, then brings your entry
+  /// down to your share (the card gets the difference back). Returns the
+  /// split's id.
+  static Future<String> splitLogged({
+    required String uid,
+    required String fromName,
+    required String entryId,
+    required Map<String, dynamic> entry,
+    required List<String> friendIds,
+    double? mine,
+  }) async {
+    final others = friendIds.where((id) => id != uid).toSet().toList();
+    if (others.isEmpty) throw ArgumentError('Pick at least one friend');
+    final people = others.length + 1;
+    final myPart = mine ?? 1 / people;
+    final item = itemFromEntry(entry);
+    final share = shareAt([item], friendShare(myPart, others.length));
+    final meal = FoodLog.mealOf(entry['foodCategory']?.toString());
+
+    // Requests first: if they fail, your entry hasn't changed.
+    final ref = await _col.add({
+      'from_user_id': uid,
+      'from_name': fromName,
+      'title': item['name'],
+      'meal': meal,
+      'people': people,
+      'items': share,
+      'to_user_ids': others,
+      'status': {for (final id in others) id: 'pending'},
+      'created_at': FieldValue.serverTimestamp(),
+    });
+
+    try {
+      // Same food, your share of the amount: "2 × 1 sausage" split evenly
+      // two ways is 1 sausage, with its numbers scaled to match.
+      final m = FoodLog.multiplierOf(entry) * myPart;
+      // Calories fixed by hand stay fixed: your share of what's shown.
+      final kcal = (Macros.fromEntry(entry).calories * myPart).roundToDouble();
+      final scaled = FoodLog.baseOf(entry).scaled(m).calories;
+      await FoodLog.updateEntry(entryId,
+          entry: entry,
+          multiplier: m,
+          calories: (scaled - kcal).abs() > 1 ? kcal : null,
+          userId: uid);
+    } catch (_) {
+      // Your entry didn't change, so withdraw the requests too.
       try {
         await ref.delete();
       } catch (_) {}
@@ -201,6 +306,10 @@ class SplitService {
 
   /// Total calories in one share (what each person, you included, logs).
   static double shareCalories(List<Map<String, dynamic>> items, int people) =>
-      shareOf(items, people).fold(
+      caloriesAt(items, 1 / people);
+
+  /// What [fraction] of [items] comes to (rounded per item, as logged).
+  static double caloriesAt(List<Map<String, dynamic>> items, double fraction) =>
+      shareAt(items, fraction).fold(
           0.0, (total, i) => total + (BalanceService.number(i['calories']) ?? 0));
 }

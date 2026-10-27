@@ -76,6 +76,36 @@ class RestDays {
     return left < 0 ? 0 : left;
   }
 
+  /// The 1st of the month after [day]'s: when that month's rest days
+  /// come back.
+  static DateTime resetsOn(DateTime day) =>
+      DateTime(day.year, day.month + 1, 1);
+
+  /// Whole days from [from] (default today) to [day]'s month resetting:
+  /// 1 on the last day of the month.
+  static int daysUntilReset(DateTime day, {DateTime? from}) {
+    final a = BalanceService.startOfDay(from ?? BalanceService.now());
+    final r = resetsOn(day);
+    return DateTime.utc(r.year, r.month, r.day)
+        .difference(DateTime.utc(a.year, a.month, a.day))
+        .inDays;
+  }
+
+  static const _months = [
+    'January', 'February', 'March', 'April', 'May', 'June', 'July',
+    'August', 'September', 'October', 'November', 'December',
+  ];
+
+  /// "in 6 days, on 1 November", "tomorrow, 1 November", "on 1 November".
+  static String resetLabel(DateTime day, {DateTime? from}) {
+    final r = resetsOn(day);
+    final date = '1 ${_months[r.month - 1]}';
+    final n = daysUntilReset(day, from: from);
+    if (n == 1) return 'tomorrow, $date';
+    if (n > 1) return 'in $n days, on $date';
+    return 'on $date';
+  }
+
   /// [day] (default today) as the start of its day, if it can still be
   /// changed: today or yesterday. Otherwise throws [RestDayTooLate].
   static DateTime _changeable(DateTime? day) {

@@ -376,12 +376,13 @@ class BalanceService {
     final eaten = await todaysTotals(userId);
     final today = dateKey(now());
     final isNewDay = data['balance_date'] != today;
-    final pot = isNewDay ? await _potAfterDay(userId, data) : null;
+    final potDay = isNewDay ? await _potAfterDay(userId, data) : null;
+    final pot = potDay?.fields;
 
     // Re-check inside a transaction: if another write (another device, or
     // a second tap) already started today's balance, leave it alone rather
     // than overwrite charges made since.
-    return _db.runTransaction<bool>((tx) async {
+    final reset = await _db.runTransaction<bool>((tx) async {
       final fresh = await tx.get(doc.reference);
       if (!force && fresh.data()?['balance_date'] == today) {
         return false;
@@ -394,6 +395,45 @@ class BalanceService {
       });
       return true;
     });
+    // What the closed day put in the pot, on that day's log, so past days
+    // can show it ("⊂0 left · 🐷 ⊂63 to pot"). A nice extra: never fails
+    // the reset.
+    final savedOn = potDay?.day;
+    if (reset && savedOn != null && potDay!.saved > 0) {
+      try {
+        final day = _parseKey(savedOn);
+        await _db.collection('daily_logs').doc('${userId}_$savedOn').set({
+          'user_id': userId,
+          'date_key': savedOn,
+          if (day != null) 'date': Timestamp.fromDate(day),
+          'pot_saved': potDay.saved,
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (_) {}
+    }
+    return reset;
+  }
+
+  /// What a day put in the pot (0 if nothing), from its `daily_logs` doc.
+  static double potSavedFrom(Map<String, dynamic>? log) =>
+      number(log?['pot_saved']) ?? 0;
+
+  /// What closing [day] would put in the pot tonight, or 0: what's [left]
+  /// up to [potDailyCap], as long as at least half the [goal] was [eaten],
+  /// and only as much as the week's pot still has room for. Sunday's goes
+  /// nowhere: the pot empties on Monday.
+  static double potForTonight({
+    required DateTime day,
+    required double left,
+    required double eaten,
+    required double goal,
+    required double potNow,
+  }) {
+    if (day.weekday == DateTime.sunday) return 0;
+    if (left <= 0 || goal <= 0 || eaten < goal * 0.5) return 0;
+    final room = (potWeeklyCap - potNow).clamp(0, potWeeklyCap).toDouble();
+    final save = left.clamp(0, potDailyCap).toDouble();
+    return save < room ? save : room;
   }
 
   // -------------------- Pots --------------------
@@ -430,11 +470,12 @@ class BalanceService {
   /// What the pot should hold once the stored (earlier) day is closed, or
   /// null if pots are off. Only days with food logged count, so not
   /// logging can't fill the pot.
-  static Future<Map<String, dynamic>?> _potAfterDay(
-      String userId, Map<String, dynamic> data) async {
+  static Future<({Map<String, dynamic> fields, String? day, double saved})?>
+      _potAfterDay(String userId, Map<String, dynamic> data) async {
     if (data['pots_enabled'] != true) return null;
     final thisWeek = weekKey(now());
     var pot = data['pot_week'] == thisWeek ? (number(data['pot']) ?? 0.0) : 0.0;
+    var added = 0.0;
 
     final closedDay = _parseKey(data['balance_date']);
     if (closedDay != null && weekKey(closedDay) == thisWeek) {
@@ -449,10 +490,16 @@ class BalanceService {
             : 0.0;
         final leftover = (number(data['calories']) ?? 0) - spentFromPot;
         final saved = leftover.clamp(0, potDailyCap).toDouble();
+        final before = pot;
         pot = (pot + saved).clamp(0, potWeeklyCap).toDouble();
+        added = pot - before;
       }
     }
-    return {'pot': pot, 'pot_week': thisWeek};
+    return (
+      fields: {'pot': pot, 'pot_week': thisWeek},
+      day: closedDay == null ? null : dateKey(closedDay),
+      saved: added.roundToDouble(),
+    );
   }
 
   /// This week's pot, from a `user_data` document.

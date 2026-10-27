@@ -24,6 +24,7 @@ import 'package:namer_app/services/statement_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/portion_amount.dart';
 import 'package:namer_app/ui/amount_field.dart';
+import 'package:namer_app/ui/split_sheet.dart';
 import 'package:namer_app/ui/calorie_card.dart' show formatCardKcal;
 import 'package:namer_app/ui/calorie_symbol.dart';
 import 'package:namer_app/services/achievement_service.dart';
@@ -87,6 +88,51 @@ class _AddFoodPageState extends State<AddFoodPage> {
   bool _scanning = false;
   bool _readingPhoto = false;
   bool _tutorialMode = false;
+
+  /// Set when leaving on purpose (logged, split, or chose Discard).
+  bool _leaving = false;
+
+  /// Foods ready to add (or typed into the list) that would be lost.
+  bool get _hasUnsaved =>
+      !_tutorialMode &&
+      !_saving &&
+      (_calculatedItems.isNotEmpty || _ingredients.isNotEmpty);
+
+  /// Back: ask before throwing away foods that are ready to add.
+  Future<void> _confirmLeave() async {
+    if (_saving) return;
+    if (!_hasUnsaved) {
+      _leave();
+      return;
+    }
+    final n = _calculatedItems.length + _ingredients.length;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(n == 1 ? 'Discard this food?' : 'Discard these foods?'),
+        content: Text(n == 1
+            ? "It hasn't been added to your card yet."
+            : "The $n foods here haven't been added to your card yet."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep them'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.red600),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) _leave();
+  }
+
+  void _leave([Object? result]) {
+    _leaving = true;
+    Navigator.pop(context, result);
+  }
   int _progressDone = 0;
   int _progressTotal = 0;
 
@@ -233,14 +279,37 @@ class _AddFoodPageState extends State<AddFoodPage> {
       'carbs': tx.carbs / m,
       'fat': tx.fat / m,
     };
+    // "4 linda mccartney sausages" saved at 2 comes back as "2 linda
+    // mccartney sausages", so the name and the amount agree.
+    final name = onePortion
+        ? tx.description
+        : PortionAmount.tidy(tx.description,
+                '${PortionAmount.format(take, AmountUnit.portions)} × ${tx.basePortion}')
+            .name;
+    // A name that gives its weight ("15g sriracha mayo", saved as 0.75 ×
+    // 20g) is that weight, once: no "×0.75" on top, and changing it later
+    // goes from 15 g.
+    final weight = PortionAmount.amountsIn(name) == 1
+        ? PortionAmount.sizeOf(name)
+        : null;
+    if (!onePortion && weight != null && (take - 1).abs() > 1e-9) {
+      final unit = weight.volume ? AmountUnit.ml : AmountUnit.g;
+      final label = '${PortionAmount.format(weight.amount, unit)}'
+          '${PortionAmount.label(unit)}';
+      final values = {for (final e in one.entries) e.key: e.value * take};
+      return {
+        'name': name,
+        ...values,
+        'portion': label,
+        'base_portion': label,
+        'source': source,
+        'needs_review': false,
+        'multiplier': 1.0,
+        'base': values,
+      };
+    }
     return {
-      // "4 linda mccartney sausages" saved at 2 comes back as "2 linda
-      // mccartney sausages", so the name and the amount agree.
-      'name': onePortion
-          ? tx.description
-          : PortionAmount.tidy(tx.description,
-                  '${PortionAmount.format(take, AmountUnit.portions)} × ${tx.basePortion}')
-              .name,
+      'name': name,
       for (final e in one.entries) e.key: e.value * take,
       'portion': onePortion ? tx.basePortion : tx.portion,
       'base_portion': tx.basePortion,
@@ -327,12 +396,16 @@ class _AddFoodPageState extends State<AddFoodPage> {
     // "20g sriracha mayo" changed to 15 g says 15g, and that's its new
     // single portion (as it's logged), so the name and the amount under it
     // always agree.
-    final renamed = (multiplier - 1).abs() < 1e-9 || portion.contains('×')
+    // The name says the amount it's at now (×[old] of its portion), so it
+    // moves by new ÷ old: "15g" at 0.75 of 20g, changed to 10 g, is "10g".
+    final old = (item['multiplier'] as num?)?.toDouble() ?? 1.0;
+    final renamed = (multiplier - 1).abs() < 1e-9 || portion.contains('×') ||
+            old <= 0
         ? null
-        : PortionAmount.rescaleName('${item['name'] ?? ''}', multiplier);
+        : PortionAmount.rescaleName(
+            '${item['name'] ?? ''}', multiplier / old);
     // "4 linda mccartney sausages" changed to 2 says "2 linda mccartney
     // sausages": the count in the name follows the amount.
-    final old = (item['multiplier'] as num?)?.toDouble() ?? 1.0;
     final recounted = renamed == null && old > 0
         ? PortionAmount.recount('${item['name'] ?? ''}', multiplier / old)
         : null;
@@ -1116,16 +1189,17 @@ class _AddFoodPageState extends State<AddFoodPage> {
       return;
     }
 
-    final chosen = await showModalBottomSheet<List<String>>(
+    final choice = await showModalBottomSheet<SplitChoice>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => _SplitSheet(
+      builder: (_) => SplitSheet(
         friends: friends,
         items: List<Map<String, dynamic>>.from(_calculatedItems),
       ),
     );
-    if (chosen == null || chosen.isEmpty || !mounted) return;
+    if (choice == null || choice.friendIds.isEmpty || !mounted) return;
+    final chosen = choice.friendIds;
 
     setState(() => _saving = true);
     try {
@@ -1138,6 +1212,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
         items: _calculatedItems,
         friendIds: chosen,
         meal: meal,
+        mine: choice.mine,
       );
       _recordGuesses(_calculatedItems);
       if (!mounted) return;
@@ -1147,7 +1222,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
               'Added your share and sent ${chosen.length} request${chosen.length == 1 ? '' : 's'}.'),
         ),
       );
-      Navigator.pop(context, true);
+      _leave(true);
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
@@ -1337,7 +1412,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
           setState(() => _added = true);
           await Future<void>.delayed(const Duration(milliseconds: 380));
         }
-        if (mounted) Navigator.pop(context, logged);
+        if (mounted) _leave(logged);
       }
     } catch (e) {
       _slowSaveTimer?.cancel();
@@ -1640,7 +1715,13 @@ class _AddFoodPageState extends State<AddFoodPage> {
   @override
   Widget build(BuildContext context) {
     final meal = Provider.of<CategoryService>(context).selectedCategory;
-    return Scaffold(
+    // Back comes through here, so foods got ready aren't lost by accident.
+    return PopScope(
+      canPop: _leaving || !_hasUnsaved,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: Scaffold(
       appBar: AppBar(
         // Tap to switch meal without leaving ("oh, this was dinner").
         title: PopupMenuButton<String>(
@@ -2021,6 +2102,7 @@ class _AddFoodPageState extends State<AddFoodPage> {
             ),
         ],
       ),
+    ),
     );
   }
 }
@@ -2093,90 +2175,6 @@ class _PendingPillState extends State<_PendingPill>
     );
   }
 }
-
-/// Pick who you shared with; shows your share as you pick.
-class _SplitSheet extends StatefulWidget {
-  final List<Friend> friends;
-  final List<Map<String, dynamic>> items;
-
-  const _SplitSheet({required this.friends, required this.items});
-
-  @override
-  State<_SplitSheet> createState() => _SplitSheetState();
-}
-
-class _SplitSheetState extends State<_SplitSheet> {
-  final Set<String> _chosen = {};
-
-  @override
-  Widget build(BuildContext context) {
-    final people = _chosen.length + 1;
-    // Exactly what each person will log (rounded per item).
-    final share =
-        SplitService.shareCalories(widget.items, people < 2 ? 2 : people)
-            .round();
-    return SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.75,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Split the bill',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text(
-                _chosen.isEmpty
-                    ? 'Who did you share it with?'
-                    : 'Split $people ways: everyone gets $calSym$share',
-                style: TextStyle(color: AppColors.muted),
-              ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final f in widget.friends)
-                      CheckboxListTile(
-                        value: _chosen.contains(f.id),
-                        title: Text(f.name),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        onChanged: (v) => setState(() {
-                          if (v == true) {
-                            _chosen.add(f.id);
-                          } else {
-                            _chosen.remove(f.id);
-                          }
-                        }),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _chosen.isEmpty
-                      ? null
-                      : () => Navigator.pop(context, _chosen.toList()),
-                  icon: const Icon(Icons.call_split),
-                  label: Text(_chosen.isEmpty
-                      ? 'Pick friends'
-                      : 'Add my $calSym$share & send requests'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 
 /// Numbers typed with a decimal point or a decimal comma ("1,5").
 double? _parseNumber(String text) =>

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:namer_app/pages/budgets_page.dart';
 import 'package:namer_app/pages/games_hub_page.dart';
 import 'package:namer_app/services/app_update.dart';
+import 'package:namer_app/services/play_update.dart';
 import 'package:namer_app/services/save_guard.dart';
 import 'package:namer_app/services/balance_service.dart';
 import 'package:namer_app/services/budget_service.dart';
@@ -246,6 +247,8 @@ class _HomeInboxState extends State<HomeInbox> {
   void initState() {
     super.initState();
     AppUpdate.available.addListener(_onUpdateReady);
+    PlayUpdate.offer.addListener(_onUpdateReady);
+    PlayUpdate.downloaded.addListener(_onUpdateReady);
     _checkReminderOffer();
     _loadTrialSeen();
     _loadBudgetSeen();
@@ -289,6 +292,8 @@ class _HomeInboxState extends State<HomeInbox> {
   @override
   void dispose() {
     AppUpdate.available.removeListener(_onUpdateReady);
+    PlayUpdate.offer.removeListener(_onUpdateReady);
+    PlayUpdate.downloaded.removeListener(_onUpdateReady);
     Premium.notifier.removeListener(_onPremiumChanged);
     _splitSub?.cancel();
     _debitSub?.cancel();
@@ -337,6 +342,108 @@ class _HomeInboxState extends State<HomeInbox> {
     AppUpdate.reload();
   }
 
+  /// Each split from one person, to accept or decline one at a time.
+  Future<void> _reviewSplits(List<BillSplit> group) async {
+    final uid = widget.userId;
+    final answered = <String, String>{}; // split id -> 'accepted' | 'declined'
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheet) {
+          Future<void> answer(BillSplit s, bool accept) async {
+            if (answered.containsKey(s.id)) return;
+            setSheet(() => answered[s.id] = 'busy');
+            try {
+              final ok = accept
+                  ? await SplitService.accept(uid, s)
+                  : await SplitService.decline(uid, s);
+              setSheet(() => answered[s.id] = !ok
+                  ? 'done elsewhere'
+                  : accept
+                      ? 'accepted'
+                      : 'declined');
+            } catch (_) {
+              setSheet(() => answered.remove(s.id));
+              if (sheetContext.mounted) {
+                ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    const SnackBar(content: Text('Something went wrong. Try again.')));
+              }
+            }
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('${group.first.fromName} split these with you',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink)),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final s in group)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(s.title,
+                                maxLines: 2, overflow: TextOverflow.ellipsis),
+                            subtitle: Text(
+                                '$calSym${s.calories.round()} · ${s.meal}'),
+                            trailing: switch (answered[s.id]) {
+                              null => Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () => answer(s, false),
+                                      child: const Text('Decline'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => answer(s, true),
+                                      child: const Text('Accept'),
+                                    ),
+                                  ],
+                                ),
+                              'busy' => const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2)),
+                              'accepted' => Text('Added ✓',
+                                  style: TextStyle(
+                                      color: AppText.emerald600,
+                                      fontWeight: FontWeight.w700)),
+                              'declined' => Text('Declined',
+                                  style: TextStyle(color: AppColors.muted)),
+                              _ => Text('Already answered',
+                                  style: TextStyle(color: AppColors.muted)),
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: () => Navigator.pop(sheetContext),
+                    child: const Text('Done'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   /// Inbox items. On [narrow] screens, cards with two buttons put the
   /// buttons on their own row under the text.
   List<_InboxCard> _items({bool narrow = false}) {
@@ -359,6 +466,33 @@ class _HomeInboxState extends State<HomeInbox> {
             'have logged is lost.',
         actions: [
           _InboxAction('Update now', _updateNow, primary: true),
+        ],
+        stacked: narrow,
+      ));
+    }
+
+    // Android: a Play Store update that's been out a week and still isn't
+    // installed. Downloads while they carry on; one tap restarts into it.
+    if (PlayUpdate.offer.value) {
+      final ready = PlayUpdate.downloaded.value;
+      items.add(_InboxCard(
+        icon: Icons.system_update_alt_rounded,
+        color: AppColors.primary,
+        title: ready ? 'Update downloaded ✨' : 'New version ready ✨',
+        subtitle: ready
+            ? 'Restart to finish. Takes a few seconds, and nothing you have '
+                'logged is lost.'
+            : 'It downloads in the background while you carry on.',
+        actions: [
+          if (!ready) _InboxAction('Later', PlayUpdate.later),
+          _InboxAction(
+            ready ? 'Restart' : 'Update',
+            () => _run('play_update', () async {
+              await PlayUpdate.update();
+              return null;
+            }),
+            primary: true,
+          ),
         ],
         stacked: narrow,
       ));
@@ -408,7 +542,40 @@ class _HomeInboxState extends State<HomeInbox> {
       ));
     }
 
+    // Several splits from the same person are one card: Accept all in one
+    // tap, or Review to go through them. A single split is its own card.
+    final bySender = <String, List<BillSplit>>{};
     for (final split in _splits) {
+      bySender.putIfAbsent(split.fromUserId, () => []).add(split);
+    }
+    for (final group in bySender.values.where((g) => g.length > 1)) {
+      final key = 'splits:${group.first.fromUserId}';
+      final total = group.fold<double>(0, (t, s) => t + s.calories);
+      final meals = {for (final s in group) s.meal}.join(', ');
+      items.add(_InboxCard(
+        icon: Icons.receipt_long,
+        color: AppColors.violet600,
+        title: '${group.first.fromName} split ${group.length} foods with you',
+        subtitle: 'Your share: $calSym${total.round()} · $meals',
+        busy: _busy.contains(key),
+        actions: [
+          _InboxAction('Review', () => _reviewSplits(group)),
+          _InboxAction(
+              'Accept all',
+              () => _run(key, () async {
+                    var added = 0;
+                    for (final s in group) {
+                      if (await SplitService.accept(uid, s)) added++;
+                    }
+                    return added == 0 ? false : null;
+                  }, done: 'Added your ${group.length} shares'),
+              primary: true),
+        ],
+        stacked: narrow,
+      ));
+    }
+
+    for (final split in _splits.where((s) => bySender[s.fromUserId]!.length == 1)) {
       final key = 'split:${split.id}';
       items.add(_InboxCard(
         icon: Icons.receipt_long,

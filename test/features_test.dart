@@ -122,6 +122,74 @@ void main() {
       expect((await w.card(uid: friend))['calories'], near(800));
     });
 
+    test('a food already logged can be split afterwards', () async {
+      await FoodLog.logFoods(
+          items: [pizza.first], meal: 'Dinner', userId: me);
+      expect((await w.card())['calories'], near(2000 - 1800));
+      final row = (await w.foodRows(meal: 'Dinner')).single;
+
+      await SplitService.splitLogged(
+        uid: me,
+        fromName: 'taran',
+        entryId: row['id'] as String,
+        entry: Map<String, dynamic>.from(row)..remove('id'),
+        friendIds: [friend],
+      );
+
+      // Still one entry, now half: the card gets 900 back.
+      final mine = (await w.foodRows(meal: 'Dinner')).single;
+      expect(mine['food_calories'], near(900));
+      expect((await w.card())['calories'], near(2000 - 900));
+
+      final pending = (await SplitService.pendingFor(friend).first).single;
+      expect(pending.calories, near(900));
+      expect(pending.meal, 'Dinner');
+      expect(pending.items.single['name'], 'Vegan pizza');
+
+      await SplitService.accept(friend, pending);
+      expect((await w.card(uid: friend))['calories'], near(2000 - 900));
+    });
+
+    test('an uneven split: you had 2/3, they get the rest', () async {
+      await SplitService.create(
+          uid: me,
+          fromName: 'taran',
+          items: [pizza.first],
+          friendIds: [friend],
+          meal: 'Dinner',
+          mine: 2 / 3);
+      expect((await w.card())['calories'], near(2000 - 1200));
+      final split = (await SplitService.pendingFor(friend).first).single;
+      expect(split.calories, near(600));
+      expect(split.items.single['portion'], '1/3 share of 1 large');
+    });
+
+    test('a logged food split 3/4 to you, 1/4 to a friend', () async {
+      await FoodLog.logFoods(items: [pizza.first], meal: 'Dinner', userId: me);
+      final row = (await w.foodRows(meal: 'Dinner')).single;
+      await SplitService.splitLogged(
+        uid: me,
+        fromName: 'taran',
+        entryId: row['id'] as String,
+        entry: Map<String, dynamic>.from(row)..remove('id'),
+        friendIds: [friend],
+        mine: 3 / 4,
+      );
+      expect((await w.card())['calories'], near(2000 - 1350));
+      final split = (await SplitService.pendingFor(friend).first).single;
+      expect(split.calories, near(450));
+    });
+
+    test('shares read as fractions', () {
+      expect(SplitService.fractionLabel(1 / 2), '1/2');
+      expect(SplitService.fractionLabel(2 / 3), '2/3');
+      expect(SplitService.fractionLabel(1 / 8), '1/8');
+      expect(SplitService.fractionLabel(1 / 9), '1/9');
+      expect(SplitService.fractionLabel(0.47), '47%');
+      // 3/4 for you, two friends: 1/8 each.
+      expect(SplitService.friendShare(3 / 4, 2), near(1 / 8));
+    });
+
     test('the preview matches what each person logs', () {
       expect(SplitService.shareCalories(pizza, 2), near(1200));
       expect(SplitService.shareCalories(pizza, 3), near(800));
@@ -400,6 +468,31 @@ void main() {
       final card = await w.card();
       expect(BalanceService.potFrom(card), near(150));
       expect(card['calories'], near(2000)); // today starts full
+    });
+
+    test("the day's deposit is kept on that day, to show later", () async {
+      await potsOn(leftYesterday: 63);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1937);
+      await BalanceService.ensureDailyReset(me);
+      final log = await w.db.collection('daily_logs').doc('${me}_2026-10-08').get();
+      expect(BalanceService.potSavedFrom(log.data()), near(63));
+      // Nothing logged for today yet, so today has none.
+      final today = await w.db.collection('daily_logs').doc('${me}_2026-10-09').get();
+      expect(BalanceService.potSavedFrom(today.data()), near(0));
+    });
+
+    test('what closing today would save tonight', () {
+      final fri = DateTime(2026, 10, 9);
+      double tonight({double left = 63, double eaten = 1937, double pot = 0, DateTime? day}) =>
+          BalanceService.potForTonight(
+              day: day ?? fri, left: left, eaten: eaten, goal: 2000, potNow: pot);
+      expect(tonight(), near(63));
+      expect(tonight(left: 400, eaten: 1600), near(150), reason: 'daily cap');
+      expect(tonight(pot: 700), near(50), reason: 'room left this week');
+      expect(tonight(eaten: 300), near(0), reason: 'under half the goal');
+      expect(tonight(left: -20), near(0));
+      expect(tonight(day: DateTime(2026, 10, 11)), near(0),
+          reason: 'Sunday: the pot starts again on Monday');
     });
 
     test('a small leftover saves exactly that', () async {

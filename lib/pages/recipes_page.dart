@@ -13,16 +13,22 @@ import 'package:namer_app/pages/add_recipe_page.dart';
 import 'package:namer_app/ui/log_recipe_sheet.dart';
 import 'package:namer_app/ui/calorie_symbol.dart';
 
-/// A recipe a friend shared with you, ready to show.
+/// A recipe a friend shared with you, ready to show. [recipe] is null when
+/// it can't be shown: [gone] if the friend deleted it, otherwise it
+/// couldn't be read (so it says so, rather than quietly vanishing).
 class _SharedRecipe {
   final String recipeId;
-  final Map<String, dynamic> recipe;
+  final Map<String, dynamic>? recipe;
   final String sharedBy;
+  final Timestamp? sharedAt;
+  final bool gone;
 
   const _SharedRecipe({
     required this.recipeId,
     required this.recipe,
     required this.sharedBy,
+    this.sharedAt,
+    this.gone = false,
   });
 }
 
@@ -34,7 +40,6 @@ class RecipesPage extends StatefulWidget {
 }
 
 class _RecipesPageState extends State<RecipesPage> {
-  int _selectedTabIndex = 0; // 0 = My recipes, 1 = Shared with me
   String _recipeQuery = '';
   String _recipeSort = 'newest'; // newest | name | kcal_low | kcal_high
   final TextEditingController _recipeSearchController =
@@ -124,10 +129,6 @@ class _RecipesPageState extends State<RecipesPage> {
       context,
       MaterialPageRoute(builder: (_) => AddRecipePage(recipeId: recipeId)),
     );
-    // A new recipe lands in My recipes, so show that tab.
-    if (recipeId == null && mounted && _selectedTabIndex != 0) {
-      setState(() => _selectedTabIndex = 0);
-    }
   }
 
   Future<void> _deleteRecipe(String recipeId) async {
@@ -381,7 +382,7 @@ class _RecipesPageState extends State<RecipesPage> {
         ingredients: ingredients,
       );
 
-      _showMessage('Saved to My recipes');
+      _showMessage('Saved a copy to your recipes');
     } catch (_) {
       _showMessage("Couldn't save that recipe. Please try again.");
     } finally {
@@ -396,6 +397,7 @@ class _RecipesPageState extends State<RecipesPage> {
     required IconData icon,
     required String subtitle,
     int? ingredientCount,
+    String? tag,
     Widget? menu,
     VoidCallback? onTap,
     required Widget actions,
@@ -453,6 +455,28 @@ class _RecipesPageState extends State<RecipesPage> {
                               style: TextStyle(
                                 color: AppColors.muted,
                                 fontSize: 13,
+                              ),
+                            ),
+                          if (tag != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.indigo50,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  tag,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: AppText.primary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                               ),
                             ),
                         ],
@@ -570,131 +594,6 @@ class _RecipesPageState extends State<RecipesPage> {
 
   // --- My recipes -----------------------------------------------------------
 
-  Widget _buildMyRecipesTab() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _myRecipesStream,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return _buildMessage(
-            icon: Icons.cloud_off,
-            iconColor: AppColors.gray400,
-            title: "Couldn't load your recipes",
-            body: 'Check your connection and try again.',
-          );
-        }
-        if (!snapshot.hasData) {
-          return const SkeletonList();
-        }
-        if (snapshot.data!.docs.isEmpty) {
-          return _buildMessage(
-            icon: Icons.restaurant,
-            title: 'No recipes yet',
-            body: 'Tap New recipe to save one you make often.',
-          );
-        }
-
-        final recipes = [
-          for (final doc in snapshot.data!.docs) MapEntry(doc.id, doc.data()),
-        ];
-        recipes.sort((a, b) => _newestFirst(_timeOf(a.value), _timeOf(b.value)));
-
-        final q = _recipeQuery.trim().toLowerCase();
-        final visible = recipes
-            .where(
-                (r) => q.isEmpty || _nameOf(r.value).toLowerCase().contains(q))
-            .toList();
-        switch (_recipeSort) {
-          case 'name':
-            visible.sort((a, b) => _nameOf(a.value)
-                .toLowerCase()
-                .compareTo(_nameOf(b.value).toLowerCase()));
-          case 'kcal_low':
-            visible.sort((a, b) => _numOf(a.value, 'total_calories')
-                .compareTo(_numOf(b.value, 'total_calories')));
-          case 'kcal_high':
-            visible.sort((a, b) => _numOf(b.value, 'total_calories')
-                .compareTo(_numOf(a.value, 'total_calories')));
-        }
-
-        return Column(
-          children: [
-            _buildRecipeSearchBar(),
-            Expanded(
-              child: visible.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'No recipes match "${_recipeQuery.trim()}"',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.gray600),
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                      itemCount: visible.length,
-                      itemBuilder: (context, index) {
-                        final recipeId = visible[index].key;
-                        final data = visible[index].value;
-                        final ids = data['food_item_ids'];
-                        return _buildRecipeCard(
-                          data: data,
-                          icon: Icons.restaurant,
-                          subtitle: _servingLabel(data),
-                          ingredientCount: ids is List ? ids.length : 0,
-                          onTap: () => _openEditor(recipeId: recipeId),
-                          menu: PopupMenuButton<String>(
-                            tooltip: 'More options',
-                            icon: Icon(Icons.more_vert,
-                                color: AppColors.muted),
-                            onSelected: (value) {
-                              switch (value) {
-                                case 'edit':
-                                  _openEditor(recipeId: recipeId);
-                                case 'share':
-                                  _shareRecipe(recipeId, _nameOf(data));
-                                case 'delete':
-                                  _deleteRecipe(recipeId);
-                              }
-                            },
-                            itemBuilder: (_) => [
-                              PopupMenuItem(
-                                value: 'edit',
-                                child: Text('Edit'),
-                              ),
-                              PopupMenuItem(
-                                value: 'share',
-                                child: Text('Share with friends'),
-                              ),
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: Text(
-                                  'Delete',
-                                  style: TextStyle(color: AppText.red600),
-                                ),
-                              ),
-                            ],
-                          ),
-                          actions: FilledButton.icon(
-                            onPressed: () => showLogRecipeSheet(
-                              context,
-                              recipeId: recipeId,
-                              recipe: data,
-                            ),
-                            icon: const Icon(Icons.credit_card, size: 18),
-                            label: const Text('Add to today'),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Widget _buildRecipeSearchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -760,108 +659,228 @@ class _RecipesPageState extends State<RecipesPage> {
 
   // --- Shared with me -------------------------------------------------------
 
-  Widget _buildSharedRecipesTab() {
+  /// Your recipes and the ones friends shared with you, in one list:
+  /// shared ones carry a "Shared by …" tag rather than hiding behind a tab.
+  Widget _buildRecipes() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _sharedStream,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return _buildMessage(
-            icon: Icons.cloud_off,
-            iconColor: AppColors.gray400,
-            title: "Couldn't load your shared recipes",
-            body: 'Check your connection and try again.',
-          );
-        }
-        if (!snapshot.hasData) {
-          return const SkeletonList();
-        }
-        final emptyState = _buildMessage(
-          icon: Icons.card_giftcard,
-          title: 'No shared recipes yet',
-          body: 'Recipes friends share with you will show up here.',
-        );
-        if (snapshot.data!.docs.isEmpty) return emptyState;
-
-        final sharedDocs = snapshot.data!.docs;
-        final key = sharedDocs.map((d) => d.id).join(',');
-        if (_sharedFuture == null || key != _sharedKey) {
-          _sharedKey = key;
-          _sharedFuture = _loadSharedRecipeDetails(sharedDocs);
-        }
-
-        return FutureBuilder<List<_SharedRecipe>>(
-          future: _sharedFuture,
-          builder: (context, detailSnapshot) {
-            if (detailSnapshot.hasError) {
-              return _buildMessage(
-                icon: Icons.cloud_off,
-                iconColor: AppColors.gray400,
-                title: "Couldn't load your shared recipes",
-                body: 'Check your connection and try again.',
-              );
+      stream: _myRecipesStream,
+      builder: (context, mine) {
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _sharedStream,
+          builder: (context, shared) {
+            final sharedDocs = shared.data?.docs ?? const [];
+            final key = sharedDocs.map((d) => d.id).join(',');
+            if (shared.hasData && (_sharedFuture == null || key != _sharedKey)) {
+              _sharedKey = key;
+              _sharedFuture = _loadSharedRecipeDetails(sharedDocs);
             }
-            if (!detailSnapshot.hasData) {
-              return const SkeletonList();
-            }
-            final recipes = detailSnapshot.data!;
-            if (recipes.isEmpty) return emptyState;
-
-            return ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-              itemCount: recipes.length,
-              itemBuilder: (context, index) {
-                final item = recipes[index];
-                final copying = _copying.contains(item.recipeId);
-                return _buildRecipeCard(
-                  data: item.recipe,
-                  icon: Icons.card_giftcard,
-                  subtitle: 'Shared by ${item.sharedBy}',
-                  actions: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final save = OutlinedButton.icon(
-                        onPressed: copying
-                            ? null
-                            : () => _copyRecipeFromFriend(item.recipeId),
-                        icon: copying
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.bookmark_add_outlined, size: 18),
-                        label: const Text('Save to mine'),
-                      );
-                      final log = FilledButton.icon(
-                        onPressed: () => showLogRecipeSheet(
-                          context,
-                          recipeId: item.recipeId,
-                          recipe: item.recipe,
-                        ),
-                        icon: const Icon(Icons.credit_card, size: 18),
-                        label: const Text('Add to today'),
-                      );
-                      if (constraints.maxWidth < 300) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [save, const SizedBox(height: 8), log],
-                        );
-                      }
-                      return Row(
-                        children: [
-                          Expanded(child: save),
-                          const SizedBox(width: 8),
-                          Expanded(child: log),
-                        ],
-                      );
-                    },
-                  ),
-                );
-              },
+            return FutureBuilder<List<_SharedRecipe>>(
+              future: _sharedFuture,
+              builder: (context, details) =>
+                  _buildRecipeList(mine, shared, details),
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildRecipeList(
+    AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> mine,
+    AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> shared,
+    AsyncSnapshot<List<_SharedRecipe>> details,
+  ) {
+    if (mine.hasError) {
+      return _buildMessage(
+        icon: Icons.cloud_off,
+        iconColor: AppColors.gray400,
+        title: "Couldn't load your recipes",
+        body: 'Check your connection and try again.',
+      );
+    }
+    if (!mine.hasData) return const SkeletonList();
+
+    // Shared ones are still loading (or failed): show yours meanwhile.
+    final sharedList = details.data ?? const <_SharedRecipe>[];
+    final rows = <({String id, Map<String, dynamic>? data, _SharedRecipe? shared})>[
+      for (final doc in mine.data!.docs) (id: doc.id, data: doc.data(), shared: null),
+      for (final sr in sharedList) (id: sr.recipeId, data: sr.recipe, shared: sr),
+    ];
+    if (rows.isEmpty) {
+      return _buildMessage(
+        icon: Icons.restaurant,
+        title: 'No recipes yet',
+        body: 'Tap New recipe to save one you make often. Recipes friends '
+            'share with you show up here too.',
+      );
+    }
+
+    Timestamp? timeOf(({String id, Map<String, dynamic>? data, _SharedRecipe? shared}) r) =>
+        r.shared != null
+            ? (r.shared!.sharedAt ?? (r.data == null ? null : _timeOf(r.data!)))
+            : _timeOf(r.data!);
+    String nameOf(({String id, Map<String, dynamic>? data, _SharedRecipe? shared}) r) =>
+        r.data == null ? '' : _nameOf(r.data!);
+    double kcalOf(({String id, Map<String, dynamic>? data, _SharedRecipe? shared}) r) =>
+        r.data == null ? 0 : _numOf(r.data!, 'total_calories');
+
+    rows.sort((a, b) => _newestFirst(timeOf(a), timeOf(b)));
+    final q = _recipeQuery.trim().toLowerCase();
+    final visible = rows
+        .where((r) =>
+            q.isEmpty ||
+            nameOf(r).toLowerCase().contains(q) ||
+            (r.shared?.sharedBy.toLowerCase().contains(q) ?? false))
+        .toList();
+    switch (_recipeSort) {
+      case 'name':
+        visible.sort((a, b) =>
+            nameOf(a).toLowerCase().compareTo(nameOf(b).toLowerCase()));
+      case 'kcal_low':
+        visible.sort((a, b) => kcalOf(a).compareTo(kcalOf(b)));
+      case 'kcal_high':
+        visible.sort((a, b) => kcalOf(b).compareTo(kcalOf(a)));
+    }
+
+    return Column(
+      children: [
+        _buildRecipeSearchBar(),
+        if (shared.hasError || details.hasError)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              "Couldn't load recipes friends shared with you. Check your "
+              'connection and try again.',
+              style: TextStyle(color: AppColors.gray600, fontSize: 13),
+            ),
+          ),
+        Expanded(
+          child: visible.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'No recipes match "${_recipeQuery.trim()}"',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.gray600),
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                  itemCount: visible.length,
+                  itemBuilder: (context, index) {
+                    final r = visible[index];
+                    final sr = r.shared;
+                    if (sr == null) return _ownRecipeCard(r.id, r.data!);
+                    if (sr.recipe == null) return _unavailableCard(sr);
+                    return _sharedRecipeCard(sr);
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _ownRecipeCard(String recipeId, Map<String, dynamic> data) {
+    final ids = data['food_item_ids'];
+    return _buildRecipeCard(
+      data: data,
+      icon: Icons.restaurant,
+      subtitle: _servingLabel(data),
+      ingredientCount: ids is List ? ids.length : 0,
+      onTap: () => _openEditor(recipeId: recipeId),
+      menu: PopupMenuButton<String>(
+        tooltip: 'More options',
+        icon: Icon(Icons.more_vert, color: AppColors.muted),
+        onSelected: (value) {
+          switch (value) {
+            case 'edit':
+              _openEditor(recipeId: recipeId);
+            case 'share':
+              _shareRecipe(recipeId, _nameOf(data));
+            case 'delete':
+              _deleteRecipe(recipeId);
+          }
+        },
+        itemBuilder: (_) => [
+          const PopupMenuItem(value: 'edit', child: Text('Edit')),
+          const PopupMenuItem(
+              value: 'share', child: Text('Share with friends')),
+          PopupMenuItem(
+            value: 'delete',
+            child: Text('Delete', style: TextStyle(color: AppText.red600)),
+          ),
+        ],
+      ),
+      actions: FilledButton.icon(
+        onPressed: () => showLogRecipeSheet(
+          context,
+          recipeId: recipeId,
+          recipe: data,
+        ),
+        icon: const Icon(Icons.credit_card, size: 18),
+        label: const Text('Add to today'),
+      ),
+    );
+  }
+
+  /// A friend's recipe: log it, or save your own copy to change.
+  Widget _sharedRecipeCard(_SharedRecipe item) {
+    final copying = _copying.contains(item.recipeId);
+    return _buildRecipeCard(
+      data: item.recipe!,
+      icon: Icons.card_giftcard,
+      subtitle: _servingLabel(item.recipe!),
+      tag: 'Shared by ${item.sharedBy}',
+      menu: PopupMenuButton<String>(
+        tooltip: 'More options',
+        icon: Icon(Icons.more_vert, color: AppColors.muted),
+        enabled: !copying,
+        onSelected: (value) {
+          if (value == 'copy') _copyRecipeFromFriend(item.recipeId);
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem(
+            value: 'copy',
+            child: Text('Save a copy to edit'),
+          ),
+        ],
+      ),
+      actions: FilledButton.icon(
+        onPressed: () => showLogRecipeSheet(
+          context,
+          recipeId: item.recipeId,
+          recipe: item.recipe!,
+        ),
+        icon: const Icon(Icons.credit_card, size: 18),
+        label: const Text('Add to today'),
+      ),
+    );
+  }
+
+  /// A share whose recipe can't be shown: says why instead of vanishing.
+  Widget _unavailableCard(_SharedRecipe item) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecor.card,
+      child: Row(
+        children: [
+          Icon(Icons.card_giftcard, color: AppColors.gray400),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              item.gone
+                  ? '${item.sharedBy} shared a recipe that has since been '
+                      'deleted.'
+                  : "Couldn't open a recipe ${item.sharedBy} shared with "
+                      'you. Try again later.',
+              style: TextStyle(color: AppColors.gray700),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -883,78 +902,47 @@ class _RecipesPageState extends State<RecipesPage> {
 
     // The same recipe shared more than once shows once (the newest).
     final seen = <String>{};
+    final names = <String, String>{};
     for (final doc in docs) {
       final data = doc.data();
       final recipeId = data['recipe_id'];
       final sharedByUserId = data['shared_by_user_id'];
+      final at = data['shared_at'];
       if (recipeId is! String || recipeId.isEmpty) continue;
       if (!seen.add(recipeId)) continue;
 
+      var sharedBy = 'a friend';
+      if (sharedByUserId is String && sharedByUserId.isNotEmpty) {
+        try {
+          sharedBy = names[sharedByUserId] ??= FriendsService.nameFromUser(
+              (await firestore.collection('users').doc(sharedByUserId).get())
+                  .data());
+        } catch (_) {}
+      }
       try {
         final recipeDoc =
             await firestore.collection('recipes').doc(recipeId).get();
-        final recipe = recipeDoc.data();
-        if (!recipeDoc.exists || recipe == null) continue;
-
-        Map<String, dynamic>? sharer;
-        if (sharedByUserId is String && sharedByUserId.isNotEmpty) {
-          final userDoc =
-              await firestore.collection('users').doc(sharedByUserId).get();
-          sharer = userDoc.data();
-        }
-
         results.add(_SharedRecipe(
           recipeId: recipeId,
-          recipe: recipe,
-          // Their chosen display name, else the start of their email.
-          sharedBy: FriendsService.nameFromUser(sharer),
+          recipe: recipeDoc.exists ? recipeDoc.data() : null,
+          sharedBy: sharedBy,
+          sharedAt: at is Timestamp ? at : null,
+          gone: !recipeDoc.exists,
         ));
       } catch (_) {
-        // Skip a share whose recipe or sharer can't be read.
-        continue;
+        // Couldn't read it (permissions or connection): show that.
+        results.add(_SharedRecipe(
+          recipeId: recipeId,
+          recipe: null,
+          sharedBy: sharedBy,
+          sharedAt: at is Timestamp ? at : null,
+        ));
       }
     }
-
     return results;
   }
 
   // --- Page -----------------------------------------------------------------
-
-  Widget _buildTab(String label, int index) {
-    final selected = _selectedTabIndex == index;
-    return Semantics(
-      selected: selected,
-      button: true,
-      child: InkWell(
-        onTap: () => setState(() => _selectedTabIndex = index),
-        child: Container(
-          height: 48,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: selected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.3),
-                width: 3,
-              ),
-            ),
-          ),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -963,15 +951,6 @@ class _RecipesPageState extends State<RecipesPage> {
       appBar: AppBar(
         title: const Text('Recipes'),
         actions: const [ScreenHelpButton(tutorialIds: ['recipe', 'recipe_import'])],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Row(
-            children: [
-              Expanded(child: _buildTab('My recipes', 0)),
-              Expanded(child: _buildTab('Shared with me', 1)),
-            ],
-          ),
-        ),
       ),
       body: SafeArea(
         top: false,
@@ -987,11 +966,7 @@ class _RecipesPageState extends State<RecipesPage> {
                     showScreenHelp(context, tutorialIds: const ['recipe', 'recipe_import']),
               ),
             ),
-            Expanded(
-              child: _selectedTabIndex == 0
-                  ? _buildMyRecipesTab()
-                  : _buildSharedRecipesTab(),
-            ),
+            Expanded(child: _buildRecipes()),
           ],
         ),
       ),

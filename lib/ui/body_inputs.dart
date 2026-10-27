@@ -302,11 +302,21 @@ class _WeightInputState extends State<WeightInput> {
     widget.onChanged(stored);
   }
 
+  /// Pounds past 13 beside stones: almost always decimal stones from a
+  /// converter ("9.44 stone" typed as 9 st 44 lb), not 44 pounds on top.
+  /// Not counted as a weight until it's fixed, so it can't quietly become
+  /// 12 st 2 lb.
+  bool get _poundsTooBig {
+    final st = Units.parseNumber(_main.text);
+    final lb = Units.parseNumber(_lb.text);
+    return st != null && lb != null && lb >= Units.lbPerStone;
+  }
+
   void _onStones() {
     final st = Units.parseNumber(_main.text);
     final lb = Units.parseNumber(_lb.text);
     setState(() {});
-    if (st == null && lb == null) {
+    if ((st == null && lb == null) || _poundsTooBig) {
       _report(null);
       return;
     }
@@ -365,6 +375,8 @@ class _WeightInputState extends State<WeightInput> {
                     focusNode: _mainFocus,
                     hintText: '11',
                     unit: 'st',
+                    // "12.5 st" from an online converter works too.
+                    decimal: true,
                     autofocus: widget.autofocus,
                     textInputAction: TextInputAction.next,
                     onChanged: (_) => _onStones(),
@@ -384,7 +396,24 @@ class _WeightInputState extends State<WeightInput> {
                 ),
               ],
             ),
-            if (showError) _PairError(Units.weightRangeMessage(units)),
+            if (_poundsTooBig)
+              _PairError(RegExp(r'^\d+$').hasMatch(_main.text.trim()) &&
+                      RegExp(r'^\d+$').hasMatch(_lb.text.trim())
+                  ? 'Pounds go from 0 to 13. For '
+                      '${_main.text.trim()}.${_lb.text.trim()} stone, type it '
+                      'all in the stones box.'
+                  : 'Pounds go from 0 to 13.')
+            else if (showError)
+              _PairError(Units.weightRangeMessage(units))
+            // What it comes to, so a typo is easy to spot.
+            else if (v != null && ProfileLimits.weightOk(v))
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                child: Text(
+                  '= ${Units.formatNumber(v)} kg',
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
+              ),
           ],
         );
     }

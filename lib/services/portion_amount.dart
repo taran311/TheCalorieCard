@@ -274,6 +274,18 @@ class PortionAmount {
       // "1 yubi protein bar" over "1 bar (35g)": the name says it.
       final unit = _oneOf.firstMatch(p)?.group(1)?.trim();
       if (unit != null && _names(n, unit)) p = '';
+      // "20g sriracha mayo" over "15g": an older entry whose amount was
+      // changed without its name. The amount underneath is what was
+      // logged, so the name says that.
+      final plain = sizeOf(p);
+      final inName = amountsIn(n) == 1 ? sizeOf(n) : null;
+      if (_plainWeight.hasMatch(p) &&
+          plain != null &&
+          inName != null &&
+          plain.volume == inName.volume &&
+          plain != inName) {
+        n = rescaleName(n, plain.amount / inName.amount) ?? n;
+      }
     }
 
     // "200ml Alpro soya milk" over "200 ml" says it twice.
@@ -282,6 +294,9 @@ class PortionAmount {
     return (name: n, portion: p);
   }
 
+  static final _plainWeight = RegExp(
+      r'^\s*\d+(?:[.,]\d+)?\s*(?:g|grams?|ml|millilitres?)\s*$',
+      caseSensitive: false);
   static final _multiple =
       RegExp(r'^\s*(\d+(?:\.\d+)?)\s*×\s*(.*?)\s*$');
   static final _oneOf = RegExp(r'^\s*1\s+([^()]+?)\s*(\(.*\))?\s*$');

@@ -23,6 +23,9 @@ enum EntrySheetAction {
 
   /// "Make it a direct debit" was tapped (the caller runs that flow).
   directDebit,
+
+  /// "Split with friends" was tapped (the caller runs that flow).
+  split,
 }
 
 class EntrySheetResult {
@@ -767,6 +770,19 @@ class _EntrySheetState extends State<_EntrySheet> {
           icon: Icons.replay_rounded,
           label: 'Log again to $logMeal',
           onTap: _busy ? null : _logAgain,
+        ),
+      // Shared it? Your entry comes down to your share and each friend
+      // gets a request for theirs. Only on a day that can still change.
+      if (canEdit)
+        _actionTile(
+          icon: Icons.call_split,
+          label: 'Shared it? Split with friends',
+          onTap: _busy
+              ? null
+              : () => Navigator.pop(
+                    context,
+                    const EntrySheetResult(EntrySheetAction.split),
+                  ),
         ),
       if (widget.canDirectDebit)
         _actionTile(

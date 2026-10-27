@@ -160,4 +160,30 @@ void main() {
     test('dateKey helper agrees with the test clock', () {
     expect(BalanceService.dateKey(w.now), '2026-10-09');
   });
+  group('when rest days come back', () {
+    test('the 1st of next month, counted in days', () {
+      final oct26 = DateTime(2026, 10, 26);
+      expect(RestDays.resetsOn(oct26), DateTime(2026, 11, 1));
+      expect(RestDays.daysUntilReset(oct26, from: oct26), 6);
+      expect(RestDays.resetLabel(oct26, from: oct26),
+          'in 6 days, on 1 November');
+    });
+
+    test('the last day of the month says tomorrow', () {
+      final oct31 = DateTime(2026, 10, 31, 22);
+      expect(RestDays.resetLabel(oct31, from: oct31), 'tomorrow, 1 November');
+    });
+
+    test('December rolls over to January', () {
+      final dec = DateTime(2026, 12, 15);
+      expect(RestDays.resetsOn(dec), DateTime(2027, 1, 1));
+      expect(RestDays.resetLabel(dec, from: dec), 'in 17 days, on 1 January');
+    });
+
+    test('across the clock change it still counts whole days', () {
+      // UK clocks go back on 25 October 2026.
+      final oct24 = DateTime(2026, 10, 24, 23, 30);
+      expect(RestDays.daysUntilReset(oct24, from: oct24), 8);
+    });
+  });
 }

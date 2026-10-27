@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:namer_app/pages/auth_page.dart';
 import 'package:namer_app/pages/email_action_page.dart';
 import 'package:namer_app/services/app_update.dart';
+import 'package:namer_app/services/play_update.dart';
 import 'package:namer_app/services/auth_services.dart';
 import 'package:namer_app/services/category_service.dart';
 import 'package:namer_app/services/session_hint.dart';
@@ -12,6 +13,7 @@ import 'package:namer_app/services/web_platform.dart' as web;
 import 'package:namer_app/ui/adaptive_frame.dart';
 import 'package:namer_app/ui/gift_claim.dart';
 import 'package:namer_app/ui/theme_controller.dart';
+import 'package:namer_app/ui/update_required.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -36,6 +38,8 @@ void main() async {
   runApp(const MyApp());
   // Moves to a newer deploy quietly, when nothing would be lost.
   AppUpdate.start();
+  // Android: offers a Play Store update that's been waiting a while.
+  PlayUpdate.start();
 }
 
 /// Starts Firebase. On Android it has usually started already, from
@@ -79,8 +83,9 @@ class MyApp extends StatelessWidget {
           // Phones: full screen. Signed-out pages on big screens: framed
           // next to a brand panel. Signed in on big screens: the shell's
           // desktop layout takes over.
-          builder: (context, child) =>
-              AdaptiveFrame(child: child ?? const SizedBox.shrink()),
+          // Over everything: "Please update" if this version is too old.
+          builder: (context, child) => UpdateGate(
+              child: AdaptiveFrame(child: child ?? const SizedBox.shrink())),
           // Lets a waiting update load quietly only when nothing is open.
           navigatorObservers: [AppUpdate.rootWatch],
           // A link from one of our emails (verify, reset password…) is

@@ -440,3 +440,12 @@ match /conversations/{cid}/messages/{mid} {
   initial-letter avatar. Friends and chat partners read it from the
   `users` doc they already read for names. If your users rules list the
   fields an owner may write, add `avatar`.
+
+## Savings pot on past days (October 2026)
+
+- **daily_logs/{uid}_{date}.pot_saved** (number): what that day put in
+  the savings pot, written by the owner the next morning when the day
+  rolls over (with `user_id`, `date_key`, `date` and `updated_at`, like the
+  other daily_logs writes). If your daily_logs rule lists the fields an
+  owner may write, add `pot_saved`. Friends read it with the rest of the
+  day, so they see "🐷 ⊂63 to pot" on your past days too.

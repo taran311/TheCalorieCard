@@ -375,13 +375,25 @@ class _GetStartedPageState extends State<GetStartedPage> {
               ),
             ],
           ),
-        _Step.weight => WeightInput(
-            key: ValueKey('w${_units.weightField}'),
-            units: _units,
-            valueKg: _weightKg,
-            autofocus: true,
-            onSubmitted: (_) => _next(),
-            onChanged: (kg) => setState(() => _weightKg = kg),
+        // Units here too, not only on the height step: plenty of people
+        // weigh in kg but measure height in feet, or skipped past it.
+        _Step.weight => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              UnitsPicker(
+                value: _units,
+                onChanged: (u) => setState(() => _units = u),
+              ),
+              const SizedBox(height: 8),
+              WeightInput(
+                key: ValueKey('w${_units.weightField}'),
+                units: _units,
+                valueKg: _weightKg,
+                autofocus: true,
+                onSubmitted: (_) => _next(),
+                onChanged: (kg) => setState(() => _weightKg = kg),
+              ),
+            ],
           ),
         _Step.activity => Column(children: [
             for (var i = 0; i < activityLevels.length; i++)
@@ -403,6 +415,11 @@ class _GetStartedPageState extends State<GetStartedPage> {
         _Step.target => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              UnitsPicker(
+                value: _units,
+                onChanged: (u) => setState(() => _units = u),
+              ),
+              const SizedBox(height: 8),
               WeightInput(
                 key: ValueKey('g${_units.weightField}'),
                 label: 'Goal weight',
