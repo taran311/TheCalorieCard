@@ -133,7 +133,7 @@ class RestDays {
   }
 
   /// Ends [day]'s rest day (today, or yesterday): a normal day again.
-  static Future<void> end(String uid, {DateTime? day}) =>
+  static Future<void> end(String uid, {DateTime? day}) async =>
       _write(uid, _changeable(day), false);
 
   /// Merged into the day's doc, with the same user_id / date_key / date

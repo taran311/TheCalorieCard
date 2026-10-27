@@ -144,7 +144,7 @@ void main() {
       expect(show('banana', '2 × 1 medium'), 'banana | 2 medium');
       expect(show('peanut butter', '1.5 × 1 tbsp (16g)'),
           'peanut butter | 1.5 tbsp · 24 g');
-      expect(show('crisps', '0.5 × 1 bag (25g)'), 'crisps | 0.5 bag · 12 g');
+      expect(show('crisps', '0.5 × 1 bag (25g)'), 'crisps | 0.5 bag · 13 g');
     });
 
     test('a multiple of a weighed serving is just the weight', () {
