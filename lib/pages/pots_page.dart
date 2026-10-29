@@ -22,8 +22,9 @@ class _PotsPageState extends State<PotsPage> {
   final String _uid = FirebaseAuth.instance.currentUser!.uid;
   bool _busy = false;
 
-  /// What today adds to the pot overnight, as things stand.
-  Future<double> _tonight = Future.value(0.0);
+  /// Where today's savings go overnight, as things stand.
+  Future<({double pot, double plan})> _tonight =
+      Future.value((pot: 0.0, plan: 0.0));
   String? _tonightKey;
 
   /// Created once so rebuilds (e.g. the busy spinner) don't re-subscribe.
@@ -135,13 +136,21 @@ class _PotsPageState extends State<PotsPage> {
           final enabled = data['pots_enabled'] == true;
           final pot = BalanceService.potFrom(data);
           // Re-worked out whenever the card changes (food logged, a move).
-          final key = '$enabled ${data['calories']} ${data['pot_spent']}';
+          final key = '$enabled ${data['calories']} ${data['pot_spent']} '
+              '${data['even_out']}';
           if (key != _tonightKey) {
             _tonightKey = key;
             _tonight = enabled
-                ? BalanceService.potComingTonight(_uid).catchError((_) => 0.0)
-                : Future.value(0.0);
+                ? BalanceService.comingTonight(_uid)
+                    .catchError((_) => (pot: 0.0, plan: 0.0))
+                : Future.value((pot: 0.0, plan: 0.0));
           }
+          // A spread plan still to pay off after today.
+          final planRunning = BalanceService.planOwedFrom(
+                  data,
+                  BalanceService.addDays(
+                      BalanceService.startOfDay(BalanceService.now()), 1)) >
+              0;
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
             children: [
@@ -218,18 +227,32 @@ class _PotsPageState extends State<PotsPage> {
                     ),
                     // Savings go in overnight, so straight after closing
                     // the day the pot hasn't changed yet: say what's coming.
-                    FutureBuilder<double>(
+                    FutureBuilder<({double pot, double plan})>(
                       future: _tonight,
                       builder: (context, s) {
-                        final coming = (s.data ?? 0).round();
-                        if (coming <= 0) return const SizedBox.shrink();
+                        final pot = (s.data?.pot ?? 0).round();
+                        final plan = (s.data?.plan ?? 0).round();
+                        if (pot <= 0 && plan <= 0) {
+                          return const SizedBox.shrink();
+                        }
+                        const style = TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w700);
                         return Padding(
                           padding: const EdgeInsets.only(top: 10),
-                          child: Text(
-                            '+$calSym$coming from today goes in overnight',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (plan > 0)
+                                Text(
+                                    '$calSym$plan from today pays off your '
+                                    'spread plan first',
+                                    style: style),
+                              if (pot > 0)
+                                Text(
+                                    '+$calSym$pot ${plan > 0 ? 'then ' : 'from today '}'
+                                    'goes in overnight',
+                                    style: style),
+                            ],
                           ),
                         );
                       },
@@ -252,6 +275,15 @@ class _PotsPageState extends State<PotsPage> {
                       icon: const Icon(Icons.add_card),
                       label: const Text('Move to today\'s card'),
                     ),
+                    if (enabled && planRunning) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'You\'re spreading an overspend, so what you save '
+                        'pays that off first. Anything left over fills your '
+                        'pot.',
+                        style: TextStyle(color: Colors.white, fontSize: 13),
+                      ),
+                    ],
                     if (!enabled) ...[
                       const SizedBox(height: 10),
                       const Text(

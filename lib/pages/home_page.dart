@@ -807,6 +807,11 @@ class _HomePageState extends State<HomePage>
       ? 0
       : BalanceService.potSavedFrom(_selectedDailyLog);
 
+  /// What a past day's savings paid off a spread plan (0 for today).
+  double get _planPaidOnSelectedDay => _isSelectedDateToday
+      ? 0
+      : BalanceService.planPaidFrom(_selectedDailyLog);
+
   String _dateKey(DateTime date) {
     final y = date.year.toString();
     final m = date.month.toString().padLeft(2, '0');
@@ -1206,13 +1211,35 @@ class _HomePageState extends State<HomePage>
       final data = doc?.data();
       if (data == null || !mounted) return;
       final on = data['pots_enabled'] == true;
-      final tonight = BalanceService.potForTonight(
-        day: BalanceService.now(),
+      final now = BalanceService.now();
+      // A spread plan still running gets paid off first.
+      final owed = BalanceService.planOwedFrom(
+          data, BalanceService.addDays(BalanceService.startOfDay(now), 1));
+      final paid = BalanceService.planPaydown(
         left: left,
+        eaten: _dayTotals.calories,
+        goal: _goalsForSelectedDay.calories,
+        owed: owed,
+      ).floor();
+      final tonight = BalanceService.potForTonight(
+        day: now,
+        left: left - paid,
         eaten: _dayTotals.calories,
         goal: _goalsForSelectedDay.calories,
         potNow: on ? BalanceService.potFrom(data) : 0,
       ).round();
+      if (paid > 0) {
+        final plan = paid >= owed - 0.5
+            ? 'clears your spread plan'
+            : 'comes off your spread plan';
+        _snack(tonight > 0 && on
+            ? '$calSym${formatCardKcal(paid)} $plan, and '
+                '🐷 $calSym${formatCardKcal(tonight)} goes in your pot '
+                'overnight.'
+            : '$calSym${formatCardKcal(paid)} of what you saved $plan '
+                'overnight.');
+        if (on || tonight <= 0) return;
+      }
       if (tonight <= 0) return;
       if (on) {
         _snack('🐷 $calSym${formatCardKcal(tonight)} goes into your pot '
@@ -1375,9 +1402,7 @@ class _HomePageState extends State<HomePage>
           return const SizedBox.shrink();
         }
         final more = plan.daysAfter(today);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
-          child: Row(
+        final line = Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.autorenew, size: 15, color: AppColors.muted),
@@ -1399,6 +1424,21 @@ class _HomePageState extends State<HomePage>
                 ),
                 child: const Text('Stop'),
               ),
+            ],
+          );
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
+          child: Column(
+            children: [
+              line,
+              // Saving pays it off before anything goes in the pot.
+              if (more > 0)
+                Text(
+                  'Finish under budget and it comes off this first, before '
+                  'your pot.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
             ],
           ),
         );
@@ -2421,9 +2461,11 @@ class _HomePageState extends State<HomePage>
                         key: ValueKey(
                             '$_creditCardRefreshKey-${_selectedLogDate.toIso8601String()}'),
                         skipFetch: true,
-                        // What was left, less what went into the pot.
+                        // What was left, less what went into the pot
+                        // and towards a spread plan.
                         caloriesOverride: (_selectedDayBalance.calories -
-                                _potSavedOnSelectedDay)
+                                _potSavedOnSelectedDay -
+                                _planPaidOnSelectedDay)
                             .round(),
                         proteinOverride: _selectedDayBalance.protein,
                         carbsOverride: _selectedDayBalance.carbs,
@@ -2591,9 +2633,10 @@ class _HomePageState extends State<HomePage>
     final today = _isSelectedDateToday;
     final spent = _dayTotals.calories.round();
     final saved = _potSavedOnSelectedDay.round();
+    final paid = _planPaidOnSelectedDay.round();
     final int? left = today
         ? _liveBalance
-        : (_selectedDayBalance.calories - saved).round();
+        : (_selectedDayBalance.calories - saved - paid).round();
     final goal = _goalsForSelectedDay.calories;
     final Color leftColor = left == null || left < 0
         ? AppText.red600
@@ -2616,7 +2659,15 @@ class _HomePageState extends State<HomePage>
               style: TextStyle(color: leftColor, fontWeight: FontWeight.w700),
             ),
           ],
-          // "⊂0 left · 🐷 ⊂63 to pot": where the rest went.
+          // "⊂0 left · ⊂60 to your plan · 🐷 ⊂20 to pot": where it went.
+          if (paid > 0) ...[
+            const TextSpan(text: ' · '),
+            TextSpan(
+              text: '$calSym${formatCardKcal(paid)} to your plan',
+              style: TextStyle(
+                  color: AppText.primary, fontWeight: FontWeight.w700),
+            ),
+          ],
           if (saved > 0) ...[
             const TextSpan(text: ' · '),
             TextSpan(

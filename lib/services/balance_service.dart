@@ -378,6 +378,8 @@ class BalanceService {
     final isNewDay = data['balance_date'] != today;
     final potDay = isNewDay ? await _potAfterDay(userId, data) : null;
     final pot = potDay?.fields;
+    // The plan after yesterday's savings paid some of it off.
+    final planData = potDay?.data ?? data;
 
     // Re-check inside a transaction: if another write (another device, or
     // a second tap) already started today's balance, leave it alone rather
@@ -390,7 +392,7 @@ class BalanceService {
       tx.update(doc.reference, {
         ..._balanceFields(goals, eaten,
             potTopUp: isNewDay ? 0 : _potSpentToday(data),
-            evenOut: evenOutToday(data)),
+            evenOut: evenOutToday(planData)),
         if (pot != null) ...pot,
       });
       return true;
@@ -399,20 +401,61 @@ class BalanceService {
     // can show it ("⊂0 left · 🐷 ⊂63 to pot"). A nice extra: never fails
     // the reset.
     final savedOn = potDay?.day;
-    if (reset && savedOn != null && potDay!.saved > 0) {
+    if (reset && savedOn != null && (potDay!.saved > 0 || potDay.paid > 0)) {
       try {
         final day = _parseKey(savedOn);
         await _db.collection('daily_logs').doc('${userId}_$savedOn').set({
           'user_id': userId,
           'date_key': savedOn,
           if (day != null) 'date': Timestamp.fromDate(day),
-          'pot_saved': potDay.saved,
+          if (potDay.saved > 0) 'pot_saved': potDay.saved,
+          if (potDay.paid > 0) 'plan_paid': potDay.paid,
           'updated_at': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (_) {}
     }
     return reset;
   }
+
+  /// Calories a "Spread it over the week" plan (`even_out`) still has to
+  /// take off, from [day] to its last day. 0 with no plan, or once it's
+  /// over.
+  static double planOwedFrom(Map<String, dynamic> data, DateTime day) {
+    final e = data['even_out'];
+    if (e is! Map) return 0;
+    final perDay = (number(e['per_day']) ?? 0).clamp(0, 200).toDouble();
+    final from = _parseKey(e['from']);
+    final until = _parseKey(e['until']);
+    if (perDay <= 0 || from == null || until == null) return 0;
+    final d = startOfDay(day);
+    final start = d.isAfter(from) ? d : from;
+    final days = _daysBetween(start, until) + 1;
+    return days <= 0 ? 0 : perDay * days;
+  }
+
+  /// Whole days from [a] to [b] (clock changes don't make a day go
+  /// missing).
+  static int _daysBetween(DateTime a, DateTime b) =>
+      (b.difference(a).inHours / 24).round();
+
+  /// How much of a day's [left] pays off a spread plan that still has
+  /// [owed] to take off: savings clear what you owe before anything goes
+  /// in the pot. Same rule as the pot: only a day you really logged (at
+  /// least half the [goal] [eaten]).
+  static double planPaydown({
+    required double left,
+    required double eaten,
+    required double goal,
+    required double owed,
+  }) {
+    if (left <= 0 || owed <= 0 || goal <= 0 || eaten < goal * 0.5) return 0;
+    return left < owed ? left : owed;
+  }
+
+  /// What a day paid off a spread plan (0 if nothing), from its
+  /// `daily_logs` doc.
+  static double planPaidFrom(Map<String, dynamic>? log) =>
+      number(log?['plan_paid']) ?? 0;
 
   /// What a day put in the pot (0 if nothing), from its `daily_logs` doc.
   static double potSavedFrom(Map<String, dynamic>? log) =>
@@ -467,58 +510,126 @@ class BalanceService {
           ? (number(data['pot_spent']) ?? 0)
           : 0;
 
-  /// What the pot should hold once the stored (earlier) day is closed, or
-  /// null if pots are off. Only days with food logged count, so not
-  /// logging can't fill the pot.
-  static Future<({Map<String, dynamic> fields, String? day, double saved})?>
-      _potAfterDay(String userId, Map<String, dynamic> data) async {
-    if (data['pots_enabled'] != true) return null;
+  /// Closing the stored (earlier) day: what it left over first pays off a
+  /// spread plan that's still running, then up to [potDailyCap] of the
+  /// rest goes in the pot (with pots on). Null if there's no pot and no
+  /// plan. Only days with food logged count, so not logging can't fill the
+  /// pot or wipe out a plan.
+  ///
+  /// [fields] go on the profile; [data] is the profile as it will be, for
+  /// working out today's card.
+  static Future<
+      ({
+        Map<String, dynamic> fields,
+        String? day,
+        double saved,
+        double paid,
+        Map<String, dynamic> data,
+      })?> _potAfterDay(String userId, Map<String, dynamic> data) async {
+    final potsOn = data['pots_enabled'] == true;
+    final today = startOfDay(now());
+    final owed = planOwedFrom(data, today);
+    if (!potsOn && owed <= 0) return null;
     final thisWeek = weekKey(now());
-    var pot = data['pot_week'] == thisWeek ? (number(data['pot']) ?? 0.0) : 0.0;
+    var pot = potsOn && data['pot_week'] == thisWeek
+        ? (number(data['pot']) ?? 0.0)
+        : 0.0;
     var added = 0.0;
+    var paid = 0.0;
 
     final closedDay = _parseKey(data['balance_date']);
-    if (closedDay != null && weekKey(closedDay) == thisWeek) {
+    if (closedDay != null) {
       final logged = await entriesOn(userId, closedDay);
-      // Only a day you actually logged counts: at least half your goal.
-      // Logging one tiny snack (or nothing) can't bank the full amount.
       final goal = calorieGoalFrom(data) ?? 0;
       final eaten = totalOf(logged.map((d) => d.data())).calories;
-      if (logged.isNotEmpty && goal > 0 && eaten >= goal * 0.5) {
+      if (logged.isNotEmpty) {
         final spentFromPot = data['pot_spent_date'] == data['balance_date']
             ? (number(data['pot_spent']) ?? 0)
             : 0.0;
         final leftover = (number(data['calories']) ?? 0) - spentFromPot;
-        final saved = leftover.clamp(0, potDailyCap).toDouble();
-        final before = pot;
-        pot = (pot + saved).clamp(0, potWeeklyCap).toDouble();
-        added = pot - before;
+        paid = planPaydown(left: leftover, eaten: eaten, goal: goal, owed: owed)
+            .floorToDouble();
+        // Only a day you actually logged counts: at least half your goal.
+        // Logging one tiny snack (or nothing) can't bank the full amount.
+        if (potsOn &&
+            weekKey(closedDay) == thisWeek &&
+            goal > 0 &&
+            eaten >= goal * 0.5) {
+          final saved = (leftover - paid).clamp(0, potDailyCap).toDouble();
+          final before = pot;
+          pot = (pot + saved).clamp(0, potWeeklyCap).toDouble();
+          added = pot - before;
+        }
+      }
+    }
+
+    final fields = <String, dynamic>{
+      if (potsOn) 'pot': pot,
+      if (potsOn) 'pot_week': thisWeek,
+    };
+    final after = Map<String, dynamic>.of(data);
+    if (paid > 0) {
+      final rest = owed - paid;
+      final e = data['even_out'] as Map;
+      final until = _parseKey(e['until'])!;
+      final from = _parseKey(e['from'])!;
+      final start = today.isAfter(from) ? today : from;
+      final days = _daysBetween(start, until) + 1;
+      if (rest < 1 || days <= 0) {
+        // Paid off: the plan's done.
+        fields['even_out'] = FieldValue.delete();
+        after.remove('even_out');
+      } else {
+        // What's left, spread over the days that are left.
+        final plan = Map<String, dynamic>.from(e)
+          ..['per_day'] = (rest / days).ceil()
+          ..['from'] = dateKey(start);
+        fields['even_out'] = plan;
+        after['even_out'] = plan;
       }
     }
     return (
-      fields: {'pot': pot, 'pot_week': thisWeek},
+      fields: fields,
       day: closedDay == null ? null : dateKey(closedDay),
       saved: added.roundToDouble(),
+      paid: paid,
+      data: after,
     );
   }
 
-  /// What goes into the pot tonight if today ends as it is now (0 with
-  /// pots off). The same sum the overnight reset does, so the Pots page can
-  /// show it as on its way rather than the pot looking empty.
-  static Future<double> potComingTonight(String userId) async {
+  /// Where today's savings go overnight if today ends as it is now: [plan]
+  /// off a spread plan first, then [pot] (0 with pots off). The same sums
+  /// the overnight reset does, so the Pots page can show them as on their
+  /// way rather than the pot looking empty.
+  static Future<({double pot, double plan})> comingTonight(
+      String userId) async {
     final (doc, eaten) =
         await (userDataDoc(userId), todaysTotals(userId)).wait;
     final data = doc?.data();
-    if (data == null || data['pots_enabled'] != true) return 0;
-    if (data['balance_date'] != dateKey(now())) return 0;
+    const none = (pot: 0.0, plan: 0.0);
+    if (data == null || data['pots_enabled'] != true) return none;
+    if (data['balance_date'] != dateKey(now())) return none;
     final left = (number(data['calories']) ?? 0) - _potSpentToday(data);
-    return potForTonight(
-      day: now(),
+    final goal = calorieGoalFrom(data) ?? 0;
+    final paid = planPaydown(
       left: left,
       eaten: eaten.calories,
-      goal: calorieGoalFrom(data) ?? 0,
+      goal: goal,
+      owed: planOwedFrom(data, addDays(startOfDay(now()), 1)),
+    );
+    final pot = potForTonight(
+      day: now(),
+      left: left - paid,
+      eaten: eaten.calories,
+      goal: goal,
       potNow: potFrom(data),
     ).roundToDouble();
+    return (pot: pot, plan: paid.floorToDouble());
+  }
+
+  /// What today adds to the pot overnight. See [comingTonight].
+  static Future<double> potComingTonight(String userId) async {
+    return (await comingTonight(userId)).pot;
   }
 
   /// This week's pot, from a `user_data` document.

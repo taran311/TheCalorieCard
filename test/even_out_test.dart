@@ -84,4 +84,63 @@ void main() {
     expect(second!.perDay, p.perDay);
     expect(second.until, '2026-10-11');
   });
+
+  group('saving while a plan runs pays it off first', () {
+    // Wednesday: 300 over, spread Thu to Sun at 75 a day. Thursday's card
+    // starts at 1,925; ending it with [leftThursday] left.
+    Future<void> overWednesdayThenSave(double leftThursday,
+        {bool pots = false}) async {
+      w = TestWorld(now: DateTime(2026, 10, 7, 21))..install();
+      await w.addProfile();
+      if (pots) await BalanceService.setPotsEnabled(TestWorld.uid, true);
+      await EvenOut.start(TestWorld.uid, overBy: 300, goal: 2000);
+      w.now = DateTime(2026, 10, 8, 8);
+      await BalanceService.ensureDailyReset(TestWorld.uid);
+      expect((await w.card())['calories'], 1925);
+      await w.addEntry(
+          at: DateTime(2026, 10, 8, 12), calories: 1925 - leftThursday);
+      final doc = await BalanceService.userDataDoc(TestWorld.uid);
+      await doc!.reference.update({'calories': leftThursday});
+      w.now = DateTime(2026, 10, 9, 8);
+      await BalanceService.ensureDailyReset(TestWorld.uid);
+    }
+
+    test('part paid: the rest is spread over the days left', () async {
+      await overWednesdayThenSave(100);
+      // 225 still owed Fri to Sun, 100 paid: 125 over 3 days is 42.
+      final card = await w.card();
+      expect(EvenOutPlan.fromData(card)!.perDay, 42);
+      expect(card['calories'], 2000 - 42);
+      final log = await w.db
+          .collection('daily_logs')
+          .doc('${TestWorld.uid}_2026-10-08')
+          .get();
+      expect(BalanceService.planPaidFrom(log.data()), 100);
+    });
+
+    test('paid off: the plan ends and the rest goes in the pot', () async {
+      await overWednesdayThenSave(300, pots: true);
+      final card = await w.card();
+      expect(EvenOutPlan.fromData(card), isNull);
+      expect(card['calories'], 2000);
+      // 300 saved, 225 cleared the plan, 75 in the pot.
+      expect(BalanceService.potFrom(card), 75);
+    });
+
+    test('the preview matches', () {
+      expect(
+          BalanceService.planPaydown(
+              left: 100, eaten: 1825, goal: 2000, owed: 225),
+          100);
+      expect(
+          BalanceService.planPaydown(
+              left: 300, eaten: 1625, goal: 2000, owed: 225),
+          225);
+      expect(
+          BalanceService.planPaydown(
+              left: 1900, eaten: 100, goal: 2000, owed: 225),
+          0,
+          reason: "a day you didn't really log doesn't count");
+    });
+  });
 }
