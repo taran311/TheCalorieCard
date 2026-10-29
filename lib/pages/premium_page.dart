@@ -481,6 +481,10 @@ class _Header extends StatelessWidget {
       if (e.cancelAtPeriodEnd) {
         body += '. After that you\'ll move to the free plan.';
       }
+    } else if (e.loaded && e.bonusCoversTrial) {
+      title = 'Free Premium until ${date(e.bonusUntil!)}';
+      body = 'Thanks for inviting friends. You have everything in Premium '
+          'until then, and nothing is charged unless you choose a plan.';
     } else if (e.loaded && e.inTrial) {
       final days = e.trialDaysLeft;
       title = 'Your free trial: $days day${days == 1 ? '' : 's'} left';

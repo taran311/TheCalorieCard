@@ -58,4 +58,30 @@ void main() {
     expect(EvenOut.perDayFor(1000, 1300, friday), 100);
     expect(EvenOut.perDayFor(500, 1200, friday), 0);
   });
+
+  test('closing over: the preview matches what spreading does', () async {
+    final now = DateTime(2026, 10, 9, 21);
+    final p = EvenOut.preview(null, overBy: 300, goal: 2000, now: now);
+    expect(p, isNotNull);
+    expect(p!.perDay, 150);
+    expect(p.days, 2);
+    expect(EvenOut.preview(null, overBy: 0, goal: 2000, now: now), isNull);
+  });
+
+  test('going over again joins the plan already running', () async {
+    // Wednesday: 300 over, spread Thu to Sun (75 a day).
+    w.now = DateTime(2026, 10, 7, 21);
+    final first = await EvenOut.start(TestWorld.uid, overBy: 300, goal: 2000);
+    expect(first!.perDay, 75);
+    // Thursday: 100 over again. 3 days of the old plan are left (225),
+    // so 325 over Fri to Sun.
+    w.now = DateTime(2026, 10, 8, 21);
+    final p = EvenOut.preview(first, overBy: 100, goal: 2000, now: w.now)!;
+    expect(p.total, 325);
+    expect(p.days, 3);
+    expect(p.perDay, 109);
+    final second = await EvenOut.start(TestWorld.uid, overBy: 100, goal: 2000);
+    expect(second!.perDay, p.perDay);
+    expect(second.until, '2026-10-11');
+  });
 }

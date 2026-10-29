@@ -449,3 +449,11 @@ match /conversations/{cid}/messages/{mid} {
   other daily_logs writes). If your daily_logs rule lists the fields an
   owner may write, add `pot_saved`. Friends read it with the rest of the
   day, so they see "🐷 ⊂63 to pot" on your past days too.
+
+## Refer a friend (bonus_until)
+
+Free Premium from inviting friends is `billing/{uid}.bonus_until`, written
+only by the server (`/referral/check`, fatsecret-proxy/referrals.js), like
+the rest of `billing`. Invites are tracked under `meta/referrals/...`, which
+the app can't read or write. No rule changes needed: keep `billing` write
+false and `meta` closed.

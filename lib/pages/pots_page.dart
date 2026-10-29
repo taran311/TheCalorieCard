@@ -22,6 +22,10 @@ class _PotsPageState extends State<PotsPage> {
   final String _uid = FirebaseAuth.instance.currentUser!.uid;
   bool _busy = false;
 
+  /// What today adds to the pot overnight, as things stand.
+  Future<double> _tonight = Future.value(0.0);
+  String? _tonightKey;
+
   /// Created once so rebuilds (e.g. the busy spinner) don't re-subscribe.
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _profile =
       BalanceService.db
@@ -130,6 +134,14 @@ class _PotsPageState extends State<PotsPage> {
               docs.isEmpty ? const <String, dynamic>{} : docs.first.data();
           final enabled = data['pots_enabled'] == true;
           final pot = BalanceService.potFrom(data);
+          // Re-worked out whenever the card changes (food logged, a move).
+          final key = '$enabled ${data['calories']} ${data['pot_spent']}';
+          if (key != _tonightKey) {
+            _tonightKey = key;
+            _tonight = enabled
+                ? BalanceService.potComingTonight(_uid).catchError((_) => 0.0)
+                : Future.value(0.0);
+          }
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
             children: [
@@ -144,9 +156,8 @@ class _PotsPageState extends State<PotsPage> {
                     onChanged: _busy ? null : _toggle,
                     title: const Text('Save into a pot'),
                     subtitle: Text(
-                      'On days you log food, up to '
-                      '$calSym${BalanceService.potDailyCap.round()} you didn\'t '
-                      'spend goes into this week\'s pot.',
+                      'Each day you log food, what you don\'t spend goes in, '
+                      'up to $calSym${BalanceService.potDailyCap.round()} a day.',
                     ),
                   ),
                 ),
@@ -205,10 +216,28 @@ class _PotsPageState extends State<PotsPage> {
                         );
                       },
                     ),
+                    // Savings go in overnight, so straight after closing
+                    // the day the pot hasn't changed yet: say what's coming.
+                    FutureBuilder<double>(
+                      future: _tonight,
+                      builder: (context, s) {
+                        final coming = (s.data ?? 0).round();
+                        if (coming <= 0) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Text(
+                            '+$calSym$coming from today goes in overnight',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 8),
                     Text(
-                      'Up to $calSym${BalanceService.potWeeklyCap.round()} · '
-                      'empties every Monday',
+                      'Holds up to $calSym${BalanceService.potWeeklyCap.round()} '
+                      'a week · empties every Monday',
                       style: const TextStyle(color: Colors.white),
                     ),
                     const SizedBox(height: 14),

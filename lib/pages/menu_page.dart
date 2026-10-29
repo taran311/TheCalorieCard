@@ -8,6 +8,7 @@ import 'package:namer_app/services/premium_service.dart';
 import 'package:namer_app/ui/calorie_card.dart';
 import 'package:namer_app/ui/appearance_sheet.dart';
 import 'package:namer_app/ui/reminder_sheet.dart';
+import 'package:namer_app/ui/profile_editors.dart' show formatGoalDate;
 import 'package:namer_app/ui/responsive.dart';
 import 'package:namer_app/ui/text_utils.dart';
 import 'package:namer_app/ui/tutorials/tutorial_button.dart';
@@ -237,6 +238,9 @@ class _MenuPageState extends State<MenuPage> {
           : e.cancelAtPeriodEnd
               ? 'Ends at the end of this period'
               : 'Thanks for your support · ${e.planLabel}';
+    } else if (e.loaded && e.bonusCoversTrial) {
+      title = 'Free Premium until ${formatGoalDate(e.bonusUntil!)}';
+      subtitle = 'Thanks for inviting friends 🎁';
     } else if (e.loaded && e.inTrial) {
       final d = e.trialDaysLeft;
       title = 'Premium trial: $d day${d == 1 ? '' : 's'} left';

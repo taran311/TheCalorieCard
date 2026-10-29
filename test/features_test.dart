@@ -495,6 +495,24 @@ void main() {
           reason: 'Sunday: the pot starts again on Monday');
     });
 
+    test("the Pots page shows today's savings coming overnight", () async {
+      // Today's card, 82 left after eating 1,918.
+      await potsOn(balanceDate: '2026-10-09', leftYesterday: 82);
+      await w.addEntry(at: DateTime(2026, 10, 9, 12), calories: 1918);
+      expect(await BalanceService.potComingTonight(me), near(82));
+      // And it really does go in overnight.
+      w.now = DateTime(2026, 10, 10, 8);
+      await BalanceService.ensureDailyReset(me);
+      expect(BalanceService.potFrom(await w.card()), near(82));
+    });
+
+    test('nothing coming with pots off', () async {
+      w = TestWorld()..install();
+      await w.addProfile(calories: 82);
+      await w.addEntry(at: DateTime(2026, 10, 9, 12), calories: 1918);
+      expect(await BalanceService.potComingTonight(me), near(0));
+    });
+
     test('a small leftover saves exactly that', () async {
       await potsOn(leftYesterday: 60);
       await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1940);

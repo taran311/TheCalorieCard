@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:namer_app/services/referrals.dart';
 import 'package:namer_app/services/store_billing.dart';
 import 'package:namer_app/services/proxy_client.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -37,6 +38,9 @@ class Entitlement {
   /// Premium for good, from a gift code (see [GiftCodes]).
   final bool lifetime;
 
+  /// Free Premium from inviting friends (see [Referrals]) lasts until then.
+  final DateTime? bonusUntil;
+
   /// Where the plan was bought: 'stripe' (the website), 'play' (Google
   /// Play, in the Android app) or 'apple' (the App Store, in the iPhone
   /// app). Null if they've never paid.
@@ -54,6 +58,7 @@ class Entitlement {
     this.cancelAtPeriodEnd = false,
     this.founder = false,
     this.lifetime = false,
+    this.bonusUntil,
     this.store,
     this.playProductId,
   });
@@ -73,7 +78,8 @@ class Entitlement {
         loaded: d != null &&
             (d['trial_ends_at'] != null ||
                 d['status'] != null ||
-                d['lifetime'] == true),
+                d['lifetime'] == true ||
+                d['bonus_until'] != null),
         status: d?['status'] as String?,
         plan: d?['plan'] as String?,
         trialEndsAt: _date(d?['trial_ends_at']),
@@ -81,6 +87,7 @@ class Entitlement {
         cancelAtPeriodEnd: d?['cancel_at_period_end'] == true,
         founder: d?['founder'] == true,
         lifetime: d?['lifetime'] == true,
+        bonusUntil: _date(d?['bonus_until']),
         store: d?['store'] as String? ??
             (d?['stripe_subscription_id'] != null ? 'stripe' : null),
         playProductId: d?['play_product_id'] as String?,
@@ -100,17 +107,29 @@ class Entitlement {
   bool inTrialAt(DateTime now) =>
       !subscribedAt(now) && trialEndsAt != null && trialEndsAt!.isAfter(now);
 
+  /// Free time from inviting friends, and no paid plan.
+  bool inBonusAt(DateTime now) =>
+      !subscribedAt(now) && bonusUntil != null && bonusUntil!.isAfter(now);
+
   bool get subscribed => subscribedAt(DateTime.now());
   bool get inTrial => inTrialAt(DateTime.now());
+  bool get inBonus => inBonusAt(DateTime.now());
+
+  /// Free time from friends runs on past the trial, so there's no "trial
+  /// ending" to warn about.
+  bool get bonusCoversTrial =>
+      inBonus && (trialEndsAt == null || bonusUntil!.isAfter(trialEndsAt!));
 
   /// Premium right now. While we're still loading (or can't read billing),
   /// the app doesn't lock anything: the server has the final say.
-  bool get isPremium => !loaded || subscribed || inTrial;
+  bool get isPremium => !loaded || subscribed || inTrial || inBonus;
 
-  /// The trial ended and they didn't subscribe.
+  /// The trial ended and they didn't subscribe (or earn time by inviting
+  /// friends).
   bool get trialEnded =>
       loaded &&
       !subscribed &&
+      !inBonus &&
       trialEndsAt != null &&
       !trialEndsAt!.isAfter(DateTime.now());
 
@@ -181,6 +200,10 @@ class Premium {
     _uid = uid;
     notifier.value = Entitlement.unknown;
     StoreBilling.start(uid);
+    // A new account's first friend, or a friend who's now logged enough
+    // days: the free month lands in billing, which the listener below sees.
+    Referrals.reset();
+    Referrals.check();
     _sub = FirebaseFirestore.instance
         .collection('billing')
         .doc(uid)

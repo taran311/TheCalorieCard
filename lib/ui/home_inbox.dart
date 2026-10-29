@@ -675,7 +675,10 @@ class _HomeInboxState extends State<HomeInbox> {
     }
 
     final premium = Premium.current;
-    if (premium.loaded && premium.inTrial && premium.trialDaysLeft <= 3) {
+    if (premium.loaded &&
+        premium.inTrial &&
+        !premium.bonusCoversTrial &&
+        premium.trialDaysLeft <= 3) {
       final days = premium.trialDaysLeft;
       items.add(_InboxCard(
         icon: Icons.auto_awesome_rounded,

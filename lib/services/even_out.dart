@@ -86,6 +86,22 @@ class EvenOut {
       .snapshots()
       .map((s) => s.docs.isEmpty ? null : EvenOutPlan.fromData(s.docs.first.data()));
 
+  /// What [start] would set up for going [overBy] over today: the rest of
+  /// an [old] plan still running joins it. Null if there's nothing to
+  /// spread.
+  static ({int perDay, int days, int total})? preview(EvenOutPlan? old,
+      {required int overBy, required double goal, required DateTime now}) {
+    final todayKey = BalanceService.dateKey(BalanceService.startOfDay(now));
+    final carried = old != null && !old.endedBefore(todayKey)
+        ? old.perDay * old.daysAfter(todayKey)
+        : 0;
+    final total = max(0, overBy) + carried;
+    final days = OffsetPlan.compute(overBy: total, goal: goal, today: now).days;
+    final perDay = perDayFor(total, goal, now);
+    if (overBy <= 0 || perDay <= 0 || days <= 0) return null;
+    return (perDay: perDay, days: days, total: total);
+  }
+
   /// Starts (or replaces) a plan for going [overBy] over today: from
   /// tomorrow to the end of the week (all next week on a Sunday). Null if
   /// there's nothing to spread.
@@ -97,15 +113,10 @@ class EvenOut {
     final doc = await BalanceService.userDataDoc(uid);
     if (doc == null) return null;
 
-    // A plan already running: what's left of it after today joins this one.
-    final old = EvenOutPlan.fromData(doc.data());
-    final carried =
-        old != null && !old.endedBefore(todayKey) ? old.perDay * old.daysAfter(todayKey) : 0;
-    final total = max(0, overBy) + carried;
-
-    final days = OffsetPlan.compute(overBy: total, goal: goal, today: now).days;
-    final perDay = perDayFor(total, goal, now);
-    if (perDay <= 0 || days <= 0) return null;
+    final p = preview(EvenOutPlan.fromData(doc.data()),
+        overBy: overBy, goal: goal, now: now);
+    if (p == null) return null;
+    final (:perDay, :days, :total) = p;
     final from = BalanceService.addDays(today, 1);
     final plan = EvenOutPlan(
       perDay: perDay,

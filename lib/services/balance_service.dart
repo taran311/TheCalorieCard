@@ -502,6 +502,25 @@ class BalanceService {
     );
   }
 
+  /// What goes into the pot tonight if today ends as it is now (0 with
+  /// pots off). The same sum the overnight reset does, so the Pots page can
+  /// show it as on its way rather than the pot looking empty.
+  static Future<double> potComingTonight(String userId) async {
+    final (doc, eaten) =
+        await (userDataDoc(userId), todaysTotals(userId)).wait;
+    final data = doc?.data();
+    if (data == null || data['pots_enabled'] != true) return 0;
+    if (data['balance_date'] != dateKey(now())) return 0;
+    final left = (number(data['calories']) ?? 0) - _potSpentToday(data);
+    return potForTonight(
+      day: now(),
+      left: left,
+      eaten: eaten.calories,
+      goal: calorieGoalFrom(data) ?? 0,
+      potNow: potFrom(data),
+    ).roundToDouble();
+  }
+
   /// This week's pot, from a `user_data` document.
   static double potFrom(Map<String, dynamic> data) =>
       data['pots_enabled'] == true && data['pot_week'] == weekKey(now())

@@ -28,6 +28,8 @@ import 'package:namer_app/pages/friend_group_page.dart';
 import 'package:namer_app/pages/messages_page.dart';
 import 'package:namer_app/pages/hiscores_page.dart';
 import 'package:namer_app/ui/messages_button.dart';
+import 'package:namer_app/services/referrals.dart';
+import 'package:namer_app/ui/referral_card.dart';
 
 class FriendsPage extends StatefulWidget {
   const FriendsPage({Key? key}) : super(key: key);
@@ -122,6 +124,8 @@ class _FriendsPageState extends State<FriendsPage> {
     super.initState();
     _initializeUserDocument();
     _loadPromptDismissed();
+    // Invites: a new friend may have just earned you both a free month.
+    Referrals.check();
     if (_uid.isNotEmpty) {
       _unreadSub = FirebaseFirestore.instance
           .collection('conversations')
@@ -1695,6 +1699,8 @@ class _FriendsPageState extends State<FriendsPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _friendsHeader(),
+          const SizedBox(height: 12),
+          ReferralCard(onShare: _onShareMyLink),
           const SizedBox(height: 12),
           _friendsSection(),
           _sentRequestsSection(),
