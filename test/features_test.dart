@@ -11,6 +11,7 @@ import 'package:namer_app/services/challenge_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/pot_service.dart';
+import 'package:namer_app/ui/home_inbox.dart' show potCardDue, potCardMidweek;
 import 'package:namer_app/services/spend_category.dart';
 import 'package:namer_app/services/split_service.dart';
 import 'package:namer_app/services/wrapped_service.dart';
@@ -511,6 +512,17 @@ void main() {
       await w.addProfile(calories: 82);
       await w.addEntry(at: DateTime(2026, 10, 9, 12), calories: 1918);
       expect(await BalanceService.potComingTonight(me), near(0));
+    });
+
+    test('the pot card shows at treat time, not every morning', () {
+      final tue = DateTime(2026, 10, 27, 8);
+      final fri = DateTime(2026, 10, 30, 8);
+      final sun = DateTime(2026, 11, 1, 8);
+      expect(potCardDue(73, tue), isFalse, reason: 'small, midweek');
+      expect(potCardDue(potCardMidweek, tue), isTrue, reason: 'a real treat');
+      expect(potCardDue(73, fri), isTrue);
+      expect(potCardDue(73, sun), isTrue);
+      expect(potCardDue(0, fri), isFalse);
     });
 
     test('a small leftover saves exactly that', () async {

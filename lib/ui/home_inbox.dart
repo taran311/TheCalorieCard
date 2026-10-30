@@ -157,6 +157,28 @@ class _HomeInboxState extends State<HomeInbox> {
     );
   }
 
+  /// The pot card, "Not today": the day it was hidden on this device.
+  String? _potHiddenOn;
+
+  String get _potHiddenKey => 'pot_card_hidden_${widget.userId}';
+
+  Future<void> _loadPotHidden() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final day = prefs.getString(_potHiddenKey);
+      if (mounted && day != null) setState(() => _potHiddenOn = day);
+    } catch (_) {}
+  }
+
+  Future<void> _hidePotToday() async {
+    final today = BalanceService.dateKey(BalanceService.now());
+    setState(() => _potHiddenOn = today);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_potHiddenKey, today);
+    } catch (_) {}
+  }
+
   /// "Your trial has ended" was dismissed on this device.
   bool _trialEndSeen = true;
 
@@ -251,6 +273,7 @@ class _HomeInboxState extends State<HomeInbox> {
     PlayUpdate.downloaded.addListener(_onUpdateReady);
     _checkReminderOffer();
     _loadTrialSeen();
+    _loadPotHidden();
     _loadBudgetSeen();
     _loadHidden();
     _checkYesterday();
@@ -638,15 +661,24 @@ class _HomeInboxState extends State<HomeInbox> {
       }
 
       final pot = BalanceService.potFrom(profile);
+      final now = BalanceService.now();
       // A closed (or rest) day can't take the pot; it waits for tomorrow.
-      if (pot > 0 && !widget.isDayFinished) {
+      if (!widget.isDayFinished &&
+          potCardDue(pot, now) &&
+          _potHiddenOn != BalanceService.dateKey(now)) {
+        final sunday = now.weekday == DateTime.sunday;
         items.add(_InboxCard(
           icon: Icons.savings_outlined,
           color: AppColors.emerald600,
-          title: 'Pot: $calSym${pot.round()} saved this week',
-          subtitle: 'Move it onto today\'s card for a treat.',
+          title: sunday
+              ? 'Pot: $calSym${pot.round()}, use it today'
+              : 'Pot: $calSym${pot.round()} saved this week',
+          subtitle: sunday
+              ? 'It empties tonight, ready for a fresh week.'
+              : 'Move it onto today\'s card for a treat.',
           busy: _busy.contains('pot'),
           actions: [
+            _InboxAction('Not today', _hidePotToday),
             _InboxAction('Move to card', () => _run('pot', () async {
                   await BalanceService.spendPot(uid);
                   widget.onBalanceChanged();
@@ -1044,3 +1076,12 @@ class _InboxCard extends StatelessWidget {
   }
 }
 
+/// Whether the pot is worth a card in the inbox on [now]: it's for a
+/// treat, so from Friday (Sunday is its last day), or midweek once it's
+/// big enough to be a real one. A little saved on a Tuesday morning just
+/// sits in Pots until then.
+bool potCardDue(double pot, DateTime now) =>
+    pot > 0 && (now.weekday >= DateTime.friday || pot >= potCardMidweek);
+
+/// Midweek, the pot card shows from this much.
+const double potCardMidweek = 300;
