@@ -1700,10 +1700,10 @@ class _FriendsPageState extends State<FriendsPage> {
         children: [
           _friendsHeader(),
           const SizedBox(height: 12),
-          ReferralCard(onShare: _onShareMyLink),
-          const SizedBox(height: 12),
           _friendsSection(),
           _sentRequestsSection(),
+          // Below your friends, not above them: a reminder, not an ad.
+          ReferralCard(onShare: _onShareMyLink),
         ],
       ),
     );
