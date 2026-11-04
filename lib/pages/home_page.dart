@@ -489,6 +489,10 @@ class _HomePageState extends State<HomePage>
       try {
         await LateClose.syncDay(_activeUserId, _selectedLogDate);
       } catch (_) {}
+      // Its savings already went in the pot when today started.
+      try {
+        await BalanceService.resettlePot(_activeUserId, _selectedLogDate);
+      } catch (_) {}
       await _fetchDailyLogForDate(_selectedLogDate);
     }
     if (!mounted) return;
@@ -1187,8 +1191,8 @@ class _HomePageState extends State<HomePage>
           _snack(moved <= 0
               ? "Couldn't use your pot. Try again from Pots."
               : toSpread <= 0
-                  ? '🐷 $calSym$moved from your pot. Today ends even.'
-                  : '🐷 $calSym$moved from your pot.');
+                  ? '$calSym$moved from your pot. Today ends even. 🐷'
+                  : '$calSym$moved from your pot. 🐷');
           return;
         }
       }
@@ -1234,16 +1238,16 @@ class _HomePageState extends State<HomePage>
             : 'comes off your spread plan';
         _snack(tonight > 0 && on
             ? '$calSym${formatCardKcal(paid)} $plan, and '
-                '🐷 $calSym${formatCardKcal(tonight)} goes in your pot '
-                'overnight.'
+                '$calSym${formatCardKcal(tonight)} goes in your pot '
+                'overnight. 🐷'
             : '$calSym${formatCardKcal(paid)} of what you saved $plan '
                 'overnight.');
         if (on || tonight <= 0) return;
       }
       if (tonight <= 0) return;
       if (on) {
-        _snack('🐷 $calSym${formatCardKcal(tonight)} goes into your pot '
-            'overnight, for a treat later this week.');
+        _snack('$calSym${formatCardKcal(tonight)} goes into your pot '
+            'overnight, for a treat later this week. 🐷');
         return;
       }
       final prefs = await SharedPreferences.getInstance();
@@ -1261,8 +1265,8 @@ class _HomePageState extends State<HomePage>
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  '🐷 Save $calSym${formatCardKcal(tonight)} for later this '
-                  'week?',
+                  'Save $calSym${formatCardKcal(tonight)} for later this '
+                  'week? 🐷',
                   style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
@@ -1300,8 +1304,8 @@ class _HomePageState extends State<HomePage>
         return;
       }
       await BalanceService.setPotsEnabled(_activeUserId, true);
-      _snack('🐷 Pot on. $calSym${formatCardKcal(tonight)} goes in '
-          'overnight, ready for tomorrow.');
+      _snack('Pot on. $calSym${formatCardKcal(tonight)} goes in '
+          'overnight, ready for tomorrow. 🐷');
     } catch (_) {
       // Just a suggestion: the day is closed either way.
     }
@@ -2670,8 +2674,18 @@ class _HomePageState extends State<HomePage>
           ],
           if (saved > 0) ...[
             const TextSpan(text: ' · '),
+            // An icon, not 🐷: an emoji just before the amount spreads its
+            // digits out ("⊂1 5 0") on Android.
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 3),
+                child: Icon(Icons.savings_outlined,
+                    size: 15, color: AppText.primary),
+              ),
+            ),
             TextSpan(
-              text: '🐷 $calSym${formatCardKcal(saved)} to pot',
+              text: '$calSym${formatCardKcal(saved)} to pot',
               style: TextStyle(
                   color: AppText.primary, fontWeight: FontWeight.w700),
             ),

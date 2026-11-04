@@ -410,6 +410,10 @@ class BalanceService {
           if (day != null) 'date': Timestamp.fromDate(day),
           if (potDay.saved > 0) 'pot_saved': potDay.saved,
           if (potDay.paid > 0) 'plan_paid': potDay.paid,
+          // What the day's savings were worked out from, so adding to it
+          // afterwards (until midnight) can take them back: resettlePot.
+          'pot_left': potDay.left,
+          'pot_eaten': potDay.eaten,
           'updated_at': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (_) {}
@@ -456,6 +460,57 @@ class BalanceService {
   /// `daily_logs` doc.
   static double planPaidFrom(Map<String, dynamic>? log) =>
       number(log?['plan_paid']) ?? 0;
+
+  /// Yesterday can still be changed until midnight, but its savings went
+  /// in the pot when today started. After a change to [day], this puts the
+  /// pot right: more eaten means less saved (and the pot gives it back),
+  /// less eaten means more, within the usual caps. Doesn't touch a spread
+  /// plan it already paid off. Returns the change to the pot.
+  static Future<double> resettlePot(String userId, DateTime day) async {
+    final key = dateKey(day);
+    final logRef = _db.collection('daily_logs').doc('${userId}_$key');
+    final (doc, logSnap, entries) = await (
+      userDataDoc(userId),
+      logRef.get(),
+      entriesOn(userId, startOfDay(day)),
+    ).wait;
+    final log = logSnap.data();
+    if (doc == null || log == null || log['pot_eaten'] == null) return 0;
+    final data = doc.data() ?? const <String, dynamic>{};
+    if (data['pots_enabled'] != true || weekKey(day) != weekKey(now())) {
+      return 0;
+    }
+    final saved = potSavedFrom(log);
+    final paid = planPaidFrom(log);
+    final eatenThen = number(log['pot_eaten']) ?? 0;
+    final leftThen = number(log['pot_left']) ?? 0;
+    final eaten = totalOf(entries.map((d) => d.data())).calories;
+    if ((eaten - eatenThen).abs() < 0.5) return 0;
+    final left = leftThen - (eaten - eatenThen);
+    final goal = calorieGoalFrom(data) ?? 0;
+    final pot = potFrom(data);
+    final room = potWeeklyCap - (pot - saved);
+    var target = goal > 0 && eaten >= goal * 0.5
+        ? (left - paid).clamp(0, potDailyCap).toDouble()
+        : 0.0;
+    if (target > room) target = room < 0 ? 0 : room;
+    final next = target.roundToDouble();
+    final delta = next - saved;
+    if (delta == 0) {
+      await logRef.set({'pot_eaten': eaten, 'pot_left': left},
+          SetOptions(merge: true));
+      return 0;
+    }
+    final newPot = (pot + delta).clamp(0, potWeeklyCap).toDouble();
+    await doc.reference.update({'pot': newPot});
+    await logRef.set({
+      'pot_saved': next,
+      'pot_eaten': eaten,
+      'pot_left': left,
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    return newPot - pot;
+  }
 
   /// What a day put in the pot (0 if nothing), from its `daily_logs` doc.
   static double potSavedFrom(Map<String, dynamic>? log) =>
@@ -524,6 +579,8 @@ class BalanceService {
         String? day,
         double saved,
         double paid,
+        double left,
+        double eaten,
         Map<String, dynamic> data,
       })?> _potAfterDay(String userId, Map<String, dynamic> data) async {
     final potsOn = data['pots_enabled'] == true;
@@ -536,6 +593,8 @@ class BalanceService {
         : 0.0;
     var added = 0.0;
     var paid = 0.0;
+    var dayLeft = 0.0;
+    var dayEaten = 0.0;
 
     final closedDay = _parseKey(data['balance_date']);
     if (closedDay != null) {
@@ -547,6 +606,8 @@ class BalanceService {
             ? (number(data['pot_spent']) ?? 0)
             : 0.0;
         final leftover = (number(data['calories']) ?? 0) - spentFromPot;
+        dayLeft = leftover;
+        dayEaten = eaten;
         paid = planPaydown(left: leftover, eaten: eaten, goal: goal, owed: owed)
             .floorToDouble();
         // Only a day you actually logged counts: at least half your goal.
@@ -593,6 +654,8 @@ class BalanceService {
       day: closedDay == null ? null : dateKey(closedDay),
       saved: added.roundToDouble(),
       paid: paid,
+      left: dayLeft,
+      eaten: dayEaten,
       data: after,
     );
   }

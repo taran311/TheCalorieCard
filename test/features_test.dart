@@ -525,6 +525,26 @@ void main() {
       expect(potCardDue(0, fri), isFalse);
     });
 
+    test('adding to yesterday after it went in the pot takes it back', () async {
+      await potsOn(leftYesterday: 300);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1700);
+      await BalanceService.ensureDailyReset(me);
+      expect(BalanceService.potFrom(await w.card()), near(150));
+
+      // Forgot dinner: 200 more yesterday leaves 100, so 100 saved.
+      await w.addEntry(at: DateTime(2026, 10, 8, 19), calories: 200);
+      expect(await BalanceService.resettlePot(me, DateTime(2026, 10, 8)),
+          near(-50));
+      expect(BalanceService.potFrom(await w.card()), near(100));
+      final log =
+          await w.db.collection('daily_logs').doc('${me}_2026-10-08').get();
+      expect(BalanceService.potSavedFrom(log.data()), near(100));
+
+      // Nothing changed: nothing moves.
+      expect(await BalanceService.resettlePot(me, DateTime(2026, 10, 8)),
+          near(0));
+    });
+
     test('a small leftover saves exactly that', () async {
       await potsOn(leftYesterday: 60);
       await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1940);

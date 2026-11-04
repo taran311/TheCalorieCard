@@ -839,10 +839,10 @@ final List<Tutorial> tutorials = [
           s.coachThinking = false;
           s.coach.add(MockMessage(
             false,
-            "That's okay, one day never undoes your progress. 💜 "
+            "That's okay, one day never undoes your progress. "
             'Try about $calSym${plan.perDay} less a day ${plan.when}: an '
             'Americano instead of an oat latte, or fruit instead of biscuits. '
-            'Or simply get back to normal tomorrow.',
+            'Or simply get back to normal tomorrow. 💜',
           ));
         },
         thenAfter: const Duration(milliseconds: 2000),
