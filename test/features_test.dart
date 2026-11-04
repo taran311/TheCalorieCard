@@ -452,12 +452,21 @@ void main() {
   });
 
   group('Pots', () {
-    Future<void> potsOn({double? leftYesterday, String? balanceDate}) async {
+    /// Marks [day] closed, as tapping Close does.
+    Future<void> closeDay(String day) => w.db
+        .collection('daily_logs')
+        .doc('${me}_$day')
+        .set({'user_id': me, 'date_key': day, 'finished': true},
+            SetOptions(merge: true));
+
+    Future<void> potsOn(
+        {double? leftYesterday, String? balanceDate, bool closed = true}) async {
       w = TestWorld()..install();
       await w.addProfile(
           balanceDate: balanceDate ?? '2026-10-08',
           calories: leftYesterday ?? 2000);
       await BalanceService.setPotsEnabled(me, true);
+      if (closed) await closeDay(balanceDate ?? '2026-10-08');
     }
 
     test('a day with food saves its leftover, up to 150', () async {
@@ -543,6 +552,54 @@ void main() {
       // Nothing changed: nothing moves.
       expect(await BalanceService.resettlePot(me, DateTime(2026, 10, 8)),
           near(0));
+    });
+
+    test("a day you didn't close saves nothing overnight", () async {
+      await potsOn(leftYesterday: 300, closed: false);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1700);
+      await BalanceService.ensureDailyReset(me);
+      expect(BalanceService.potFrom(await w.card()), near(0));
+      final log =
+          await w.db.collection('daily_logs').doc('${me}_2026-10-08').get();
+      expect(log.data()!['pot_pending'], isTrue);
+    });
+
+    test('closing yesterday before midnight saves it then', () async {
+      await potsOn(leftYesterday: 300, closed: false);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1700);
+      await BalanceService.ensureDailyReset(me);
+      // Remembered dinner first: 200 more leaves 100.
+      await w.addEntry(at: DateTime(2026, 10, 8, 19), calories: 200);
+      await closeDay('2026-10-08');
+      final settled =
+          await BalanceService.settleLateClose(me, DateTime(2026, 10, 8));
+      expect(settled.pot, near(100));
+      expect(BalanceService.potFrom(await w.card()), near(100));
+      // Only once.
+      final again =
+          await BalanceService.settleLateClose(me, DateTime(2026, 10, 8));
+      expect(again.pot, near(0));
+      expect(BalanceService.potFrom(await w.card()), near(100));
+    });
+
+    test('closing yesterday over: the pot can cover it', () async {
+      await potsOn(leftYesterday: 400);
+      await w.addEntry(at: DateTime(2026, 10, 8, 12), calories: 1600);
+      await BalanceService.ensureDailyReset(me); // pot 150
+      await w.db.collection('daily_logs').doc('${me}_2026-10-09').set({
+        'user_id': me,
+        'balances': {'calories': -100},
+      });
+      final covered = await BalanceService.coverDayFromPot(
+          me, DateTime(2026, 10, 9), 100);
+      expect(covered, near(100));
+      expect(BalanceService.potFrom(await w.card()), near(50));
+      expect((await w.card())['calories'], near(2000),
+          reason: "today's card isn't touched");
+      final log =
+          await w.db.collection('daily_logs').doc('${me}_2026-10-09').get();
+      expect(BalanceService.potCoveredFrom(log.data()), near(100));
+      expect(log.data()!['balances']['calories'], near(0));
     });
 
     test('a small leftover saves exactly that', () async {

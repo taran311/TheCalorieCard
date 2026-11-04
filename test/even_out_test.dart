@@ -101,6 +101,11 @@ void main() {
           at: DateTime(2026, 10, 8, 12), calories: 1925 - leftThursday);
       final doc = await BalanceService.userDataDoc(TestWorld.uid);
       await doc!.reference.update({'calories': leftThursday});
+      // Thursday closed: only a closed day's savings count.
+      await w.db
+          .collection('daily_logs')
+          .doc('${TestWorld.uid}_2026-10-08')
+          .set({'user_id': TestWorld.uid, 'finished': true});
       w.now = DateTime(2026, 10, 9, 8);
       await BalanceService.ensureDailyReset(TestWorld.uid);
     }

@@ -23,8 +23,8 @@ class _PotsPageState extends State<PotsPage> {
   bool _busy = false;
 
   /// Where today's savings go overnight, as things stand.
-  Future<({double pot, double plan})> _tonight =
-      Future.value((pot: 0.0, plan: 0.0));
+  Future<({double pot, double plan, bool closed})> _tonight =
+      Future.value((pot: 0.0, plan: 0.0, closed: false));
   String? _tonightKey;
 
   /// Created once so rebuilds (e.g. the busy spinner) don't re-subscribe.
@@ -142,8 +142,8 @@ class _PotsPageState extends State<PotsPage> {
             _tonightKey = key;
             _tonight = enabled
                 ? BalanceService.comingTonight(_uid)
-                    .catchError((_) => (pot: 0.0, plan: 0.0))
-                : Future.value((pot: 0.0, plan: 0.0));
+                    .catchError((_) => (pot: 0.0, plan: 0.0, closed: false))
+                : Future.value((pot: 0.0, plan: 0.0, closed: false));
           }
           // A spread plan still to pay off after today.
           final planRunning = BalanceService.planOwedFrom(
@@ -165,8 +165,9 @@ class _PotsPageState extends State<PotsPage> {
                     onChanged: _busy ? null : _toggle,
                     title: const Text('Save into a pot'),
                     subtitle: Text(
-                      'Each day you log food, what you don\'t spend goes in, '
-                      'up to $calSym${BalanceService.potDailyCap.round()} a day.',
+                      'Close a day and what you didn\'t spend goes in '
+                      'overnight, up to '
+                      '$calSym${BalanceService.potDailyCap.round()} a day.',
                     ),
                   ),
                 ),
@@ -227,7 +228,7 @@ class _PotsPageState extends State<PotsPage> {
                     ),
                     // Savings go in overnight, so straight after closing
                     // the day the pot hasn't changed yet: say what's coming.
-                    FutureBuilder<({double pot, double plan})>(
+                    FutureBuilder<({double pot, double plan, bool closed})>(
                       future: _tonight,
                       builder: (context, s) {
                         final pot = (s.data?.pot ?? 0).round();
@@ -237,6 +238,20 @@ class _PotsPageState extends State<PotsPage> {
                         }
                         const style = TextStyle(
                             color: Colors.white, fontWeight: FontWeight.w700);
+                        // Nothing's saved until the day's closed.
+                        if (s.data?.closed != true) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text(
+                              plan > 0
+                                  ? 'Close today and $calSym${plan + pot} '
+                                      'goes to your plan and pot'
+                                  : 'Close today to put $calSym$pot in '
+                                      'overnight',
+                              style: style,
+                            ),
+                          );
+                        }
                         return Padding(
                           padding: const EdgeInsets.only(top: 10),
                           child: Column(
@@ -279,8 +294,8 @@ class _PotsPageState extends State<PotsPage> {
                       const SizedBox(height: 10),
                       const Text(
                         'You\'re spreading an overspend, so what you save '
-                        'pays that off first. Anything left over fills your '
-                        'pot.',
+                        'on days you close pays that off first. Anything left '
+                        'over fills your pot.',
                         style: TextStyle(color: Colors.white, fontSize: 13),
                       ),
                     ],

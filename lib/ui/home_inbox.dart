@@ -8,6 +8,8 @@ import 'package:namer_app/services/app_update.dart';
 import 'package:namer_app/services/play_update.dart';
 import 'package:namer_app/services/save_guard.dart';
 import 'package:namer_app/services/balance_service.dart';
+import 'package:namer_app/services/even_out.dart';
+import 'package:namer_app/ui/over_sheet.dart';
 import 'package:namer_app/services/budget_service.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/games_service.dart';
@@ -104,9 +106,75 @@ class _HomeInboxState extends State<HomeInbox> {
     if (!mounted) return null;
     setState(() => _openYesterday = null);
     if (!ok) return false;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Yesterday closed ✓ It counts towards your streak.')));
+    // Closed now, so what it saved goes where it would have overnight.
+    var settled = (pot: 0.0, plan: 0.0);
+    try {
+      settled = await BalanceService.settleLateClose(widget.userId, day);
+      if (settled.plan > 0) widget.onBalanceChanged();
+    } catch (_) {}
+    if (!mounted) return null;
+    // Closed over budget: the same choice as closing on the day.
+    try {
+      final log = (await BalanceService.db
+              .collection('daily_logs')
+              .doc('${widget.userId}_${BalanceService.dateKey(day)}')
+              .get())
+          .data();
+      final b = log?['balances'];
+      final left = b is Map ? BalanceService.number(b['calories']) : null;
+      if (left != null && left < 0 && mounted) {
+        if (await _evenOutYesterday(day, (-left).round())) return null;
+      }
+    } catch (_) {}
+    if (!mounted) return null;
+    final pot = settled.pot.round();
+    final plan = settled.plan.round();
+    final where = [
+      if (plan > 0) '$calSym$plan off your spread plan',
+      if (pot > 0) '$calSym$pot into your pot',
+    ];
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(where.isEmpty
+            ? 'Yesterday closed ✓ It counts towards your streak.'
+            : 'Yesterday closed ✓ ${where.join(' and ')}.')));
     return null;
+  }
+
+  /// Yesterday closed [over] budget: cover it from the pot, spread it, or
+  /// leave it. True once it's said what happened.
+  Future<bool> _evenOutYesterday(DateTime day, int over) async {
+    final doc = await BalanceService.userDataDoc(widget.userId);
+    final data = doc?.data();
+    if (data == null || !mounted) return false;
+    final goal = BalanceService.calorieGoalFrom(data) ?? 0;
+    final picked = await askAboutOverspend(context,
+        over: over, data: data, goal: goal, day: 'yesterday');
+    if (picked == null || !mounted) return false;
+    final messenger = ScaffoldMessenger.of(context);
+    var rest = over;
+    var covered = 0;
+    if (picked.choice == OverChoice.pot ||
+        picked.choice == OverChoice.potAndSpread) {
+      covered = (await BalanceService.coverDayFromPot(
+              widget.userId, day, picked.fromPot.toDouble()))
+          .round();
+      rest -= covered;
+    }
+    EvenOutPlan? plan;
+    if (rest > 0 && picked.choice != OverChoice.pot) {
+      plan = await EvenOut.start(widget.userId, overBy: rest, goal: goal);
+    }
+    final parts = [
+      if (covered > 0) '$calSym$covered from your pot',
+      if (plan != null)
+        '$calSym${plan.perDay} less a day for ${plan.days} '
+            'day${plan.days == 1 ? '' : 's'}',
+    ];
+    messenger.showSnackBar(SnackBar(
+        content: Text(parts.isEmpty
+            ? 'Yesterday closed ✓'
+            : 'Yesterday closed ✓ ${parts.join(', then ')}.')));
+    return true;
   }
 
   /// Games progress, for "Today's Calorie Quiz".

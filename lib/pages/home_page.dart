@@ -23,6 +23,7 @@ import 'package:namer_app/services/even_out.dart';
 import 'package:namer_app/services/direct_debit_service.dart';
 import 'package:namer_app/services/food_log.dart';
 import 'package:namer_app/services/pot_service.dart';
+import 'package:namer_app/ui/over_sheet.dart';
 import 'package:namer_app/services/portion_amount.dart';
 import 'package:namer_app/services/split_service.dart';
 import 'package:namer_app/ui/split_sheet.dart';
@@ -811,6 +812,11 @@ class _HomePageState extends State<HomePage>
       ? 0
       : BalanceService.potSavedFrom(_selectedDailyLog);
 
+  /// What the pot covered on a past day that went over (0 for today).
+  double get _potCoveredOnSelectedDay => _isSelectedDateToday
+      ? 0
+      : BalanceService.potCoveredFrom(_selectedDailyLog);
+
   /// What a past day's savings paid off a spread plan (0 for today).
   double get _planPaidOnSelectedDay => _isSelectedDateToday
       ? 0
@@ -1070,124 +1076,25 @@ class _HomePageState extends State<HomePage>
       final doc = await BalanceService.userDataDoc(_activeUserId);
       final data = doc?.data();
       if (data == null || !mounted) return;
-      final now = BalanceService.now();
-      final today = BalanceService.dateKey(now);
-      final goal = _goalsForSelectedDay.calories;
-      final pot = BalanceService.potFrom(data).floor();
-      final fromPot = pot >= over ? over : pot;
-      final rest = over - fromPot;
-      final plan = EvenOutPlan.fromData(data);
-      // Already spread today: spreading again would count today twice.
-      final spreadToday = plan != null && plan.setOn == today;
-      final running = plan != null && !plan.endedBefore(today);
-      ({int perDay, int days, int total})? spread(int kcal) => spreadToday
-          ? null
-          : EvenOut.preview(plan, overBy: kcal, goal: goal, now: now);
-      final spreadAll = spread(over);
-      final spreadRest = rest > 0 ? spread(rest) : null;
-      String lessADay(({int perDay, int days, int total}) p) =>
-          '$calSym${p.perDay} less a day for ${p.days} '
-          'day${p.days == 1 ? '' : 's'}, from tomorrow'
-          '${running ? ', joined with the plan you have' : ''}.';
-
-      final options = <(_OverChoice, IconData, String, String)>[
-        if (fromPot > 0 && rest == 0)
-          (
-            _OverChoice.pot,
-            Icons.savings_outlined,
-            'Cover it from your pot',
-            '$calSym$fromPot from your $calSym$pot pot. Today ends even.',
-          ),
-        if (fromPot > 0 && spreadRest != null)
-          (
-            _OverChoice.potAndSpread,
-            Icons.savings_outlined,
-            'Use your pot, spread the rest',
-            '$calSym$fromPot from your pot, then ${lessADay(spreadRest)}',
-          ),
-        if (fromPot > 0 && rest > 0 && spreadRest == null)
-          (
-            _OverChoice.pot,
-            Icons.savings_outlined,
-            'Use your pot',
-            'Your $calSym$pot pot takes $calSym$fromPot off it.',
-          ),
-        if (spreadAll != null)
-          (
-            _OverChoice.spread,
-            Icons.calendar_view_week_outlined,
-            'Spread it over the week',
-            lessADay(spreadAll)[0].toUpperCase() +
-                lessADay(spreadAll).substring(1),
-          ),
-      ];
-      if (options.isEmpty || !mounted) return;
-
-      final choice = await showModalBottomSheet<_OverChoice>(
-        context: context,
-        useRootNavigator: true,
-        showDragHandle: true,
-        builder: (sheetContext) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '$calSym${formatCardKcal(over)} over today',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.ink),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  "That's fine. Want to even it out?",
-                  style: TextStyle(fontSize: 15, color: AppColors.gray700),
-                ),
-                const SizedBox(height: 12),
-                for (final (c, icon, title, subtitle) in options)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Material(
-                      color: AppColors.surface,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: BorderSide(color: AppColors.border),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: ListTile(
-                        leading: Icon(icon, color: AppColors.primary),
-                        title: Text(title,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Text(subtitle),
-                        onTap: () => Navigator.pop(sheetContext, c),
-                      ),
-                    ),
-                  ),
-                TextButton(
-                  onPressed: () =>
-                      Navigator.pop(sheetContext, _OverChoice.leave),
-                  child: const Text("Leave it: one day over doesn't undo "
-                      'anything'),
-                ),
-              ],
-            ),
-          ),
-        ),
+      final picked = await askAboutOverspend(
+        context,
+        over: over,
+        data: data,
+        goal: _goalsForSelectedDay.calories,
+        day: 'today',
       );
-      if (!mounted || choice == null || choice == _OverChoice.leave) return;
+      if (!mounted || picked == null) return;
 
       var toSpread = over;
-      if (choice == _OverChoice.pot || choice == _OverChoice.potAndSpread) {
-        final moved = (await PotService.move(_activeUserId, fromPot.toDouble()))
-            .round();
+      final choice = picked.choice;
+      if (choice == OverChoice.pot || choice == OverChoice.potAndSpread) {
+        final moved =
+            (await PotService.move(_activeUserId, picked.fromPot.toDouble()))
+                .round();
         FoodLog.notifyChanged();
         await _refreshAfterChange();
         toSpread = over - moved;
-        if (choice == _OverChoice.pot) {
+        if (choice == OverChoice.pot) {
           _snack(moved <= 0
               ? "Couldn't use your pot. Try again from Pots."
               : toSpread <= 0
@@ -1438,8 +1345,8 @@ class _HomePageState extends State<HomePage>
               // Saving pays it off before anything goes in the pot.
               if (more > 0)
                 Text(
-                  'Finish under budget and it comes off this first, before '
-                  'your pot.',
+                  'Close a day under budget and it comes off this first, '
+                  'before your pot.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
@@ -2469,7 +2376,8 @@ class _HomePageState extends State<HomePage>
                         // and towards a spread plan.
                         caloriesOverride: (_selectedDayBalance.calories -
                                 _potSavedOnSelectedDay -
-                                _planPaidOnSelectedDay)
+                                _planPaidOnSelectedDay +
+                                _potCoveredOnSelectedDay)
                             .round(),
                         proteinOverride: _selectedDayBalance.protein,
                         carbsOverride: _selectedDayBalance.carbs,
@@ -2638,9 +2546,10 @@ class _HomePageState extends State<HomePage>
     final spent = _dayTotals.calories.round();
     final saved = _potSavedOnSelectedDay.round();
     final paid = _planPaidOnSelectedDay.round();
+    final covered = _potCoveredOnSelectedDay.round();
     final int? left = today
         ? _liveBalance
-        : (_selectedDayBalance.calories - saved - paid).round();
+        : (_selectedDayBalance.calories - saved - paid + covered).round();
     final goal = _goalsForSelectedDay.calories;
     final Color leftColor = left == null || left < 0
         ? AppText.red600
@@ -2664,6 +2573,14 @@ class _HomePageState extends State<HomePage>
             ),
           ],
           // "⊂0 left · ⊂60 to your plan · 🐷 ⊂20 to pot": where it went.
+          if (covered > 0) ...[
+            const TextSpan(text: ' · '),
+            TextSpan(
+              text: '$calSym${formatCardKcal(covered)} from pot',
+              style: TextStyle(
+                  color: AppText.primary, fontWeight: FontWeight.w700),
+            ),
+          ],
           if (paid > 0) ...[
             const TextSpan(text: ' · '),
             TextSpan(
@@ -3778,6 +3695,3 @@ class _DayCheerState extends State<_DayCheer> {
     );
   }
 }
-
-/// What to do about going over, picked when closing the day.
-enum _OverChoice { pot, potAndSpread, spread, leave }
